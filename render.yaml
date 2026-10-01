@@ -1,0 +1,35 @@
+# ADI portal — Render Blueprint for the phone deploy kit (server.js + package.json + render.yaml).
+# Render → New → Blueprint → choose this repository. Add email/SMS/MoMo keys later under the service's Environment tab.
+databases:
+  - name: adi-portal-db
+    databaseName: adi_portal
+    plan: basic-256mb
+services:
+  - type: web
+    name: adi-portal
+    runtime: node
+    plan: starter
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: adi-portal-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: INBOX_EMAIL
+        value: e.bill@adiuniversity.com
+      - key: EMAIL_PROVIDER
+        value: log
+      - key: SMS_PROVIDER
+        value: log
+      - key: MOMO_MODE
+        value: "off"
