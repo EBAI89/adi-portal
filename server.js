@@ -32,8 +32,17 @@ class FileStore {
   async delBlob(id) { const f = path.join(this.dir, 'blobs', id.replace(/[^\w-]/g, '')); if (fs.existsSync(f)) fs.unlinkSync(f); }
 }
 
+// SSL: Render's *internal* database address (no dots in the host, e.g. dpg-xxxx-a) is a private network without TLS;
+// external addresses (…render.com, other clouds) need TLS. DATABASE_SSL=true|false overrides.
+function sslFor(url) {
+  const o = String(process.env.DATABASE_SSL || '').toLowerCase(); if (o === 'true') return { rejectUnauthorized: false }; if (o === 'false') return false;
+  let host = '', mode = ''; try { const u = new URL(url); host = u.hostname; mode = u.searchParams.get('sslmode') || ''; } catch (e) {}
+  if (mode === 'disable') return false; if (mode === 'require' || mode === 'verify-full' || mode === 'verify-ca') return { rejectUnauthorized: false };
+  if (!host || host === 'localhost' || host === '127.0.0.1' || !host.includes('.')) return false;
+  return { rejectUnauthorized: false };
+}
 class PgStore {
-  constructor(url) { const { Pool } = require('pg'); this.pool = new Pool({ connectionString: url, ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: false } }); this.cols = {}; this.meta = {}; }
+  constructor(url) { const { Pool } = require('pg'); this.pool = new Pool({ connectionString: url, ssl: sslFor(url), max: 10, connectionTimeoutMillis: 15000 }); this.pool.on('error', e => console.error('[db] idle connection error:', e.message)); this.cols = {}; this.meta = {}; }
   async init() {
     await this.pool.query(`CREATE TABLE IF NOT EXISTS docs (col TEXT NOT NULL, id TEXT NOT NULL, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (col, id));
       CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v JSONB NOT NULL);
@@ -52,10 +61,12 @@ class PgStore {
   async delBlob(id) { await this.pool.query('DELETE FROM blobs WHERE id=$1', [id]); }
 }
 
-module.exports = async function openStore() {
+async function openStore() {
   const s = process.env.DATABASE_URL ? new PgStore(process.env.DATABASE_URL) : new FileStore(process.env.DATA_DIR || path.join(__dirname, '..', 'data'));
-  await s.init(); s.kind = process.env.DATABASE_URL ? 'postgres' : 'file'; return s;
-};
+  try { await s.init(); } catch (e) { console.error('Could not open the database (' + (process.env.DATABASE_URL ? 'postgres' : 'files') + '): ' + e.message); throw e; }
+  s.kind = process.env.DATABASE_URL ? 'postgres' : 'file'; return s;
+}
+module.exports = openStore; module.exports.sslFor = sslFor;
 
 };
 __MODS["./lib/logic"] = function (module, exports, require) {
@@ -645,12 +656,13 @@ async function route(req, res) {
 async function seed() {
   if (Object.values(S.all('users')).some(x => x.role === 'super_admin')) return;
   if (!E.SUPER_ADMIN_EMAIL || !E.SUPER_ADMIN_PASSWORD) { console.warn('No super admin yet: set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD and restart.'); return; }
-  if (E.SUPER_ADMIN_PASSWORD.length < 10) { console.error('SUPER_ADMIN_PASSWORD must have at least 10 characters.'); return; }
+  if (E.SUPER_ADMIN_PASSWORD.length < 10) { console.error('SUPER_ADMIN_PASSWORD must have at least 10 characters — super admin NOT created. Change it in the Environment tab.'); return; }
   await save('users', uid('u'), { email: E.SUPER_ADMIN_EMAIL.trim().toLowerCase(), name: E.SUPER_ADMIN_NAME || 'Super Administrator', phone: E.SUPER_ADMIN_PHONE || '', role: 'super_admin', status: 'active', createdAt: now(), pw: await hashPw(E.SUPER_ADMIN_PASSWORD) });
   console.log('Super admin created for', E.SUPER_ADMIN_EMAIL);
 }
 
 (async () => {
+  console.log('Starting ADI portal… store: ' + (E.DATABASE_URL ? 'postgres' : 'files') + ', node ' + process.version);
   S = await openStore(); R = makeRules(S, logic);
   for (const c of COLS) for (const d of Object.values(S.all(c))) if (d._seq > SEQ) SEQ = d._seq;
   await seed();
