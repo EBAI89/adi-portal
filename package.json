@@ -1,6 +1,6 @@
 {
   "name": "adi-portal",
-  "version": "2.1.0",
+  "version": "2.11.0",
   "private": true,
   "description": "American Ditek Institute (ADI University) — bilingual university management portal with secure backend (MTN MoMo, email, SMS)",
   "main": "server.js",
