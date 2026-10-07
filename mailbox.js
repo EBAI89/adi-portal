@@ -22,14 +22,15 @@
   function mineOf() {
     const u = me();
     if (!u) return null;
-    return Object.values(S.mailbox || {}).find(m => m && m.userId === u.id && m.status !== 'revoked') || (DESK && DESK.mine) || null;
+    if (DESK && DESK._for === u.id && !DESK.loading && !DESK.error) return DESK.mine || null;
+    return Object.values(S.mailbox || {}).find(m => m && m.userId === u.id && m.status !== 'revoked') || null;
   }
 
   function refresh(done) {
     const who = (typeof me === 'function' && me() && me().id) || '';
     api('/api/mail/desk').then(d => { DESK = Object.assign({ _for: who }, d); if (done) done(); else if (typeof render === 'function') render(); }).catch(e => {
       DESK = { error: (e && e.message) || 'error', officer: false, mine: null, rows: [], _for: who };
-      if (typeof render === 'function') render();
+      if (done) done(); else if (typeof render === 'function') render();
     });
   }
 
@@ -150,7 +151,12 @@
     const f = FORMS.mb || {};
     if (!f.otp || !f.password) return toast(LBL('Enter the one-time password and a new password.', 'Saisissez le mot de passe à usage unique et un nouveau mot de passe.'), 1);
     if (f.password !== f.password2) return toast(LBL('The passwords do not match.', 'Les mots de passe ne correspondent pas.'), 1);
-    run(el, () => api('/api/mail/setup', { body: { otp: f.otp, password: f.password } }).then(() => { FORMS.mb = { otp: '', password: '', password2: '' }; toast(LBL('Mailbox activated.', 'Messagerie activée.')); }));
+    run(el, () => api('/api/mail/setup', { body: { otp: f.otp, password: f.password } }).then(() => {
+      FORMS.mb = { otp: '', password: '', password2: '' };
+      const gate = document.getElementById('mb-gate');
+      if (gate) gate.remove();
+      toast(LBL('Your password is set. The one-time password no longer works.', 'Votre mot de passe est défini. Le mot de passe à usage unique ne fonctionne plus.'));
+    }));
   };
   ACT.mailissue = el => run(el, () => api('/api/mail/issue', { body: { userId: el.dataset.user } }).then(r => toast((r.mailbox && r.mailbox.email) || LBL('Issued', 'Délivrée'))));
   ACT.mailissuehr = el => run(el, () => api('/api/mail/issue', { body: { hrId: el.dataset.hr } }).then(r => toast((r.mailbox && r.mailbox.email) || LBL('Issued', 'Délivrée'))));
@@ -364,11 +370,35 @@
     }).catch(e => toast(apiErr(e), 1)).finally(() => { el.disabled = false; });
   };
 
+  let deskBoot = false;
+  function paintGate() {
+    const u = typeof me === 'function' ? me() : null;
+    const m = u ? mineOf() : null;
+    let host = document.getElementById('mb-gate');
+    if (!u || !m || m.status !== 'pending_setup') { if (host) host.remove(); return; }
+    if (!FORMS.mb) FORMS.mb = { otp: '', password: '', password2: '' };
+    if (host && host.dataset.user === u.id) return;
+    if (!host) { host = document.createElement('div'); host.id = 'mb-gate'; document.body.appendChild(host); }
+    host.dataset.user = u.id;
+    host.innerHTML = `<div class="mb-gatebox" role="dialog" aria-modal="true">
+      <p class="mb-kicker">ADI · @adiuniversity.com</p>
+      <h2 style="margin-top:0">${esc(LBL('Choose your password', 'Choisissez votre mot de passe'))}</h2>
+      <p class="muted">${esc(LBL('You signed in with the one-time password for ' + m.email + '. Choose your own password before the portal opens. At least 10 characters, with a letter and a digit.', 'Vous vous êtes connecté avec le mot de passe à usage unique de ' + m.email + '. Choisissez votre mot de passe avant l\'ouverture du portail. Au moins 10 caractères, avec une lettre et un chiffre.'))}</p>
+      <div class="mb-addr">${esc(m.email)}</div>
+      <div class="grid g2" style="margin-top:12px">${inp('mb.otp', LBL('One-time password from the letter', 'Mot de passe à usage unique de la lettre'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div>
+      <button class="btn gold lg" data-a="mailsetup" style="margin-top:12px">${esc(LBL('Set password and open the portal', 'Définir le mot de passe et ouvrir le portail'))}</button>
+    </div>`;
+  }
   if (typeof render === 'function') {
     const prev = render;
     render = function () {
       prev();
-      if (!DESK && me() && location.hash.indexOf('/mail') >= 0) refresh();
+      const u = typeof me === 'function' ? me() : null;
+      if (u && (!DESK || DESK._for !== u.id) && !deskBoot) {
+        deskBoot = true;
+        refresh(() => { deskBoot = false; render(); });
+      }
+      paintGate();
     };
   }
 })();
