@@ -1,0 +1,32 @@
+/* Institutional mailbox — uses the ADI portal tokens */
+.mb-kicker{font:700 .72rem/1.3 var(--ui,var(--body));letter-spacing:.14em;text-transform:uppercase;color:var(--crimson);margin:0 0 6px}
+.mb-policy{display:grid;gap:8px;margin:8px 0 0}
+.mb-policy li{display:flex;gap:8px;align-items:flex-start}
+.mb-cred{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--card);padding:16px 16px 14px;box-shadow:0 12px 32px rgba(11,37,89,.07)}
+.mb-cred .mb-addr{font:700 1.15rem/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.01em;word-break:break-all;color:var(--navy)}
+.mb-otp{font:700 1.35rem/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.12em;color:var(--crimson);margin:6px 0}
+.mb-seal{width:84px;height:76px;object-fit:contain;float:right;margin:0 0 8px 12px;filter:drop-shadow(0 6px 10px rgba(11,37,89,.16))}
+.mb-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.mb-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:10px}
+.mb-meta div{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.mb-meta span{display:block;color:var(--muted);font-size:.78rem}
+.mb-dir{display:grid;gap:10px}
+.mb-person{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--card)}
+#mb-dl .mb-dlframe{width:100%;height:58vh;min-height:220px;border:1px solid var(--line);border-radius:8px;background:#fff}
+#mb-dl .mb-dlbox{max-width:720px}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mb-cred{animation:mbRise .42s cubic-bezier(.2,.7,.2,1) both}
+  .mb-person{animation:mbRise .4s cubic-bezier(.2,.7,.2,1) both}
+  .mb-person:nth-child(2){animation-delay:.04s}
+  .mb-person:nth-child(3){animation-delay:.08s}
+  .mb-person:nth-child(4){animation-delay:.12s}
+  .mb-seal{animation:mbStamp .55s cubic-bezier(.2,.8,.2,1) both}
+  .mb-otp{animation:mbPop .35s cubic-bezier(.2,.8,.2,1) both}
+}
+@media (prefers-reduced-motion: reduce) {
+  .mb-cred,.mb-person,.mb-seal,.mb-otp{animation:none}
+}
+@keyframes mbRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes mbPop{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
+@keyframes mbStamp{0%{opacity:0;transform:rotate(-14deg) scale(1.3)}70%{opacity:1;transform:rotate(-6deg) scale(.98)}100%{opacity:1;transform:rotate(-6deg) scale(1)}}
