@@ -2234,7 +2234,7 @@ async function route(req, res) {
     if (req.method !== 'GET') return send(res, 405, { error: 'method' });
     let page = __EMBED_HTML;
     if (!PROD) {
-      page = page.replace('</body>', '<div style="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#0a2048;color:#fff;padding:12px 14px 16px;font-family:Inter,Arial,sans-serif;box-shadow:0 -6px 24px rgba(0,0,0,.35)"><div style="font-weight:700;font-size:14px;margin-bottom:8px">Download the portal kit, then upload it to GitHub for Render.</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:18px;padding:14px 16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div></body>');
+      page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
     }
     res.writeHead(200, Object.assign({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }, secNow())); return res.end(page);
   }
