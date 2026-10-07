@@ -312,7 +312,7 @@ module.exports = function makeMailbox(ctx) {
     const next = Object.assign({}, m, { status: 'active', setupAt: now(), pw: await hashPw(pw), otpHash: '', otpSeal: '' });
     await save('mailbox', m.id, next);
     const usr = S.get('users', u.id);
-    if (usr && usr.email === m.email) await save('users', usr.id, Object.assign({}, usr, { pw: next.pw, mustChange: false }));
+    if (usr) await save('users', usr.id, Object.assign({}, usr, { pw: next.pw, mustChange: false }));
     await audit(u, 'mailbox activated ' + m.email);
     return pub(next);
   }
