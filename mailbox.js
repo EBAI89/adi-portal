@@ -172,23 +172,67 @@
     run(el, () => api('/api/mail/acl', { body: { admin: !!f.admin, emails: String(f.email || '').split(/[\s,;]+/).filter(Boolean) } }));
   };
 
-  function offerDownload(name, data, mime) {
-    const blob = new Blob([data], { type: mime || 'application/pdf' });
+  let pdfJsLoad = null;
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (pdfJsLoad) return pdfJsLoad;
+    pdfJsLoad = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = () => resolve(window.pdfjsLib);
+      s.onerror = () => reject(new Error('pdfjs'));
+      document.head.appendChild(s);
+    });
+    return pdfJsLoad;
+  }
+  async function paintPages(bytes) {
+    const box = document.getElementById('mb-pages');
+    if (!box) return;
+    try {
+      const lib = await loadPdfJs();
+      if (!lib) throw new Error('pdfjs');
+      const doc = await lib.getDocument({ data: bytes, disableWorker: true, isEvalSupported: false }).promise;
+      box.innerHTML = '';
+      const width = Math.max(280, box.clientWidth - 16);
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const base = page.getViewport({ scale: 1 });
+        const vp = page.getViewport({ scale: Math.min(2, width / base.width) });
+        const canvas = document.createElement('canvas');
+        canvas.className = 'mb-page';
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        box.appendChild(canvas);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      }
+    } catch (e) {
+      const still = document.getElementById('mb-pages');
+      if (still) still.innerHTML = `<p class="muted">${esc(LBL('The pages could not be drawn here. Tap Save the PDF and open the file.', 'Les pages ne peuvent pas être affichées ici. Appuyez sur Enregistrer le PDF et ouvrez le fichier.'))}</p>`;
+    }
+  }
+
+  function offerDownload(name, data, mime, extra) {
+    extra = extra || {};
+    const m = extra.mailbox;
+    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data || []);
+    const blob = new Blob([bytes], { type: mime || 'application/pdf' });
     const url = URL.createObjectURL(blob);
     let host = document.getElementById('mb-dl');
     if (!host) { host = document.createElement('div'); host.id = 'mb-dl'; document.body.appendChild(host); }
     if (host._url) URL.revokeObjectURL(host._url);
     host._url = url;
+    const cred = m && m.email ? `<div class="mb-cred"><p class="mb-kicker">ADI · @adiuniversity.com</p><div class="mb-addr">${esc(m.email)}</div>${m.otp ? `<p class="small muted" style="margin:8px 0 0">${esc(LBL('One-time password', 'Mot de passe à usage unique'))}</p><div class="mb-otp">${esc(m.otp)}</div>` : `<p class="muted" style="margin:8px 0 0">${esc(LBL('This mailbox is already activated.', 'Cette messagerie est déjà activée.'))}</p>`}<p class="small muted">${esc(LBL('This address is also printed on the last page of the letter.', 'Cette adresse est aussi imprimée sur la dernière page de la lettre.'))}</p></div>` : '';
     host.innerHTML = `<div class="modal"><div class="box mb-dlbox" role="dialog" aria-modal="true">
       <p class="mb-kicker">PDF</p>
       <h3 style="margin-top:0">${esc(LBL('Your document is ready', 'Votre document est prêt'))}</h3>
       <p class="muted">${esc(name)}</p>
-      <iframe class="mb-dlframe" title="PDF" src="${url}"></iframe>
+      ${cred}
+      <div class="mb-pages" id="mb-pages"><p class="muted">${esc(LBL('Preparing the pages…', 'Préparation des pages…'))}</p></div>
       <div class="mb-row" style="margin-top:12px">
         <a class="btn gold lg" id="mb-dl-a">${esc(LBL('Save the PDF', 'Enregistrer le PDF'))}</a>
         <button type="button" class="btn ghost" id="mb-dl-x">${esc(LBL('Close', 'Fermer'))}</button>
       </div>
-      <p class="small muted">${esc(LBL('On a phone, tap Save. The file goes to Downloads. You can also read it above.', 'Sur un téléphone, appuyez sur Enregistrer. Le fichier va dans Téléchargements. Vous pouvez aussi le lire ci-dessus.'))}</p>
+      <p class="small muted">${esc(LBL('On a phone, tap Save. The file goes to Downloads.', 'Sur un téléphone, appuyez sur Enregistrer. Le fichier va dans Téléchargements.'))}</p>
     </div></div>`;
     const a = host.querySelector('#mb-dl-a');
     a.href = url;
@@ -196,6 +240,7 @@
     const close = () => { host.innerHTML = ''; if (host._url) { URL.revokeObjectURL(host._url); host._url = ''; } };
     host.querySelector('#mb-dl-x').addEventListener('click', close);
     host.querySelector('.modal').addEventListener('click', e => { if (e.target.classList.contains('modal')) close(); });
+    paintPages(bytes);
     return true;
   }
 
@@ -276,7 +321,7 @@
           try { if (m) paintCredential(d, m); } catch (e) {}
           if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e2) {} }
           savePDF = prevSave;
-          return offerDownload(name, d.output('arraybuffer'), 'application/pdf');
+          return offerDownload(name, d.output('arraybuffer'), 'application/pdf', { mailbox: m });
         };
         try { return prevLetter(a); }
         finally { savePDF = prevSave; }
@@ -308,7 +353,7 @@
     paintCredential(d, m);
     if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e) {} }
     const safe = String(m.email || 'mailbox').replace(/[^\w.@-]+/g, '_');
-    return offerDownload('ADI-mailbox-' + safe + '.pdf', d.output('arraybuffer'), 'application/pdf');
+    return offerDownload('ADI-mailbox-' + safe + '.pdf', d.output('arraybuffer'), 'application/pdf', { mailbox: m });
   }
   ACT.maildl = el => {
     const id = el.dataset.id;
