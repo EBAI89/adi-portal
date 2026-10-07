@@ -2217,7 +2217,7 @@ async function ai(u, b) {
 const INDEX = path.join(__dirname, 'public', 'index.html');
 const SIGS_JSON = typeof __EMBED_SIGS !== 'undefined' ? __EMBED_SIGS : fs.readFileSync(path.join(__dirname, 'lib', 'signatures.json'), 'utf8');
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'self' blob:; frame-src blob: https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'" };
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self'; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'" };
 if (PROD) SEC['Strict-Transport-Security'] = 'max-age=31536000';
 // If the super administrator configures the school's own Jitsi server, the portal may show its video room in a frame and use the camera there — that one address only.
 function secNow() {
