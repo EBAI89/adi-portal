@@ -401,7 +401,18 @@ module.exports = function makeMailbox(ctx) {
       if (p === '/api/mail/restore') return send(res, 200, { mailbox: await setStatus(u, b.id, 'active') }), true;
       if (p === '/api/mail/reset') return send(res, 200, { mailbox: await reset(u, b.id) }), true;
       if (p === '/api/mail/reveal') {
-        const m = S.get('mailbox', String(b.id || '')) || (b.appId && all().find(x => x.userId === (S.get('apps', String(b.appId)) || {}).userId)) || (u && byUser(u.id));
+        let m = b.id ? S.get('mailbox', String(b.id)) : null;
+        const app = b.appId ? S.get('apps', String(b.appId)) : null;
+        if (!m && app && app.userId) m = byUser(app.userId);
+        if (!m && u) m = byUser(u.id);
+        if (!m && app && app.status === 'admitted' && u && (officer(u) || app.userId === u.id)) {
+          await issueFromAdmission(u, app);
+          m = byUser(app.userId);
+        }
+        if (!m && u) {
+          const own = Object.values(S.all('apps') || {}).find(a => a && a.userId === u.id && a.status === 'admitted');
+          if (own) { await issueFromAdmission(u, own); m = byUser(u.id); }
+        }
         if (!m) return send(res, 200, { mailbox: null }), true;
         if (!(u && (m.userId === u.id || officer(u) || m.issuedBy === u.id))) return send(res, 403, { error: 'forbidden' }), true;
         return send(res, 200, { mailbox: withOtp(m, u) }), true;
@@ -415,7 +426,17 @@ module.exports = function makeMailbox(ctx) {
     }
   }
 
+  async function ensureIssued() {
+    const actor = { id: 'system', name: 'Registry' };
+    for (const app of Object.values(S.all('apps') || {})) {
+      if (!app || app.status !== 'admitted' || !app.userId || byUser(app.userId)) continue;
+      try { await issueFromAdmission(actor, app); }
+      catch (e) { console.error('[mail] backfill', app.ref || app.id, e && e.message || e); }
+    }
+  }
+
   async function seed() {
+    await ensureIssued();
     if (PROD) return;
     if (!S.meta.mailAcl) await S.setMeta('mailAcl', { admin: true, users: [] });
     const users = Object.values(S.all('users'));
