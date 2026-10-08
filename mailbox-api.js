@@ -157,6 +157,25 @@ module.exports = function makeMailbox(ctx) {
     } catch (e) { /* notification must not block issuance */ }
   }
 
+  async function issueForApplicant(user, userId) {
+    if (!userId) return null;
+    const existing = byUser(userId);
+    if (existing) return withOtp(existing, { id: userId, role: 'super_admin' });
+    const name = clip(user.name || '', 160);
+    const local = uniqueLocal(suggestLocal(name, ''));
+    const { rec, otp } = await persist({
+      local, kind: 'applicant', role: 'applicant', name, userId,
+      personalEmail: clip(user.email || '', 160).toLowerCase(),
+      phone: clip(user.phone || '', 40),
+      title: user.purpose === 'minesup' ? 'MINESUP transcript applicant' : 'Applicant',
+      titleFr: user.purpose === 'minesup' ? 'Demandeur de relevé MINESUP' : 'Candidat',
+      ref: await nextRef(), issuedByName: 'Registry'
+    });
+    await audit(user, 'mailbox issued ' + rec.email + ' applicant ' + userId);
+    await tell(userId, rec.email);
+    return Object.assign(pub(rec), { otp });
+  }
+
   async function issueFromAdmission(actor, app) {
     if (!app || app.status !== 'admitted') return null;
     const userId = app.userId;
@@ -520,5 +539,5 @@ module.exports = function makeMailbox(ctx) {
     }
   }
 
-  return { handle, issueFromAdmission, issueFromHire, onUserPassword, login, seed, officer, DOMAIN };
+  return { handle, issueFromAdmission, issueFromHire, issueForApplicant, onUserPassword, login, seed, officer, DOMAIN };
 };

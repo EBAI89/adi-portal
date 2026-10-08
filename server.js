@@ -254,7 +254,7 @@ module.exports = function makeRules(store, logic) {
         return 'forbidden';
       case 'payments':
         if (del) return 'forbidden';
-        if (create) return n.userId === u.id && has(u, 'fees_pay') && n.status === 'pending' ? true : 'forbidden';
+        if (create && n.userId === u.id && n.status === 'pending' && n.kind === 'service' && Number(n.amount) === 2000 && (u.role === 'applicant' || u.role === 'student')) return true; if (create) return n.userId === u.id && has(u, 'fees_pay') && n.status === 'pending' ? true : 'forbidden';
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
@@ -2374,12 +2374,12 @@ async function route(req, res) {
       st = S.get('students', String(b.matric || '').trim().toUpperCase()); if (!st || st.userId) return send(res, 400, { error: 'Matricule not found or already linked.' });
       const toks = st.name.toLowerCase().split(/\s+/); if (!name.toLowerCase().split(/\s+/).some(x => x.length > 2 && toks.includes(x))) return send(res, 400, { error: 'Name does not match the student record.' });
     } else if (role !== 'applicant') status = 'pending';
-    const id = uid('u'); const nu = { email, name, phone: String(b.phone || '').slice(0, 30), role, status, lang: b.lang === 'fr' ? 'fr' : 'en', createdAt: now(), pw: await hashPw(b.password) };
+    const id = uid('u'); const nu = { email, name, phone: String(b.phone || '').slice(0, 30), role, status, lang: b.lang === 'fr' ? 'fr' : 'en', createdAt: now(), pw: await hashPw(b.password) }; if (b.purpose === 'minesup') nu.purpose = 'minesup';
     await save('users', id, nu); if (st) await save('students', st.matric, Object.assign({}, st, { userId: id }));
     await audit(nu, 'signup ' + role + ' ' + email);
     if (status === 'pending') for (const s of usersWith('__super')) await notifyUser(s.id, bi('New account to approve', 'Nouveau compte à approuver'), name + ' (' + role + ')');
     else sendEmail({ to: email, subject: bi('Welcome to the ADI portal', 'Bienvenue sur le portail ADI'), text: 'Your account is ready. / Votre compte est prêt.' });
-    return send(res, 200, { ok: true, pending: status === 'pending' });
+    let issued = null; if (role === 'applicant' && MB && MB.issueForApplicant) { try { issued = await MB.issueForApplicant(nu, id); } catch (e) { console.error('mailbox', e && e.message); } } return send(res, 200, { ok: true, pending: status === 'pending', adiEmail: issued && issued.email, otp: issued && issued.otp });
   }
   if (p === '/api/login' && req.method === 'POST') {
     const b = await body(req, 10000); const email = String(b.email || '').trim().toLowerCase();

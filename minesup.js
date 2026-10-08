@@ -92,6 +92,7 @@
   function enter() {
     const u = me();
     if (!u) { try { sessionStorage.setItem('adi_next', 'minesup'); } catch (e) {} go('login'); return; }
+    if (u.purpose === 'minesup') { if (typeof servicePaid === 'function' && !servicePaid(u)) { setTimeout(() => go('service-fee'), 30); return head() + '<div class="note">' + LBL('The service fee of 2,000 XAF opens first.', 'Les frais de service de 2 000 XAF s\'ouvrent d\'abord.') + '</div>'; } const st0 = (typeof studentOf === 'function' && studentOf(u.id)) || { name: u.name, matric: 'PENDING', level: 'HND', specId: '', phone: u.phone || '' }; return head() + editor(st0, u); }
     if (u.role !== 'student') {
       if (can('manage_students') || can('manage_transcripts') || u.role === 'super_admin') { go('minesup-admin'); return; }
       go('minesup'); return;
