@@ -254,7 +254,7 @@ module.exports = function makeRules(store, logic) {
         return 'forbidden';
       case 'payments':
         if (del) return 'forbidden';
-        if (create && n.userId === u.id && n.status === 'pending' && n.kind === 'service' && Number(n.amount) === 2000 && (u.role === 'applicant' || u.role === 'student')) return true; if (create) return n.userId === u.id && has(u, 'fees_pay') && n.status === 'pending' ? true : 'forbidden';
+        if (create && n.userId === u.id && n.status === 'pending' && Number(String(n.amount == null ? '' : n.amount).replace(/[^\d.]/g, '')) === 2000 && (n.kind === 'service' || /service fee|frais de service/i.test(String(n.label || ''))) && (u.role === 'applicant' || u.role === 'student' || u.purpose === 'minesup')) return true; if (create) return n.userId === u.id && has(u, 'fees_pay') && n.status === 'pending' ? true : 'forbidden';
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
@@ -2077,14 +2077,21 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email }); if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
   if (c === 'payments') {
     if (!o) {
-      const st = R.myStudent(u); if (!st || st.matric !== n.matric) throw ['student'];
-      const price = logic.priceFor(S, st, n.kind); if (!price) throw ['unknown fee item'];
-      if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== Number(price.amount)) throw ['amount must be ' + price.amount];
+      const service = Number(String(n.amount == null ? '' : n.amount).replace(/[^\d.]/g, '')) === 2000 && (n.kind === 'service' || /service fee|frais de service/i.test(String(n.label || ''))) && (u.role === 'applicant' || u.role === 'student' || u.purpose === 'minesup');
+      let st = null, price = null;
+      if (!service) {
+        st = R.myStudent(u); if (!st || st.matric !== n.matric) throw ['student'];
+        price = logic.priceFor(S, st, n.kind); if (!price) throw ['unknown fee item'];
+        if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== Number(price.amount)) throw ['amount must be ' + price.amount];
+      }
       const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
-      n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = service
+        ? { userId: u.id, matric: (R.myStudent(u) || {}).matric || '', payerName: u.name, kind: 'service', label: 'Service fee', amount: 2000, ref, payerPhone: String(n.payerPhone || n.phone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), method: 'manual' }
+        : { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
       await save(c, id, n);
-      for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
+      const tell = new Set([...usersWith('verify_payments'), ...usersWith('__super')].map(s => s.id));
+      for (const officerId of tell) await notifyUser(officerId, bi('Payment to verify', 'Paiement à vérifier'), (n.payerName || 'Student') + ' — 2,000 XAF — ' + n.ref + (n.kind === 'service' ? '. Open Payments to approve the service fee.' : ''));
       return;
     }
     if (n.status === 'confirmed') { await confirmPayment(o, u.name); await audit(u, 'payment confirmed ' + o.ref); return; }
