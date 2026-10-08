@@ -2712,6 +2712,50 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV7: true }));
     console.log('Remaining stems split into Form B papers: ' + split);
   }
+  if (!cur.migMinV8) {
+    const loose = s => String(s || '').trim().toLowerCase().replace(/sciences\b/g, 'science').replace(/\s+/g, ' ');
+    let split = 0;
+    for (const c of Object.values(S.all('courses')).slice()) {
+      if (!c || c.src !== 'minesup') continue;
+      const P = PARTS[String(c.code || '').toUpperCase()];
+      if (!P || !P.parts || !P.parts.length) continue;
+      if (P.parts.some(pt => loose(pt[0]) === loose(c.title))) continue;
+      const fitted = P.parts;
+      const ids = [];
+      for (let i = 0; i < fitted.length; i++) {
+        const ptitle = String(fitted[i][0]).slice(0, 180), credits = Math.max(1, Number(fitted[i][1]) || 1);
+        if (i === 0) {
+          await save('courses', c.id, Object.assign({}, c, { title: ptitle, credits: credits, module: P.stem || c.module || '' }));
+          ids.push(c.id);
+        } else {
+          const have = Object.values(S.all('courses')).find(x => x && x.id !== c.id && x.code === c.code && x.level === c.level && x.specId === c.specId && Number(x.sem) === Number(c.sem) && loose(x.title) === loose(ptitle));
+          if (have) { ids.push(have.id); continue; }
+          const id = ('ms-' + c.code + '-' + slug(c.specId) + '-' + slug(ptitle)).slice(0, 90);
+          await save('courses', id, Object.assign({}, c, { title: ptitle, credits: credits, module: P.stem || c.module || '', lecturerId: c.lecturerId || '' }));
+          ids.push(id);
+        }
+      }
+      for (const e of Object.values(S.all('enroll')).slice()) {
+        if (!e || e.courseId !== c.id) continue;
+        for (const pid of ids.slice(1)) {
+          const eid = e.matric + '_' + pid + '_' + String(e.ay || '').replace('/', '-');
+          if (S.get('enroll', eid)) continue;
+          await save('enroll', eid, Object.assign({}, e, { courseId: pid }));
+        }
+      }
+      for (const fb of Object.values(S.all('formb')).slice()) {
+        if (!fb || !fb.id || !Array.isArray(fb.courses) || !fb.courses.includes(c.id)) continue;
+        const merged = fb.courses.slice();
+        for (const pid of ids.slice(1)) if (!merged.includes(pid)) merged.push(pid);
+        let credits = 0;
+        for (const id of merged) { const course = S.get('courses', id); if (course) credits += Number(course.credits) || 0; }
+        await save('formb', fb.id, Object.assign({}, fb, { courses: merged, credits: credits || fb.credits }));
+      }
+      split++;
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV8: true }));
+    console.log('Old course headings replaced with the configured papers: ' + split);
+  }
 }
 
 async function seed() {
