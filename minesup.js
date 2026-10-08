@@ -485,7 +485,16 @@
       y += h;
     };
     const mark = (x, on, en, fr) => {
-      need(8); tick(d, x, y, on); d.setFont('times', 'normal'); d.setFontSize(9); d.text(en, x + 5, y); d.setFont('times', 'italic'); d.setTextColor(80); d.text(fr, x + 5, y + 3.5); d.setTextColor(0);
+      const colW = 78;
+      d.setFont('times', 'normal'); d.setFontSize(8.5);
+      const a = d.splitTextToSize(String(en || ''), colW);
+      d.setFont('times', 'italic');
+      const b = d.splitTextToSize(String(fr || ''), colW);
+      need(4.2 * a.length + 3.6 * b.length + 2);
+      tick(d, x, y, on);
+      d.setFont('times', 'normal'); d.setFontSize(8.5); d.setTextColor(0); d.text(a, x + 5, y);
+      d.setFont('times', 'italic'); d.setTextColor(80); d.text(b, x + 5, y + 3.8 * a.length);
+      d.setTextColor(0);
     };
     d.setFont('times', 'italic'); d.setFontSize(9); d.setTextColor(70);
     d.text('Application for transcript or diploma  ·  Demande de relevé de notes ou de diplôme', W / 2, y, { align: 'center' });
