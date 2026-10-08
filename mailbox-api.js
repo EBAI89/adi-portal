@@ -426,12 +426,51 @@ module.exports = function makeMailbox(ctx) {
     }
   }
 
+  function staffRole(role) {
+    return role === 'lecturer' || role === 'admin' || role === 'accountant' || String(role || '').indexOf('x_') === 0;
+  }
+  function staffPaper(role) {
+    if (role === 'lecturer') return { kind: 'lecturer', title: 'Lecturer', titleFr: 'Enseignant' };
+    if (role === 'admin') return { kind: 'staff', title: 'Administrator', titleFr: 'Administrateur' };
+    if (role === 'accountant') return { kind: 'staff', title: 'Accountant', titleFr: 'Comptable' };
+    return { kind: 'staff', title: 'Staff', titleFr: 'Personnel' };
+  }
+  async function issueForStaff(actor, user) {
+    const personal = String(user.email || '').trim().toLowerCase();
+    const alreadyAdi = personal.endsWith('@' + DOMAIN);
+    let local = alreadyAdi ? personal.slice(0, -('@' + DOMAIN).length) : '';
+    if (!localOk(local) || taken(local)) local = uniqueLocal(suggestLocal(user.name || personal));
+    const paper = staffPaper(user.role);
+    const { rec } = await persist({
+      local, kind: paper.kind, role: user.role, name: clip(user.name || '', 160), userId: user.id,
+      personalEmail: alreadyAdi ? '' : personal,
+      phone: clip(user.phone || '', 40),
+      title: paper.title, titleFr: paper.titleFr,
+      ref: await nextRef(),
+      issuedBy: actor && actor.id, issuedByName: actor && actor.name || 'Human Resources'
+    });
+    await audit(actor, 'mailbox issued ' + rec.email + ' ' + paper.kind + ' existing ' + user.role);
+    await tell(user.id, rec.email);
+    return rec;
+  }
+
   async function ensureIssued() {
-    const actor = { id: 'system', name: 'Registry' };
+    const actor = { id: 'system', name: 'Human Resources' };
     for (const app of Object.values(S.all('apps') || {})) {
       if (!app || app.status !== 'admitted' || !app.userId || byUser(app.userId)) continue;
       try { await issueFromAdmission(actor, app); }
       catch (e) { console.error('[mail] backfill', app.ref || app.id, e && e.message || e); }
+    }
+    for (const user of Object.values(S.all('users') || {})) {
+      if (!user || !staffRole(user.role) || user.status === 'suspended' || user.status === 'rejected') continue;
+      const have = byUser(user.id);
+      try {
+        if (!have) { await issueForStaff(actor, user); continue; }
+        if (have.status === 'pending_setup' && have.kind === 'student') {
+          const paper = staffPaper(user.role);
+          await save('mailbox', have.id, Object.assign({}, have, { kind: paper.kind, role: user.role, title: paper.title, titleFr: paper.titleFr }));
+        }
+      } catch (e) { console.error('[mail] staff', user.email || user.id, e && e.message || e); }
     }
   }
 
