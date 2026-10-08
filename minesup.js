@@ -36,6 +36,50 @@
     return `<a class="btn gold ${cls || ''} ms-cta" href="#/minesup" data-a="msgo">${ctaLabel()}</a>`;
   }
 
+  const HAND = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="#0B2559" d="M26 6c-2 0-3.6 1.6-3.6 3.6V30l-5.4-3.6c-2-1.4-4.8-.6-5.8 1.6l-.3.9c-.7 1.8.2 3.8 2 4.6L26 42.2V54c0 2.2 1.8 4 4 4h14.2c2.2 0 4-1.8 4-4V32.4c0-1.3-.6-2.5-1.7-3.2l-3.6-2.2V18.2c0-2-1.6-3.6-3.6-3.6s-3.6 1.6-3.6 3.6v7.2h-1.6V9.6C34 7.6 32.4 6 30.4 6c-1.4 0-2.6.8-3.2 2 .2-1.2.2-2 .2-2H26z"/><path fill="#C9A227" d="M24.2 52.5h22.2v3.2c0 2.4-1.8 4.3-4.2 4.3H28.4c-2.4 0-4.2-1.9-4.2-4.3v-3.2z"/></svg>';
+  let pointN = 0;
+  function pointAt(el, hand) {
+    const r = el.getBoundingClientRect();
+    hand.style.left = (r.left + Math.min(r.width * 0.78, r.width - 28) + window.scrollX) + 'px';
+    hand.style.top = (r.bottom + window.scrollY - 4) + 'px';
+  }
+  function msPoint() {
+    if (window.__adiPoint) { clearInterval(window.__adiPoint); window.__adiPoint = 0; }
+    const old = document.getElementById('adi-point');
+    if (old) old.remove();
+    document.querySelectorAll('a.adi-aimed').forEach(el => el.classList.remove('adi-aimed'));
+    if (typeof ROUTE !== 'undefined' && ROUTE !== 'home') return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const targets = [document.querySelector('a.ms-cta'), document.querySelector('a.btn.gold.lg[href="#/signup"]')].filter(Boolean);
+    if (!targets.length) return;
+    const hand = document.createElement('div');
+    hand.id = 'adi-point';
+    hand.setAttribute('aria-hidden', 'true');
+    hand.innerHTML = HAND;
+    document.body.appendChild(hand);
+    const step = () => {
+      const live = targets.filter(el => document.body.contains(el));
+      if (!live.length) { hand.remove(); clearInterval(window.__adiPoint); return; }
+      document.querySelectorAll('a.adi-aimed').forEach(el => el.classList.remove('adi-aimed'));
+      const el = live[pointN % live.length];
+      el.classList.add('adi-aimed');
+      pointAt(el, hand);
+      pointN += 1;
+    };
+    step();
+    window.__adiPoint = setInterval(step, 2600);
+    if (!window.__adiPointMove) {
+      window.__adiPointMove = true;
+      const follow = () => {
+        const handNow = document.getElementById('adi-point');
+        const el = document.querySelector('a.adi-aimed');
+        if (handNow && el) pointAt(el, handNow);
+      };
+      window.addEventListener('scroll', follow, { passive: true });
+      window.addEventListener('resize', follow);
+    }
+  }
+
   let hopping = false;
   function hopFees() {
     try { sessionStorage.setItem(feeGateKey, '1'); } catch (e) {}
@@ -615,6 +659,16 @@
     window.MS_DEMO_ACCOUNTS = h && h.demoAccounts ? h.demoAccounts : null;
     if (typeof BOOT_DONE !== 'undefined' && BOOT_DONE && typeof render === 'function') render();
   }).catch(() => {});
+
+  if (typeof render === 'function' && !render._msPoint) {
+    const prevRender = render;
+    render = function () {
+      const out = prevRender.apply(this, arguments);
+      setTimeout(msPoint, 0);
+      return out;
+    };
+    render._msPoint = true;
+  }
 
   if (typeof render === 'function') render();
 })();
