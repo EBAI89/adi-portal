@@ -375,7 +375,7 @@
     const u = typeof me === 'function' ? me() : null;
     const m = u ? mineOf() : null;
     let host = document.getElementById('mb-gate');
-    if (!u || !m || m.status !== 'pending_setup') { if (host) host.remove(); return; }
+    if (!u || !m || m.status !== 'pending_setup' || u.role === 'super_admin') { if (host) host.remove(); return; }
     if (!FORMS.mb) FORMS.mb = { otp: '', password: '', password2: '' };
     if (host && host.dataset.user === u.id) return;
     if (!host) { host = document.createElement('div'); host.id = 'mb-gate'; document.body.appendChild(host); }
