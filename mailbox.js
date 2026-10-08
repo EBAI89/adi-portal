@@ -42,7 +42,7 @@
       const u = me(); if (!u) return h;
       const m = mineOf();
       if (m) {
-        h += `<div class="card gap mb-cred"><p class="mb-kicker">ADI · @adiuniversity.com</p><h3>${LBL('Your institutional address', 'Votre adresse institutionnelle')}</h3><div class="mb-addr">${esc(m.email)}</div><p class="muted">${m.status === 'pending_setup' ? LBL('Activate it with the one-time password on your letter.', 'Activez-la avec le mot de passe à usage unique figurant sur votre lettre.') : m.status === 'suspended' ? LBL('This mailbox is suspended.', 'Cette messagerie est suspendue.') : LBL('This mailbox is active.', 'Cette messagerie est active.')}</p><a class="btn gold" href="#/mail">${LBL('Open mailbox', 'Ouvrir la messagerie')}</a></div>`;
+        h += `<div class="card gap mb-cred"><p class="mb-kicker">ADI · @adiuniversity.com</p><h3>${LBL('Your institutional address', 'Votre adresse institutionnelle')}</h3><div class="mb-addr">${esc(m.email)}</div><p class="muted">${m.status === 'pending_setup' ? (legacyPersonal(u, m) ? LBL('Your personal sign-in is moving to this ADI address. The one-time password is shown so you can choose your new password now.', 'Votre connexion personnelle passe à cette adresse ADI. Le mot de passe à usage unique est affiché pour que vous choisissiez votre nouveau mot de passe maintenant.') : (mustActivateNow(u, m) ? LBL('Activate it with the one-time password on your letter.', 'Activez-la avec le mot de passe à usage unique figurant sur votre lettre.') : LBL('Your old sign-in still opens the portal. Download the updated letter when you want to activate this address.', 'Votre ancienne connexion ouvre toujours le portail. Téléchargez la lettre mise à jour lorsque vous voulez activer cette adresse.'))) : m.status === 'suspended' ? LBL('This mailbox is suspended.', 'Cette messagerie est suspendue.') : LBL('This mailbox is active.', 'Cette messagerie est active.')}</p>${legacyPersonal(u, m) && m.otp ? `<p class="small muted" style="margin:8px 0 0">${LBL('One-time password', 'Mot de passe à usage unique')}</p><div class="mb-otp">${esc(m.otp)}</div>` : ''}<div class="row">${m.status === 'pending_setup' && !legacyPersonal(u, m) && !mustActivateNow(u, m) ? `<button class="btn" data-a="maildl" data-id="${esc(m.id)}">${LBL('Download updated letter', 'Télécharger la lettre mise à jour')}</button>` : ''}<a class="btn gold" href="#/mail">${LBL('Open mailbox', 'Ouvrir la messagerie')}</a></div></div>`;
       } else if (u.role === 'applicant') {
         h += `<div class="card gap"><p class="mb-kicker">ADI · @adiuniversity.com</p><h3>${LBL('Institutional email', 'Courriel institutionnel')}</h3><p class="muted">${LBL('An @adiuniversity.com address is created automatically when you are admitted. The one-time password is printed on your admission letter.', 'Une adresse @adiuniversity.com est créée automatiquement lors de votre admission. Le mot de passe à usage unique est imprimé sur votre lettre d\'admission.')}</p></div>`;
       } else if (u.role === 'super_admin' || (DESK && DESK.officer)) {
@@ -101,10 +101,12 @@
     let h = `<p class="mb-kicker">American Ditek Institute · @adiuniversity.com</p><h2>${DESK.officer ? LBL('Institutional mailbox directory', 'Annuaire de la messagerie institutionnelle') : LBL('Your ADI email', 'Votre courriel ADI')}</h2>`;
     h += `<div class="note">${policy()}</div>`;
     if (mine) {
-      h += credCard(mine, { reveal: true, seal: (typeof SIGS !== 'undefined' && SIGS && SIGS.seal) ? `<img class="mb-seal" alt="" src="data:image/png;base64,${SIGS.seal.png}">` : '' });
+      h += credCard(mine, { reveal: legacyPersonal(u, mine), seal: (typeof SIGS !== 'undefined' && SIGS && SIGS.seal) ? `<img class="mb-seal" alt="" src="data:image/png;base64,${SIGS.seal.png}">` : '' });
       if (mine.status === 'pending_setup') {
         if (!FORMS.mb) FORMS.mb = { otp: '', password: '', password2: '' };
-        h += `<div class="card gap"><h3>${LBL('Activate this mailbox', 'Activer cette messagerie')}</h3><p class="muted">${LBL('Enter the one-time password from your letter, then choose your own password. At least 10 characters, with a letter and a digit.', 'Saisissez le mot de passe à usage unique de votre lettre, puis choisissez le vôtre. Au moins 10 caractères, avec une lettre et un chiffre.')}</p><div class="grid g2">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div><button class="btn gold" data-a="mailsetup">${LBL('Activate mailbox', 'Activer la messagerie')}</button></div>`;
+        const legacy = legacyPersonal(u, mine), blocked = mustActivateNow(u, mine);
+        if (legacy && mine.otp && !FORMS.mb.otp) FORMS.mb.otp = mine.otp;
+        h += `<div class="card gap"><h3>${LBL('Activate this mailbox', 'Activer cette messagerie')}</h3><p class="muted">${legacy ? LBL('This is only for an account that still uses a personal email. Your one-time password is shown here. Choose a new password to move to the ADI address. At least 10 characters, with a letter and a digit.', 'Ceci concerne uniquement un compte qui utilise encore un courriel personnel. Votre mot de passe à usage unique est affiché ici. Choisissez un nouveau mot de passe pour passer à l\'adresse ADI. Au moins 10 caractères, avec une lettre et un chiffre.') : (blocked ? LBL('Enter the one-time password from your letter, then choose your own password. At least 10 characters, with a letter and a digit.', 'Saisissez le mot de passe à usage unique de votre lettre, puis choisissez le vôtre. Au moins 10 caractères, avec une lettre et un chiffre.') : LBL('You can keep using the portal with your old address. Download the updated letter below to read the one-time password, then activate this mailbox when you are ready. At least 10 characters, with a letter and a digit.', 'Vous pouvez continuer à utiliser le portail avec votre ancienne adresse. Téléchargez la lettre mise à jour ci-dessous pour lire le mot de passe à usage unique, puis activez cette messagerie quand vous êtes prêt. Au moins 10 caractères, avec une lettre et un chiffre.'))}</p><div class="grid g2">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div><button class="btn gold" data-a="mailsetup">${LBL('Activate mailbox', 'Activer la messagerie')}</button></div>`;
       }
       h += `<p><button class="btn" data-a="maildl" data-id="${esc(mine.id)}">${LBL('Download letter page', 'Télécharger la page de la lettre')}</button></p>`;
     } else if (!DESK.officer) {
@@ -371,16 +373,46 @@
   };
 
   let deskBoot = false;
+  function legacyPersonal(u, m) {
+    if (!u || !m || m.status !== 'pending_setup') return false;
+    const login = String(u.email || '').trim().toLowerCase();
+    const adi = String(m.email || '').trim().toLowerCase();
+    if (!login || !adi || login === adi) return false;
+    if (login.endsWith('@' + String(m.domain || 'adiuniversity.com').toLowerCase())) return false;
+    return true;
+  }
+  function mustActivateNow(u, m) {
+    if (!u || !m || m.status !== 'pending_setup' || legacyPersonal(u, m)) return false;
+    if (u.role === 'super_admin') return false;
+    const login = String(u.email || '').trim().toLowerCase();
+    const adi = String(m.email || '').trim().toLowerCase();
+    if (!login || login !== adi || !u.mustChange) return false;
+    return true;
+  }
   function paintGate() {
     const u = typeof me === 'function' ? me() : null;
     const m = u ? mineOf() : null;
     let host = document.getElementById('mb-gate');
-    if (!u || !m || m.status !== 'pending_setup' || u.role === 'super_admin') { if (host) host.remove(); return; }
-    if (!FORMS.mb) FORMS.mb = { otp: '', password: '', password2: '' };
-    if (host && host.dataset.user === u.id) return;
+    const legacy = legacyPersonal(u, m);
+    const forced = mustActivateNow(u, m);
+    if (!legacy && !forced) { if (host) host.remove(); return; }
+    const otp = legacy ? String((m && m.otp) || '') : '';
+    if (!FORMS.mb) FORMS.mb = { otp: otp, password: '', password2: '' };
+    else if (otp && !FORMS.mb.otp) FORMS.mb.otp = otp;
+    const stamp = u.id + ':' + (otp ? 'otp' : 'wait');
+    if (host && host.dataset.stamp === stamp) return;
     if (!host) { host = document.createElement('div'); host.id = 'mb-gate'; document.body.appendChild(host); }
     host.dataset.user = u.id;
-    host.innerHTML = `<div class="mb-gatebox" role="dialog" aria-modal="true">
+    host.dataset.stamp = stamp;
+    host.innerHTML = legacy ? `<div class="mb-gatebox" role="dialog" aria-modal="true">
+      <p class="mb-kicker">ADI · @adiuniversity.com</p>
+      <h2 style="margin-top:0">${esc(LBL('Move to your ADI address', 'Passez à votre adresse ADI'))}</h2>
+      <p class="muted">${esc(LBL('You signed in with your personal email ' + u.email + '. This account is moving to the address below. Your one-time password is shown here so you can finish now.', 'Vous vous êtes connecté avec votre courriel personnel ' + u.email + '. Ce compte passe à l\'adresse ci-dessous. Votre mot de passe à usage unique est affiché ici pour que vous terminiez maintenant.'))}</p>
+      <div class="mb-addr">${esc(m.email)}</div>
+      ${otp ? `<p class="small muted" style="margin:10px 0 0">${esc(LBL('One-time password', 'Mot de passe à usage unique'))}</p><div class="mb-otp">${esc(otp)}</div>` : `<p class="muted">${esc(LBL('Preparing your one-time password…', 'Préparation de votre mot de passe à usage unique…'))}</p>`}
+      <div class="grid g2" style="margin-top:12px">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div>
+      <button class="btn gold lg" data-a="mailsetup" style="margin-top:12px">${esc(LBL('Set password and open the portal', 'Définir le mot de passe et ouvrir le portail'))}</button>
+    </div>` : `<div class="mb-gatebox" role="dialog" aria-modal="true">
       <p class="mb-kicker">ADI · @adiuniversity.com</p>
       <h2 style="margin-top:0">${esc(LBL('Choose your password', 'Choisissez votre mot de passe'))}</h2>
       <p class="muted">${esc(LBL('You signed in with the one-time password for ' + m.email + '. Choose your own password before the portal opens. At least 10 characters, with a letter and a digit.', 'Vous vous êtes connecté avec le mot de passe à usage unique de ' + m.email + '. Choisissez votre mot de passe avant l\'ouverture du portail. Au moins 10 caractères, avec une lettre et un chiffre.'))}</p>
