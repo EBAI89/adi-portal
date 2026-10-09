@@ -13,6 +13,8 @@ const emailOk = v => /^\S+@\S+\.\S+$/.test(v);
 const yearOk = v => /^\d{4}$/.test(v);
 const dateOk = v => /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T12:00:00Z').getTime());
 
+const serviceOk = (store, userId) => Object.values(store.all('payments')).some(p => p && p.userId === userId && p.kind === 'service' && p.status === 'confirmed');
+
 function tuitionComplete(logic, store, st) {
   if (!st || !LEVELS.includes(st.level)) return false;
   try {
@@ -86,8 +88,10 @@ async function apply(ctx, u, id, o, n) {
   if (!u || u.status !== 'active') throw ['auth'];
   if (!/^ms[a-z0-9]{4,40}$/.test(id)) throw ['bad id'];
   if (!o) {
-    const st = R.myStudent(u);
-    if (!st || u.role !== 'student' || st.matric !== clip(n.matric, 40)) throw ['Only a linked ADI student can apply. / Seul un étudiant ADI rattaché peut postuler.'];
+    const own = u.purpose === 'minesup' && u.msMatric;                                      // an independent MINESUP account is cleared against a matricule, not linked to a student account
+    const st = own ? S.get('students', u.msMatric) : R.myStudent(u);
+    if (!st || !(u.role === 'student' || own) || st.matric !== clip(n.matric, 40)) throw ['Only an ADI student cleared by matricule can apply. / Seul un étudiant ADI dont le matricule est vérifié peut postuler.'];
+    if (!serviceOk(S, u.id)) throw ['The service fee (2,000 XAF) is not paid and confirmed. / Les frais de service (2 000 XAF) ne sont pas payés et confirmés.'];
     if (!LEVELS.includes(st.level)) throw ['This form is only for HND and BTS. / Ce formulaire est réservé au HND et au BTS.'];
     if (!logic.platformOk(S, st)) throw ['The platform charge (500 XAF) is not paid and confirmed. / Les frais de plateforme (500 XAF) ne sont pas payés et confirmés.'];
     if (!tuitionComplete(logic, S, st)) throw ['Tuition is not fully paid and confirmed. / La scolarité n\'est pas entièrement payée et confirmée.'];

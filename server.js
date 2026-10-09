@@ -326,7 +326,7 @@ module.exports = function makeRules(store, logic) {
         return 'forbidden';
       case 'msapp':
         if (del) return 'forbidden';
-        if (create) return u.role === 'student' && has(u, 'fees_pay') && n.userId === u.id && ownsMatric(u, n.matric) && n.status === 'submitted' ? true : 'forbidden';
+        if (create) return n.userId === u.id && n.status === 'submitted' && ((u.role === 'student' && has(u, 'fees_pay') && ownsMatric(u, n.matric)) || (u.purpose === 'minesup' && u.msMatric && n.matric === u.msMatric)) ? true : 'forbidden';
         if ((u.role === 'super_admin' || any(u, 'manage_students', 'manage_transcripts')) && only(o, n, ['status', 'remark', 'eligOk', 'endorsedBy', 'endorsedTitle', 'decisionAt', 'verifiedBy'])) return true;
         return 'forbidden';
       case 'mailbox': return 'forbidden';
@@ -2319,6 +2319,27 @@ async function route(req, res) {
 
   if (E.NODE_ENV === 'test' && p === '/api/test/outbox' && req.method === 'GET') return send(res, 200, { mails: OUTBOX.splice(0) });
   if (E.NODE_ENV === 'test' && p === '/api/test/clock' && req.method === 'POST') { SKEW = Number((await body(req, 1000)).skewMs) || 0; return send(res, 200, { ok: true, skew: SKEW }); }
+  if (p === '/api/minesup/clearance' && u && (u.purpose === 'minesup' || u.role === 'student')) {
+    const ms = sideMod('minesup-api.js'), svc = logic.serviceOk(S, u.id);
+    const view = st => st ? { matric: st.matric, name: st.name, level: st.level, specId: st.specId || '' } : null;
+    const state = () => {
+      const st = u.role === 'student' ? R.myStudent(u) : (u.msMatric ? S.get('students', u.msMatric) : null);
+      const levelOk = !!st && ms.LEVELS.includes(st.level), due = st ? logic.feesDue(S, st) : null, tuition = !!st && ms.tuitionComplete(logic, S, st);
+      return { service: svc, student: view(st), levelOk, due, tuition, cleared: !!(svc && st && levelOk && !due && tuition) };
+    };
+    if (req.method === 'GET') return send(res, 200, state());
+    if (req.method === 'POST' && u.purpose === 'minesup') {
+      if (limited('mscl:' + u.id, 10, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
+      if (!svc) return send(res, 403, { error: 'service_fee' });
+      const b = await body(req, 2000), matric = String(b.matric || '').trim().toUpperCase(), st = S.get('students', matric);
+      if (!st) return send(res, 404, { error: 'Matricule not found.' });
+      const toks = String(st.name || '').toLowerCase().split(/\s+/);
+      if (!String(u.name || '').toLowerCase().split(/\s+/).some(x => x.length > 2 && toks.includes(x))) return send(res, 400, { error: 'Name does not match the student record.' });
+      if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === matric)) return send(res, 409, { error: 'This matricule is already used by another MINESUP account.' });
+      await save('users', u.id, Object.assign({}, S.get('users', u.id), { msMatric: matric })); await audit(u, 'minesup clearance ' + matric);
+      u.msMatric = matric; return send(res, 200, state());
+    }
+  }
   if (p === '/api/fees/due' && req.method === 'GET') { const st = u && R.myStudent(u); return send(res, 200, { due: st ? logic.feesDue(S, st) : null, platform: logic.PLATFORM_FEE, service: logic.SERVICE_FEE, servicePaid: u ? logic.serviceOk(S, u.id) : false }); }   // what the signed-in student must pay next, by the server's own rules
   if (p.startsWith('/api/att/') && await ATT.handle(req, res, u, p, url)) return;
   if (p.startsWith('/api/library/') && await LIB.handle(req, res, u, p, url)) return;
@@ -2396,7 +2417,8 @@ async function route(req, res) {
     const b = await body(req, 20000); const email = String(b.email || '').trim().toLowerCase(), name = String(b.name || '').trim().slice(0, 120);
     if (!name || !/^\S+@\S+\.\S+$/.test(email)) return send(res, 400, { error: 'A valid name and email are required.' });
     if (String(b.password || '').length < 8) return send(res, 400, { error: 'Password must have at least 8 characters.' });
-    if (Object.values(S.all('users')).some(x => x.email === email)) return send(res, 409, { error: 'This email is already registered.' });
+    const msOnly = String(b.purpose || '') === 'minesup' && String(b.role || 'applicant') === 'applicant';   // independent MINESUP account: never merged with another account that uses the same personal email
+    if (msOnly ? Object.values(S.all('users')).some(x => x.purpose === 'minesup' && String(x.contactEmail || '').toLowerCase() === email) : Object.values(S.all('users')).some(x => x.email === email)) return send(res, 409, { error: 'This email is already registered.' });
     const custom = ((S.get('settings', 'main') || {}).roles || []).map(r => r.id);
     let role = ['applicant', 'student', 'lecturer', 'accountant', 'admin', ...custom].includes(b.role) ? b.role : 'applicant', status = 'active', st = null;
     if (role === 'student') {
@@ -2404,11 +2426,13 @@ async function route(req, res) {
       const toks = st.name.toLowerCase().split(/\s+/); if (!name.toLowerCase().split(/\s+/).some(x => x.length > 2 && toks.includes(x))) return send(res, 400, { error: 'Name does not match the student record.' });
     } else if (role !== 'applicant') status = 'pending';
     const id = uid('u'); const nu = { email, name, phone: String(b.phone || '').slice(0, 30), role, status, lang: b.lang === 'fr' ? 'fr' : 'en', createdAt: now(), pw: await hashPw(b.password) };
+    let issued = null;
+    if (msOnly && MB) { issued = await MB.issueForSignup({ id, name, phone: nu.phone }, email); nu.email = issued.email; nu.contactEmail = email; nu.purpose = 'minesup'; }
     await save('users', id, nu); if (st) await save('students', st.matric, Object.assign({}, st, { userId: id }));
     await audit(nu, 'signup ' + role + ' ' + email);
     if (status === 'pending') for (const s of usersWith('__super')) await notifyUser(s.id, bi('New account to approve', 'Nouveau compte à approuver'), name + ' (' + role + ')');
-    else sendEmail({ to: email, subject: bi('Welcome to the ADI portal', 'Bienvenue sur le portail ADI'), text: 'Your account is ready. / Votre compte est prêt.' });
-    return send(res, 200, { ok: true, pending: status === 'pending' });
+    else sendEmail({ to: email, subject: bi('Welcome to the ADI portal', 'Bienvenue sur le portail ADI'), text: issued ? 'Your ADI address is ' + issued.email + '. Sign in with it and the one-time password shown when you registered. / Votre adresse ADI est ' + issued.email + '. Connectez-vous avec elle et le mot de passe à usage unique affiché à l\'inscription.' : 'Your account is ready. / Votre compte est prêt.' });
+    return send(res, 200, issued ? { ok: true, pending: false, adiEmail: issued.email, otp: issued.otp } : { ok: true, pending: status === 'pending' });
   }
   if (p === '/api/login' && req.method === 'POST') {
     const b = await body(req, 10000); const email = String(b.email || '').trim().toLowerCase();
@@ -2420,7 +2444,7 @@ async function route(req, res) {
       if (via && via.user) { x = via.user; viaMail = true; }
       else if (via && via.error) return send(res, via.status || 401, { error: via.error });
     }
-    if (!x || (!viaMail && !(await checkPw(b.password, x.pw)))) return send(res, 401, { error: 'bad_login' });
+    if (!x || (!viaMail && !(await checkPw(b.password, x.pw)) && !(MB && x.purpose === 'minesup' && await MB.otpOk(x, b.password)))) return send(res, 401, { error: 'bad_login' });
     if (x.status === 'pending') return send(res, 403, { error: 'pending' }); if (x.status !== 'active') return send(res, 403, { error: 'suspended' });
     let cur = x; if (!/^scrypt\$/.test(x.pw)) { cur = Object.assign({}, x, { pw: await hashPw(b.password) }); await save('users', x.id, cur); }
     await audit(cur, 'login'); return send(res, 200, { ok: true, me: cur.id }, { 'Set-Cookie': cookie(makeToken(cur), 7 * 86400) });

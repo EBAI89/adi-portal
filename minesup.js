@@ -17,7 +17,18 @@
   const both = (en, fr) => `<span class="ms-lab"><span>${en}</span><span class="ms-fr">${fr}</span></span>`;
   const feeGateKey = 'ms_fee_gate';
 
+  /* An independent MINESUP account (purpose = minesup) is cleared by matricule on the server: it is not linked to any student account. */
+  let CLEAR = null;
+  const isOwn = u => !!u && u.purpose === 'minesup';
+  function loadClear(done) {
+    const u = me(); if (!u) return;
+    api('/api/minesup/clearance').then(d => { CLEAR = Object.assign({ _for: u.id }, d); if (done) done(); else render(); }).catch(() => { CLEAR = { _for: u.id, error: true, service: false, student: null }; render(); });
+  }
+  const clearFor = u => (CLEAR && u && CLEAR._for === u.id) ? CLEAR : null;
+  const stOf = u => !u ? null : isOwn(u) ? ((clearFor(u) || {}).student || null) : (typeof studentOf === 'function' ? studentOf(u.id) : null);
+
   function tuitionOk(st) {
+    if (isOwn(me())) return !!(clearFor(me()) && clearFor(me()).cleared);
     if (!st || typeof feeBook !== 'function') return false;
     try { if (typeof feesDueNow === 'function' && feesDueNow(st)) return false; const fb = feeBook(st); return !!(fb && fb.regOk && Number(fb.balance) <= 0); }
     catch (e) { return false; }
@@ -38,10 +49,11 @@
 
   let hopping = false;
   function hopFees() {
+    if (isOwn(me())) { loadClear(); return; }
     try { sessionStorage.setItem(feeGateKey, '1'); } catch (e) {}
     if (hopping) return;
     hopping = true;
-    const due = typeof feesDueNow === 'function' && typeof studentOf === 'function' && me() ? feesDueNow(studentOf(me().id)) : null;
+    const due = typeof feesDueNow === 'function' && typeof studentOf === 'function' && me() ? feesDueNow(stOf(me())) : null;
     toast(due ? LBL('Please complete first: ', 'Veuillez d\'abord régler : ') + due.label + '.' : LBL('Tuition is not fully paid and confirmed. Opening the fees page.', 'La scolarité n\'est pas entièrement payée et confirmée. Ouverture de la page des frais.'), 1);
     setTimeout(() => { hopping = false; go('fees-me'); }, 40);
   }
@@ -49,11 +61,12 @@
   function enter() {
     const u = me();
     if (!u) { try { sessionStorage.setItem('adi_next', 'minesup'); } catch (e) {} go('login'); return; }
+    if (isOwn(u)) { if (typeof servicePaid === 'function' && !servicePaid(u)) { go('service-fee'); return; } go('minesup'); return; }
     if (u.role !== 'student') {
       if (can('manage_students') || can('manage_transcripts') || u.role === 'super_admin') { go('minesup-admin'); return; }
       go('minesup'); return;
     }
-    const st = studentOf(u.id);
+    const st = stOf(u);
     if (!st || !levelOk(st)) { go('minesup'); return; }
     if (!tuitionOk(st)) { hopFees(); return; }
     try { sessionStorage.removeItem(feeGateKey); } catch (e) {}
@@ -107,9 +120,11 @@
       let h = base();
       const u = me(); if (!u) return h;
       if (u.role === 'student') {
-        const st = studentOf(u.id);
+        const st = stOf(u);
         const ok = st && levelOk(st) && tuitionOk(st);
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${ok ? LBL('Your tuition is confirmed. You may complete the official bilingual application.', 'Votre scolarité est confirmée. Vous pouvez remplir la demande officielle bilingue.') : LBL('An ADI student account is required. The form opens only after Finance confirms that tuition is fully paid.', 'Un compte étudiant ADI est requis. Le formulaire s\'ouvre seulement après confirmation du paiement intégral de la scolarité.')}</p><div class="row">${cta()}</div></div>`;
+      } else if (isOwn(u)) {
+        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 2,000 XAF service fee, enter your matricule, and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
       } else if (can('manage_students') || u.role === 'super_admin') {
         const n = Object.values(S.msapp || {}).filter(a => a && a.status === 'submitted').length;
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--crimson)"><p class="ms-kicker">MINESUP</p><h3>${LBL('Applications to review', 'Demandes à examiner')}</h3><div class="kpi">${n}</div><p class="muted small">${LBL('Check eligibility, then approve or reject. Download carries the ADI round seal on every page.', 'Vérifiez l\'éligibilité, puis approuvez ou rejetez. Le téléchargement porte le sceau rond ADI sur chaque page.')}</p><a class="btn" href="#/minesup-admin">${LBL('Open the desk', 'Ouvrir le bureau')}</a></div>`;
@@ -121,7 +136,7 @@
   if (feesRoute) {
     const baseF = feesRoute.v;
     feesRoute.v = function () {
-      const u = me(), st = u && studentOf(u.id);
+      const u = me(), st = u && stOf(u);
       let gate = '';
       try {
         if (st && tuitionOk(st)) sessionStorage.removeItem(feeGateKey);
@@ -132,7 +147,7 @@
   }
 
   const at = Math.max(0, ROUTES.findIndex(r => r.id === 'fees-me'));
-  ROUTES.splice(at + 1, 0, { id: 'minesup', k: 'ms_menu', perm: 'fees_pay', v: viewMinesup });
+  ROUTES.splice(at + 1, 0, { id: 'minesup', k: 'ms_menu', perm: 'apply', v: viewMinesup });
   const at2 = ROUTES.findIndex(r => r.id === 'students');
   ROUTES.splice(at2 < 0 ? ROUTES.length : at2 + 1, 0, { id: 'minesup-admin', k: 'ms_admin', perm: 'manage_students', v: viewMinesupAdmin });
 
@@ -191,13 +206,57 @@
     );
   }
 
+  function ownGate(u) {
+    const fr = LANG === 'fr';
+    if (typeof servicePaid === 'function' && !servicePaid(u)) {
+      setTimeout(() => { if (typeof go === 'function') go('service-fee'); }, 60);
+      return head() + `<div class="note bad">${LBL('The service fee of 2,000 XAF must be paid and confirmed first. Opening the service-fee page.', 'Les frais de service de 2 000 XAF doivent d\'abord être payés et confirmés. Ouverture de la page des frais de service.')}</div>`;
+    }
+    const c = clearFor(u);
+    if (!c) { loadClear(); return head() + `<div class="card">${LBL('Checking your clearance…', 'Vérification de votre situation…')}</div>`; }
+    if (c.error) return head() + `<div class="note bad">${LBL('Could not check your clearance. Try again.', 'Vérification impossible. Réessayez.')}</div><p><button class="btn" data-a="msrecheck">${LBL('Try again', 'Réessayer')}</button></p>`;
+    if (!c.student) {
+      if (!FORMS.msc) FORMS.msc = { matric: '' };
+      return head() + criteria() + `<div class="card gap ms-pop"><h3>${LBL('Step 2 — Verify your ADI matricule', 'Étape 2 — Vérifiez votre matricule ADI')}</h3><p class="muted">${LBL('Enter the matricule on your ADI student record. Your name here must match that record. This account stays independent: it is not linked to any other account.', 'Saisissez le matricule de votre dossier étudiant ADI. Votre nom doit correspondre à ce dossier. Ce compte reste indépendant : il n\'est lié à aucun autre compte.')}</p>${inp('msc.matric', LBL('Matricule', 'Matricule'))}<button class="btn gold ms-cta" data-a="msclear">${LBL('Verify matricule', 'Vérifier le matricule')}</button></div>`;
+    }
+    if (!c.cleared) {
+      const due = c.due ? c.due.k : '';
+      const platformDone = due !== 'platform', regDone = platformDone && due !== 'registration';
+      const rows = [
+        [true, LBL('Service fee (2,000 XAF)', 'Frais de service (2 000 XAF)')],
+        [true, LBL('Matricule verified: ', 'Matricule vérifié : ') + c.student.matric + ' — ' + c.student.name],
+        [c.levelOk, LBL('HND or BTS qualification', 'Diplôme HND ou BTS')],
+        [platformDone, LBL('Platform charge (500 XAF)', 'Frais de plateforme (500 XAF)')],
+        [regDone, LBL('Registration fee', 'Frais d\'inscription')],
+        [!!c.tuition, LBL('Tuition: all due instalments paid', 'Scolarité : toutes les tranches exigibles payées')]
+      ];
+      return head() + `<div class="card gap ms-pop"><h3>${LBL('Step 3 — Registration and tuition clearance', 'Étape 3 — Situation d\'inscription et de scolarité')}</h3><ul class="ms-criteria">${rows.map(r => `<li><span class="${r[0] ? 'ms-pass' : 'ms-fail'}">${r[0] ? '✓' : '✕'}</span><span>${esc(r[1])}</span></li>`).join('')}</ul><div class="note">${LBL('The student pays these fees from the student\'s own ADI account (Fees and payments). When the officer in charge confirms the payment, come back and press Check again. The application form then opens.', 'L\'étudiant règle ces frais depuis son compte étudiant ADI (Frais et paiements). Lorsque le responsable confirme le paiement, revenez et appuyez sur Vérifier à nouveau. Le formulaire s\'ouvre alors.')}</div><p><button class="btn gold" data-a="msrecheck">${LBL('Check again', 'Vérifier à nouveau')}</button></p></div>`;
+    }
+    return '';
+  }
+  ACT.msrecheck = () => { CLEAR = null; render(); };
+  ACT.msclear = async el => {
+    const m = String((FORMS.msc || {}).matric || '').trim();
+    if (!m) return focusField('msc.matric', LBL('Enter your matricule.', 'Indiquez votre matricule.'));
+    if (el) el.disabled = true;
+    try {
+      const d = await api('/api/minesup/clearance', { body: { matric: m } });
+      CLEAR = Object.assign({ _for: me().id }, d); FORMS.msc = { matric: '' }; render();
+    } catch (e) {
+      if (el) el.disabled = false;
+      const msg = e.code === 'service_fee' ? LBL('Pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
+      focusField('msc.matric', msg); toast(msg, 1);
+    }
+  };
+
   function viewMinesup() {
     const u = me();
     if (!u) return `<h2>MINESUP</h2><div class="note">${LBL('Create an ADI portal account and sign in. Only ADI students can apply.', 'Créez un compte sur le portail ADI et connectez-vous. Seuls les étudiants ADI peuvent postuler.')}</div><p><a class="btn" href="#/login">${LBL('Sign in', 'Connexion')}</a> <a class="btn ghost" href="#/signup">${LBL('Create account', 'Créer un compte')}</a></p>`;
-    if (u.role !== 'student') {
+    if (isOwn(u)) { const g = ownGate(u); if (g) return g; }
+    else if (u.role !== 'student') {
       return head() + `<div class="note">${LBL('This application is only for ADI students with a linked matricule.', 'Cette demande est réservée aux étudiants ADI dont le matricule est lié au compte.')}</div>` + (can('manage_students') ? `<p><a class="btn" href="#/minesup-admin">${LBL('Review applications', 'Examiner les demandes')}</a></p>` : '');
     }
-    const st = studentOf(u.id);
+    const st = stOf(u);
     if (!st) return head() + `<div class="note bad">${LBL('Your account is not linked to a student record. Ask the Registry to link your matricule.', 'Votre compte n\'est pas lié à un dossier étudiant. Demandez à la scolarité de lier votre matricule.')}</div>`;
     if (!levelOk(st)) return head() + `<div class="note bad">${LBL('This MINESUP form is only for HND and BTS students. Your programme is ', 'Ce formulaire MINESUP est réservé au HND et au BTS. Votre programme est ')}${esc(st.level)}.</div>`;
     if (!tuitionOk(st)) { hopFees(); return head() + `<div class="note bad">${LBL('Full tuition is not yet confirmed. You are being taken to the fees page.', 'La scolarité complète n\'est pas encore confirmée. Vous êtes dirigé vers la page des frais.')}</div>`; }
@@ -310,7 +369,7 @@
 
   ACT.msnew = () => { FORMS.msNew = true; FORMS.ms = null; render(); };
   ACT.msask = () => {
-    const u = me(), st = u && studentOf(u.id);
+    const u = me(), st = u && stOf(u);
     if (!st || !tuitionOk(st)) { hopFees(); return; }
     const err = clientError(st);
     if (err) { jumpToBad(err); return toast(err, 1); }
@@ -325,7 +384,7 @@
     if (box) box.classList.add('ms-pop');
   };
   ACT.mssubmit = async el => {
-    const u = me(), st = u && studentOf(u.id);
+    const u = me(), st = u && stOf(u);
     if (!st) return;
     if (el) { el.disabled = true; el.textContent = '…'; }
     const id = FORMS.ms.id;
