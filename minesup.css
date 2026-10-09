@@ -1,6 +1,5 @@
 /* MINESUP transcript / diploma — sits on the ADI portal tokens */
-.btn.gold{position:relative;overflow:hidden}
-.ms-cta{letter-spacing:.01em}
+.ms-cta{position:relative;overflow:hidden;letter-spacing:.01em}
 .ms-cta .ms-cta-l{display:block;line-height:1.15;text-align:center}
 .ms-cta small{display:block;font-weight:600;opacity:.85;font-size:.72rem;letter-spacing:.02em}
 .ms-hero-note{margin-top:10px}
@@ -33,7 +32,7 @@ button,.btn,a.btn{position:relative}
     transition:transform .16s cubic-bezier(.2,.7,.2,1),filter .16s ease,background-color .16s ease,box-shadow .16s ease,border-color .16s ease;
   }
   button:active:not(:disabled),.btn:active:not(:disabled),a.btn:active{transform:translateY(1px) scale(.982)}
-  .btn.gold::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 48%,transparent 62%);transform:translateX(-120%);animation:msSheen 3.6s ease-in-out infinite;pointer-events:none}
+  .ms-cta::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.45) 48%,transparent 62%);transform:translateX(-120%);animation:msSheen 3.6s ease-in-out infinite;pointer-events:none}
   .ms-sec{animation:msRise .42s cubic-bezier(.2,.7,.2,1) both}
   .ms-sec:nth-child(2){animation-delay:.04s}
   .ms-sec:nth-child(3){animation-delay:.08s}
@@ -45,7 +44,7 @@ button,.btn,a.btn{position:relative}
   #cfm .box.ms-pop{animation:msPop .32s cubic-bezier(.2,.8,.2,1) both}
 }
 @media (prefers-reduced-motion: reduce) {
-  .btn.gold::after,.ms-rip{display:none}
+  .ms-cta::after,.ms-rip{display:none}
 }
 
 @keyframes msRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -53,8 +52,3 @@ button,.btn,a.btn{position:relative}
 @keyframes msSheen{0%,62%{transform:translateX(-120%)}78%,100%{transform:translateX(120%)}}
 @keyframes msRip{to{transform:scale(2.4);opacity:0}}
 @keyframes msStamp{0%{opacity:0;transform:rotate(-16deg) scale(1.35)}70%{opacity:1;transform:rotate(-8deg) scale(.97)}100%{opacity:1;transform:rotate(-8deg) scale(1)}}
-#adi-point{position:absolute;z-index:30;width:54px;height:54px;margin-left:-18px;pointer-events:none;filter:drop-shadow(0 8px 10px rgba(11,37,89,.28));transition:left .7s cubic-bezier(.22,.7,.2,1),top .7s cubic-bezier(.22,.7,.2,1)}
-#adi-point svg{display:block;width:54px;height:54px;animation:adiTap 1.15s ease-in-out infinite;transform-origin:20px 8px}
-a.btn.adi-aimed{box-shadow:0 0 0 3px rgba(201,162,39,.55),0 10px 24px rgba(11,37,89,.16)}
-@keyframes adiTap{0%,100%{transform:translate(0,0)}45%{transform:translate(-7px,-9px)}60%{transform:translate(-2px,-3px)}}
-@media (prefers-reduced-motion: reduce){#adi-point{display:none}}

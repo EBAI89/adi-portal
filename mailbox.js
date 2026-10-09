@@ -22,15 +22,14 @@
   function mineOf() {
     const u = me();
     if (!u) return null;
-    if (DESK && DESK._for === u.id && !DESK.loading && !DESK.error) return DESK.mine || null;
-    return Object.values(S.mailbox || {}).find(m => m && m.userId === u.id && m.status !== 'revoked') || null;
+    return Object.values(S.mailbox || {}).find(m => m && m.userId === u.id && m.status !== 'revoked') || (DESK && DESK.mine) || null;
   }
 
   function refresh(done) {
     const who = (typeof me === 'function' && me() && me().id) || '';
     api('/api/mail/desk').then(d => { DESK = Object.assign({ _for: who }, d); if (done) done(); else if (typeof render === 'function') render(); }).catch(e => {
       DESK = { error: (e && e.message) || 'error', officer: false, mine: null, rows: [], _for: who };
-      if (done) done(); else if (typeof render === 'function') render();
+      if (typeof render === 'function') render();
     });
   }
 
@@ -42,7 +41,7 @@
       const u = me(); if (!u) return h;
       const m = mineOf();
       if (m) {
-        h += `<div class="card gap mb-cred"><p class="mb-kicker">ADI · @adiuniversity.com</p><h3>${LBL('Your institutional address', 'Votre adresse institutionnelle')}</h3><div class="mb-addr">${esc(m.email)}</div><p class="muted">${m.status === 'pending_setup' ? (showOtp(u, m) ? moveCopy(u, m) : (mustActivateNow(u, m) ? LBL('Activate it with the one-time password on your letter.', 'Activez-la avec le mot de passe à usage unique figurant sur votre lettre.') : LBL('Your old sign-in still opens the portal. Download the updated letter when you want to activate this address.', 'Votre ancienne connexion ouvre toujours le portail. Téléchargez la lettre mise à jour lorsque vous voulez activer cette adresse.'))) : m.status === 'suspended' ? LBL('This mailbox is suspended.', 'Cette messagerie est suspendue.') : LBL('This mailbox is active.', 'Cette messagerie est active.')}</p>${showOtp(u, m) && m.otp ? `<p class="small muted" style="margin:8px 0 0">${LBL('One-time password', 'Mot de passe à usage unique')}</p><div class="mb-otp">${esc(m.otp)}</div>` : ''}<div class="row">${m.status === 'pending_setup' && !showOtp(u, m) && !mustActivateNow(u, m) ? `<button class="btn" data-a="maildl" data-id="${esc(m.id)}">${LBL('Download updated letter', 'Télécharger la lettre mise à jour')}</button>` : ''}<a class="btn gold" href="#/mail">${LBL('Open mailbox', 'Ouvrir la messagerie')}</a></div></div>`;
+        h += `<div class="card gap mb-cred"><p class="mb-kicker">ADI · @adiuniversity.com</p><h3>${LBL('Your institutional address', 'Votre adresse institutionnelle')}</h3><div class="mb-addr">${esc(m.email)}</div><p class="muted">${m.status === 'pending_setup' ? LBL('Activate it with the one-time password on your letter.', 'Activez-la avec le mot de passe à usage unique figurant sur votre lettre.') : m.status === 'suspended' ? LBL('This mailbox is suspended.', 'Cette messagerie est suspendue.') : LBL('This mailbox is active.', 'Cette messagerie est active.')}</p><a class="btn gold" href="#/mail">${LBL('Open mailbox', 'Ouvrir la messagerie')}</a></div>`;
       } else if (u.role === 'applicant') {
         h += `<div class="card gap"><p class="mb-kicker">ADI · @adiuniversity.com</p><h3>${LBL('Institutional email', 'Courriel institutionnel')}</h3><p class="muted">${LBL('An @adiuniversity.com address is created automatically when you are admitted. The one-time password is printed on your admission letter.', 'Une adresse @adiuniversity.com est créée automatiquement lors de votre admission. Le mot de passe à usage unique est imprimé sur votre lettre d\'admission.')}</p></div>`;
       } else if (u.role === 'super_admin' || (DESK && DESK.officer)) {
@@ -101,12 +100,10 @@
     let h = `<p class="mb-kicker">American Ditek Institute · @adiuniversity.com</p><h2>${DESK.officer ? LBL('Institutional mailbox directory', 'Annuaire de la messagerie institutionnelle') : LBL('Your ADI email', 'Votre courriel ADI')}</h2>`;
     h += `<div class="note">${policy()}</div>`;
     if (mine) {
-      h += credCard(mine, { reveal: showOtp(u, mine), seal: (typeof SIGS !== 'undefined' && SIGS && SIGS.seal) ? `<img class="mb-seal" alt="" src="data:image/png;base64,${SIGS.seal.png}">` : '' });
+      h += credCard(mine, { reveal: true, seal: (typeof SIGS !== 'undefined' && SIGS && SIGS.seal) ? `<img class="mb-seal" alt="" src="data:image/png;base64,${SIGS.seal.png}">` : '' });
       if (mine.status === 'pending_setup') {
         if (!FORMS.mb) FORMS.mb = { otp: '', password: '', password2: '' };
-        const legacy = showOtp(u, mine), blocked = mustActivateNow(u, mine);
-        if (legacy && mine.otp && !FORMS.mb.otp) FORMS.mb.otp = mine.otp;
-        h += `<div class="card gap"><h3>${LBL('Activate this mailbox', 'Activer cette messagerie')}</h3><p class="muted">${legacy ? moveCopy(u, mine) : (blocked ? LBL('Enter the one-time password from your letter, then choose your own password. At least 10 characters, with a letter and a digit.', 'Saisissez le mot de passe à usage unique de votre lettre, puis choisissez le vôtre. Au moins 10 caractères, avec une lettre et un chiffre.') : LBL('You can keep using the portal with your old address. Download the updated letter below to read the one-time password, then activate this mailbox when you are ready. At least 10 characters, with a letter and a digit.', 'Vous pouvez continuer à utiliser le portail avec votre ancienne adresse. Téléchargez la lettre mise à jour ci-dessous pour lire le mot de passe à usage unique, puis activez cette messagerie quand vous êtes prêt. Au moins 10 caractères, avec une lettre et un chiffre.'))}</p><div class="grid g2">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div><button class="btn gold" data-a="mailsetup">${LBL('Activate mailbox', 'Activer la messagerie')}</button></div>`;
+        h += `<div class="card gap"><h3>${LBL('Activate this mailbox', 'Activer cette messagerie')}</h3><p class="muted">${LBL('Enter the one-time password from your letter, then choose your own password. At least 10 characters, with a letter and a digit.', 'Saisissez le mot de passe à usage unique de votre lettre, puis choisissez le vôtre. Au moins 10 caractères, avec une lettre et un chiffre.')}</p><div class="grid g2">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div><button class="btn gold" data-a="mailsetup">${LBL('Activate mailbox', 'Activer la messagerie')}</button></div>`;
       }
       h += `<p><button class="btn" data-a="maildl" data-id="${esc(mine.id)}">${LBL('Download letter page', 'Télécharger la page de la lettre')}</button></p>`;
     } else if (!DESK.officer) {
@@ -153,12 +150,7 @@
     const f = FORMS.mb || {};
     if (!f.otp || !f.password) return toast(LBL('Enter the one-time password and a new password.', 'Saisissez le mot de passe à usage unique et un nouveau mot de passe.'), 1);
     if (f.password !== f.password2) return toast(LBL('The passwords do not match.', 'Les mots de passe ne correspondent pas.'), 1);
-    run(el, () => api('/api/mail/setup', { body: { otp: f.otp, password: f.password } }).then(() => {
-      FORMS.mb = { otp: '', password: '', password2: '' };
-      const gate = document.getElementById('mb-gate');
-      if (gate) gate.remove();
-      toast(LBL('Your password is set. The one-time password no longer works.', 'Votre mot de passe est défini. Le mot de passe à usage unique ne fonctionne plus.'));
-    }));
+    run(el, () => api('/api/mail/setup', { body: { otp: f.otp, password: f.password } }).then(() => { FORMS.mb = { otp: '', password: '', password2: '' }; toast(LBL('Mailbox activated.', 'Messagerie activée.')); }));
   };
   ACT.mailissue = el => run(el, () => api('/api/mail/issue', { body: { userId: el.dataset.user } }).then(r => toast((r.mailbox && r.mailbox.email) || LBL('Issued', 'Délivrée'))));
   ACT.mailissuehr = el => run(el, () => api('/api/mail/issue', { body: { hrId: el.dataset.hr } }).then(r => toast((r.mailbox && r.mailbox.email) || LBL('Issued', 'Délivrée'))));
@@ -180,67 +172,23 @@
     run(el, () => api('/api/mail/acl', { body: { admin: !!f.admin, emails: String(f.email || '').split(/[\s,;]+/).filter(Boolean) } }));
   };
 
-  let pdfJsLoad = null;
-  function loadPdfJs() {
-    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-    if (pdfJsLoad) return pdfJsLoad;
-    pdfJsLoad = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      s.onload = () => resolve(window.pdfjsLib);
-      s.onerror = () => reject(new Error('pdfjs'));
-      document.head.appendChild(s);
-    });
-    return pdfJsLoad;
-  }
-  async function paintPages(bytes) {
-    const box = document.getElementById('mb-pages');
-    if (!box) return;
-    try {
-      const lib = await loadPdfJs();
-      if (!lib) throw new Error('pdfjs');
-      const doc = await lib.getDocument({ data: bytes, disableWorker: true, isEvalSupported: false }).promise;
-      box.innerHTML = '';
-      const width = Math.max(280, box.clientWidth - 16);
-      for (let i = 1; i <= doc.numPages; i++) {
-        const page = await doc.getPage(i);
-        const base = page.getViewport({ scale: 1 });
-        const vp = page.getViewport({ scale: Math.min(2, width / base.width) });
-        const canvas = document.createElement('canvas');
-        canvas.className = 'mb-page';
-        canvas.width = Math.floor(vp.width);
-        canvas.height = Math.floor(vp.height);
-        box.appendChild(canvas);
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-      }
-    } catch (e) {
-      const still = document.getElementById('mb-pages');
-      if (still) still.innerHTML = `<p class="muted">${esc(LBL('The pages could not be drawn here. Tap Save the PDF and open the file.', 'Les pages ne peuvent pas être affichées ici. Appuyez sur Enregistrer le PDF et ouvrez le fichier.'))}</p>`;
-    }
-  }
-
-  function offerDownload(name, data, mime, extra) {
-    extra = extra || {};
-    const m = extra.mailbox;
-    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data || []);
-    const blob = new Blob([bytes], { type: mime || 'application/pdf' });
+  function offerDownload(name, data, mime) {
+    const blob = new Blob([data], { type: mime || 'application/pdf' });
     const url = URL.createObjectURL(blob);
     let host = document.getElementById('mb-dl');
     if (!host) { host = document.createElement('div'); host.id = 'mb-dl'; document.body.appendChild(host); }
     if (host._url) URL.revokeObjectURL(host._url);
     host._url = url;
-    const cred = m && m.email ? `<div class="mb-cred"><p class="mb-kicker">ADI · @adiuniversity.com</p><div class="mb-addr">${esc(m.email)}</div>${m.otp ? `<p class="small muted" style="margin:8px 0 0">${esc(LBL('One-time password', 'Mot de passe à usage unique'))}</p><div class="mb-otp">${esc(m.otp)}</div>` : `<p class="muted" style="margin:8px 0 0">${esc(LBL('This mailbox is already activated.', 'Cette messagerie est déjà activée.'))}</p>`}<p class="small muted">${esc(LBL('This address is also printed on the last page of the letter.', 'Cette adresse est aussi imprimée sur la dernière page de la lettre.'))}</p></div>` : '';
     host.innerHTML = `<div class="modal"><div class="box mb-dlbox" role="dialog" aria-modal="true">
       <p class="mb-kicker">PDF</p>
       <h3 style="margin-top:0">${esc(LBL('Your document is ready', 'Votre document est prêt'))}</h3>
       <p class="muted">${esc(name)}</p>
-      ${cred}
-      <div class="mb-pages" id="mb-pages"><p class="muted">${esc(LBL('Preparing the pages…', 'Préparation des pages…'))}</p></div>
+      <iframe class="mb-dlframe" title="PDF" src="${url}"></iframe>
       <div class="mb-row" style="margin-top:12px">
         <a class="btn gold lg" id="mb-dl-a">${esc(LBL('Save the PDF', 'Enregistrer le PDF'))}</a>
         <button type="button" class="btn ghost" id="mb-dl-x">${esc(LBL('Close', 'Fermer'))}</button>
       </div>
-      <p class="small muted">${esc(LBL('On a phone, tap Save. The file goes to Downloads.', 'Sur un téléphone, appuyez sur Enregistrer. Le fichier va dans Téléchargements.'))}</p>
+      <p class="small muted">${esc(LBL('On a phone, tap Save. The file goes to Downloads. You can also read it above.', 'Sur un téléphone, appuyez sur Enregistrer. Le fichier va dans Téléchargements. Vous pouvez aussi le lire ci-dessus.'))}</p>
     </div></div>`;
     const a = host.querySelector('#mb-dl-a');
     a.href = url;
@@ -248,7 +196,6 @@
     const close = () => { host.innerHTML = ''; if (host._url) { URL.revokeObjectURL(host._url); host._url = ''; } };
     host.querySelector('#mb-dl-x').addEventListener('click', close);
     host.querySelector('.modal').addEventListener('click', e => { if (e.target.classList.contains('modal')) close(); });
-    paintPages(bytes);
     return true;
   }
 
@@ -329,7 +276,7 @@
           try { if (m) paintCredential(d, m); } catch (e) {}
           if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e2) {} }
           savePDF = prevSave;
-          return offerDownload(name, d.output('arraybuffer'), 'application/pdf', { mailbox: m });
+          return offerDownload(name, d.output('arraybuffer'), 'application/pdf');
         };
         try { return prevLetter(a); }
         finally { savePDF = prevSave; }
@@ -340,26 +287,19 @@
 
   async function appointmentPDF(m) {
     if (typeof PDFOK === 'function' && !PDFOK()) return noPdf();
-    const lecturer = m.kind === 'lecturer';
-    const title = m.kind === 'student' ? 'OFFER OF PROVISIONAL ADMISSION' : (lecturer ? 'LETTER OF RECRUITMENT' : 'LETTER OF EMPLOYMENT');
+    const title = m.kind === 'lecturer' ? 'LETTER OF APPOINTMENT' : (m.kind === 'student' ? 'OFFER OF PROVISIONAL ADMISSION' : 'LETTER OF APPOINTMENT');
     const d = pdfBase(title);
     d.setFont('times', 'italic'); d.setFontSize(11); d.setTextColor(70, 80, 105);
-    d.text(m.kind === 'student' ? 'Offre d\'admission provisoire — messagerie' : (lecturer ? 'Lettre de recrutement' : 'Lettre d\'emploi'), 105, 54, { align: 'center' });
+    d.text(m.kind === 'student' ? 'Offre d\'admission provisoire — messagerie' : 'Lettre de nomination', 105, 54, { align: 'center' });
     d.setTextColor(0);
     let y = 64;
     d.setFont('times', 'normal'); d.setFontSize(11);
-    const post = m.title || 'a member of staff';
-    const postFr = m.titleFr || m.title || 'membre du personnel';
     const en = m.kind === 'student'
-      ? 'Further to your admission to American Ditek Institute, the Registry has opened your institutional mailbox. The address and one-time password are set out below and form part of this letter.'
-      : (lecturer
-        ? 'Further to your recruitment by American Ditek Institute, you are appointed as ' + post + '. This recruitment letter opens your institutional mailbox. The address and one-time password are set out below.'
-        : 'Further to your employment by American Ditek Institute, you serve as ' + post + '. This employment letter opens your institutional mailbox. The address and one-time password are set out below.');
+      ? 'Further to your admission to American Ditek Institute, the Registry has opened your institutional mailbox. The address and one-time password are set out on the following page and form part of this letter.'
+      : 'Further to the recommendation of the recruitment committee, American Ditek Institute appoints you as ' + (m.title || 'a member of staff') + '. Your institutional mailbox is opened with this letter. Activate it within seven days.';
     const fr = m.kind === 'student'
-      ? 'Suite à votre admission à l\'American Ditek Institute, la scolarité a ouvert votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent ci-dessous et font partie de la présente lettre.'
-      : (lecturer
-        ? 'Suite à votre recrutement par l\'American Ditek Institute, vous êtes nommé en qualité de ' + postFr + '. La présente lettre de recrutement ouvre votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent ci-dessous.'
-        : 'Suite à votre emploi à l\'American Ditek Institute, vous exercez en qualité de ' + postFr + '. La présente lettre d\'emploi ouvre votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent ci-dessous.');
+      ? 'Suite à votre admission à l\'American Ditek Institute, la scolarité a ouvert votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent à la page suivante et font partie de la présente lettre.'
+      : 'Sur recommandation de la commission de recrutement, l\'American Ditek Institute vous nomme en qualité de ' + (m.titleFr || m.title || 'membre du personnel') + '. Votre messagerie institutionnelle est ouverte avec la présente lettre. Activez-la dans un délai de sept jours.';
     d.splitTextToSize(en, 176).forEach(line => { d.text(line, 18, y); y += 5; });
     y += 2; d.setFont('times', 'italic'); d.setTextColor(70, 80, 105);
     d.splitTextToSize(fr, 176).forEach(line => { d.text(line, 18, y); y += 4.8; });
@@ -368,7 +308,7 @@
     paintCredential(d, m);
     if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e) {} }
     const safe = String(m.email || 'mailbox').replace(/[^\w.@-]+/g, '_');
-    return offerDownload('ADI-mailbox-' + safe + '.pdf', d.output('arraybuffer'), 'application/pdf', { mailbox: m });
+    return offerDownload('ADI-mailbox-' + safe + '.pdf', d.output('arraybuffer'), 'application/pdf');
   }
   ACT.maildl = el => {
     const id = el.dataset.id;
@@ -379,80 +319,11 @@
     }).catch(e => toast(apiErr(e), 1)).finally(() => { el.disabled = false; });
   };
 
-  let deskBoot = false;
-  function legacyPersonal(u, m) {
-    if (!u || !m || m.status !== 'pending_setup') return false;
-    const login = String(u.email || '').trim().toLowerCase();
-    const adi = String(m.email || '').trim().toLowerCase();
-    if (!login || !adi || login === adi) return false;
-    if (login.endsWith('@' + String(m.domain || 'adiuniversity.com').toLowerCase())) return false;
-    return true;
-  }
-  function staffRole(role) {
-    return role === 'lecturer' || role === 'admin' || role === 'accountant' || String(role || '').indexOf('x_') === 0;
-  }
-  function moveCopy(u, m) {
-    const lecturer = u.role === 'lecturer' || (m && m.kind === 'lecturer');
-    const staff = staffRole(u.role) || (m && m.kind === 'staff');
-    if (lecturer) return LBL('Your one-time password is shown here. It is printed on your recruitment letter, not on an admission letter. Choose a new password to open the portal. At least 10 characters, with a letter and a digit.', 'Votre mot de passe à usage unique est affiché ici. Il figure sur votre lettre de recrutement, et non sur une lettre d\'admission. Choisissez un nouveau mot de passe pour ouvrir le portail. Au moins 10 caractères, avec une lettre et un chiffre.');
-    if (staff) return LBL('Your one-time password is shown here. It is printed on your employment letter, not on an admission letter. Choose a new password to open the portal. At least 10 characters, with a letter and a digit.', 'Votre mot de passe à usage unique est affiché ici. Il figure sur votre lettre d\'emploi, et non sur une lettre d\'admission. Choisissez un nouveau mot de passe pour ouvrir le portail. Au moins 10 caractères, avec une lettre et un chiffre.');
-    return LBL('You signed in with your personal email. The one-time password is shown here so you can move to your ADI address. Choose a new password of at least 10 characters, with a letter and a digit.', 'Vous vous êtes connecté avec votre courriel personnel. Le mot de passe à usage unique est affiché ici pour passer à votre adresse ADI. Choisissez un nouveau mot de passe d\'au moins 10 caractères, avec une lettre et un chiffre.');
-  }
-  function showOtp(u, m) {
-    if (!u || !m || m.status !== 'pending_setup' || u.role === 'super_admin') return false;
-    if (legacyPersonal(u, m)) return true;
-    return staffRole(u.role);
-  }
-  function mustActivateNow(u, m) {
-    if (!u || !m || m.status !== 'pending_setup' || showOtp(u, m)) return false;
-    if (u.role === 'super_admin') return false;
-    const login = String(u.email || '').trim().toLowerCase();
-    const adi = String(m.email || '').trim().toLowerCase();
-    if (!login || login !== adi || !u.mustChange) return false;
-    return true;
-  }
-  function paintGate() {
-    const u = typeof me === 'function' ? me() : null;
-    const m = u ? mineOf() : null;
-    let host = document.getElementById('mb-gate');
-    const legacy = showOtp(u, m);
-    const forced = mustActivateNow(u, m);
-    if (!legacy && !forced) { if (host) host.remove(); return; }
-    const otp = legacy ? String((m && m.otp) || '') : '';
-    if (!FORMS.mb) FORMS.mb = { otp: otp, password: '', password2: '' };
-    else if (otp && !FORMS.mb.otp) FORMS.mb.otp = otp;
-    const stamp = u.id + ':' + (otp ? 'otp' : 'wait');
-    if (host && host.dataset.stamp === stamp) return;
-    if (!host) { host = document.createElement('div'); host.id = 'mb-gate'; document.body.appendChild(host); }
-    host.dataset.user = u.id;
-    host.dataset.stamp = stamp;
-    host.innerHTML = legacy ? `<div class="mb-gatebox" role="dialog" aria-modal="true">
-      <p class="mb-kicker">ADI · @adiuniversity.com</p>
-      <h2 style="margin-top:0">${esc(LBL('Move to your ADI address', 'Passez à votre adresse ADI'))}</h2>
-      <p class="muted">${esc(moveCopy(u, m))}</p>
-      <div class="mb-addr">${esc(m.email)}</div>
-      ${otp ? `<p class="small muted" style="margin:10px 0 0">${esc(LBL('One-time password', 'Mot de passe à usage unique'))}</p><div class="mb-otp">${esc(otp)}</div>` : `<p class="muted">${esc(LBL('Preparing your one-time password…', 'Préparation de votre mot de passe à usage unique…'))}</p>`}
-      <div class="grid g2" style="margin-top:12px">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div>
-      <button class="btn gold lg" data-a="mailsetup" style="margin-top:12px">${esc(LBL('Set password and open the portal', 'Définir le mot de passe et ouvrir le portail'))}</button>
-    </div>` : `<div class="mb-gatebox" role="dialog" aria-modal="true">
-      <p class="mb-kicker">ADI · @adiuniversity.com</p>
-      <h2 style="margin-top:0">${esc(LBL('Choose your password', 'Choisissez votre mot de passe'))}</h2>
-      <p class="muted">${esc(LBL('You signed in with the one-time password for ' + m.email + '. Choose your own password before the portal opens. At least 10 characters, with a letter and a digit.', 'Vous vous êtes connecté avec le mot de passe à usage unique de ' + m.email + '. Choisissez votre mot de passe avant l\'ouverture du portail. Au moins 10 caractères, avec une lettre et un chiffre.'))}</p>
-      <div class="mb-addr">${esc(m.email)}</div>
-      <div class="grid g2" style="margin-top:12px">${inp('mb.otp', LBL('One-time password from the letter', 'Mot de passe à usage unique de la lettre'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div>
-      <button class="btn gold lg" data-a="mailsetup" style="margin-top:12px">${esc(LBL('Set password and open the portal', 'Définir le mot de passe et ouvrir le portail'))}</button>
-    </div>`;
-  }
   if (typeof render === 'function') {
     const prev = render;
     render = function () {
       prev();
-      const u = typeof me === 'function' ? me() : null;
-      if (u && (!DESK || DESK._for !== u.id) && !deskBoot) {
-        deskBoot = true;
-        refresh(() => { deskBoot = false; render(); });
-      }
-      paintGate();
+      if (!DESK && me() && location.hash.indexOf('/mail') >= 0) refresh();
     };
   }
 })();
