@@ -95,5 +95,13 @@
   function cta() { return `<a class="btn gold" href="#/minesup">${LBL('Apply now', 'Faire la demande')}</a>`; }
   const feeGateKey = 'ms_feegate';
 
+  function viewMinesup() {
+    return `<div class="card gap"><h2>MINESUP Transcript & Diploma Desk</h2><p>Official bilingual processing portal for MINESUP HND/BTS transcripts and degree certifications.</p></div>`;
+  }
+
+  function viewMinesupAdmin() {
+    return `<div class="card gap"><h2>MINESUP Application Desk (Officer)</h2><p>Review student applications and verify academic eligibility.</p></div>`;
+  }
+
   initMinesup();
 })();
