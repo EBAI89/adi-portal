@@ -15,6 +15,35 @@ const dateOk = v => /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T12:00
 
 const serviceOk = (store, userId) => Object.values(store.all('payments')).some(p => p && p.userId === userId && p.kind === 'service' && p.status === 'confirmed');
 
+
+/* Official MINESUP HND/BTS matricule list (defence session 2026). The second proof of identity: the unique number MINESUP assigned,
+   printed on the candidate's HND/BTS registration form. The super administrator can replace the list under Review applications. */
+const ROSTER_DEFAULT = [
+  ['26SWE0762', 'NANSOU NCHIMIE CHARLY JUNIOR', 'HND', 'SWE', 18.5], ['26SWE0940', 'DOPGIMA SAMUEL BUMSAMIA', 'HND', 'SWE', 17.5],
+  ['26SWE0716', 'BATE GIDEON TONG', 'HND', 'SWE', 17.5], ['26SWE0929', 'OSSIMBIE MESSINA DENIS LE PRINCE', 'HND', 'SWE', 19.5],
+  ['26ACC0305', 'AJANGANAG FRANCINE UDAKOH', 'HND', 'ACC', 18.5], ['26ACC0347', 'MANISHIMWE DENISE', 'HND', 'ACC', 18.5],
+  ['26ACC0306', 'NGO NKOT ERNESTINE BRENDA', 'HND', 'ACC', 17.5],
+  ['26CGE0844', 'NSOGA MAHOTH OSCAR GUY LEBEL', 'BTS', 'CGE', 18], ['26CGE0942', 'BENE BOGNOKO PRISCILIA', 'BTS', 'CGE', 17],
+  ['26CGE0944', 'TADIUM ARMELLE TATIANA', 'BTS', 'CGE', 18], ['26CGE0944', 'NGAH NOAH PERPETUE GIGELE ROZANA', 'BTS', 'CGE', 18.5],
+  ['26CGE0910', 'GUIEBIE PATRICIA', 'BTS', 'CGE', 16.5], ['26CGE0943', 'DONA MENGHE CHEARNLE YASMIN', 'BTS', 'CGE', 17.5]
+].map(r => ({ no: r[0], name: r[1], level: r[2], field: r[3], mark: r[4] }));
+const normNo = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const noOk = s => /^\d{2}[A-Z]{3}\d{4}$/.test(normNo(s));
+const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+function rosterList(store) {
+  const s = (store.get('settings', 'main') || {}).msRoster;
+  return Array.isArray(s) && s.length ? s.map(r => ({ no: normNo(r.no), name: clip(r.name, 120), level: clip(r.level, 4), field: clip(r.field, 8), mark: r.mark })) : ROSTER_DEFAULT;
+}
+// The name on MINESUP's list must be the name on the ADI student record (at least two words in common).
+function rosterMatch(store, no, name) {
+  const n = normNo(no); if (!noOk(n)) return { ok: false, why: 'format' };
+  const hits = rosterList(store).filter(r => r.no === n); if (!hits.length) return { ok: false, why: 'not_listed' };
+  const mine = fold(name);
+  const hit = hits.find(r => { const t = fold(r.name); const common = t.filter(w => mine.includes(w)).length; return common >= Math.min(2, t.length); });
+  return hit ? { ok: true, entry: hit, no: n } : { ok: false, why: 'name' };
+}
+const msVerified = (store, u, st) => !!(u && u.msNo && st && rosterMatch(store, u.msNo, st.name).ok);
+
 function tuitionComplete(logic, store, st) {
   if (!st || !LEVELS.includes(st.level)) return false;
   try {
@@ -91,6 +120,7 @@ async function apply(ctx, u, id, o, n) {
     const own = u.purpose === 'minesup' && u.msMatric;                                      // an independent MINESUP account is cleared against a matricule, not linked to a student account
     const st = own ? S.get('students', u.msMatric) : R.myStudent(u);
     if (!st || !(u.role === 'student' || own) || st.matric !== clip(n.matric, 40)) throw ['Only an ADI student cleared by matricule can apply. / Seul un étudiant ADI dont le matricule est vérifié peut postuler.'];
+    if (!msVerified(S, u, st)) throw ['The unique MINESUP HND/BTS matricule (from your registration form) is not verified. / Le matricule unique HND/BTS attribué par le MINESUP (sur votre fiche d\'inscription) n\'est pas vérifié.'];
     if (!serviceOk(S, u.id)) throw ['The service fee (2,000 XAF) is not paid and confirmed. / Les frais de service (2 000 XAF) ne sont pas payés et confirmés.'];
     if (!LEVELS.includes(st.level)) throw ['This form is only for HND and BTS. / Ce formulaire est réservé au HND et au BTS.'];
     if (!logic.platformOk(S, st)) throw ['The platform charge (500 XAF) is not paid and confirmed. / Les frais de plateforme (500 XAF) ne sont pas payés et confirmés.'];
@@ -104,7 +134,7 @@ async function apply(ctx, u, id, o, n) {
     const year = new Date(now()).getFullYear();
     const ref = 'MS/' + year + '/' + String(seq).padStart(4, '0');
     const doc = Object.assign({
-      userId: u.id, matric: st.matric, name: st.name, level: st.level, specId: st.specId || '', gid: st.gid || '',
+      userId: u.id, matric: st.matric, msNo: normNo(u.msNo), name: st.name, level: st.level, specId: st.specId || '', gid: st.gid || '',
       institution: 'American Ditek Institute (ADI University)',
       status: 'submitted', at: now(), ref, eligOk: false, remark: ''
     }, body);
@@ -186,4 +216,4 @@ async function seed(ctx) {
   console.log('MINESUP demo ready — hnd.student@adiuniversity.com / fees.due@adiuniversity.com (Student@2026), registry@adiuniversity.com (Registry@2026)');
 }
 
-module.exports = { apply, seed, tuitionComplete, LEVELS };
+module.exports = { apply, seed, tuitionComplete, LEVELS, rosterList, rosterMatch, msVerified, normNo, noOk, ROSTER_DEFAULT };

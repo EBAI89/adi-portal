@@ -68,6 +68,7 @@
     }
     const st = stOf(u);
     if (!st || !levelOk(st)) { go('minesup'); return; }
+    { const c = clearFor(u); if (!c) { loadClear(); return head() + `<div class="card">${LBL('Checking your clearance…', 'Vérification de votre situation…')}</div>`; } if (!c.msOk) { if (!FORMS.msc) FORMS.msc = { matric: '', msNo: '' }; return head() + criteria() + msNoCard(false); } }
     if (!tuitionOk(st)) { hopFees(); return; }
     try { sessionStorage.removeItem(feeGateKey); } catch (e) {}
     go('minesup');
@@ -208,6 +209,16 @@
     );
   }
 
+
+  function msNoCard(withAdi) {
+    const fr = LANG === 'fr';
+    return `<div class="card gap ms-pop"><h3>${withAdi ? LBL('Step 2 — Verify your identity', 'Étape 2 — Vérifiez votre identité') : LBL('Verify your MINESUP matricule', 'Vérifiez votre matricule MINESUP')}</h3>
+      <p class="muted">${withAdi ? LBL('Enter the matricule on your ADI student record. Your name here must match that record. This account stays independent: it is not linked to any other account.', 'Saisissez le matricule de votre dossier étudiant ADI. Votre nom doit correspondre à ce dossier. Ce compte reste indépendant : il n\'est lié à aucun autre compte.') : ''}</p>
+      ${withAdi ? inp('msc.matric', LBL('ADI matricule', 'Matricule ADI')) : ''}
+      ${inp('msc.msNo', LBL('Unique HND/BTS matricule assigned by MINESUP', 'Matricule unique HND/BTS attribué par le MINESUP'), { ph: '26ABC1234' })}
+      <p class="small muted">${LBL('This is the number printed on your HND/BTS registration form (for example 26SWE0762: year, field code, number). It is not your ADI matricule. It is checked against the official MINESUP list and your name.', 'C\'est le numéro imprimé sur votre fiche d\'inscription HND/BTS (par exemple 26SWE0762 : année, code de filière, numéro). Ce n\'est pas votre matricule ADI. Il est vérifié sur la liste officielle du MINESUP et avec votre nom.')}</p>
+      <button class="btn gold ms-cta" data-a="msclear">${LBL('Verify', 'Vérifier')}</button></div>`;
+  }
   function ownGate(u) {
     const fr = LANG === 'fr';
     if (typeof servicePaid === 'function' && !servicePaid(u)) {
@@ -219,14 +230,16 @@
     if (c.error) return head() + `<div class="note bad">${LBL('Could not check your clearance. Try again.', 'Vérification impossible. Réessayez.')}</div><p><button class="btn" data-a="msrecheck">${LBL('Try again', 'Réessayer')}</button></p>`;
     if (!c.student) {
       if (!FORMS.msc) FORMS.msc = { matric: '' };
-      return head() + criteria() + `<div class="card gap ms-pop"><h3>${LBL('Step 2 — Verify your ADI matricule', 'Étape 2 — Vérifiez votre matricule ADI')}</h3><p class="muted">${LBL('Enter the matricule on your ADI student record. Your name here must match that record. This account stays independent: it is not linked to any other account.', 'Saisissez le matricule de votre dossier étudiant ADI. Votre nom doit correspondre à ce dossier. Ce compte reste indépendant : il n\'est lié à aucun autre compte.')}</p>${inp('msc.matric', LBL('Matricule', 'Matricule'))}<button class="btn gold ms-cta" data-a="msclear">${LBL('Verify matricule', 'Vérifier le matricule')}</button></div>`;
+      return head() + criteria() + msNoCard(true);
     }
+    if (!c.msOk) { if (!FORMS.msc) FORMS.msc = { matric: '' }; return head() + criteria() + msNoCard(false); }
     if (!c.cleared) {
       const due = c.due ? c.due.k : '';
       const platformDone = due !== 'platform', regDone = platformDone && due !== 'registration';
       const rows = [
         [true, LBL('Service fee (2,000 XAF)', 'Frais de service (2 000 XAF)')],
-        [true, LBL('Matricule verified: ', 'Matricule vérifié : ') + c.student.matric + ' — ' + c.student.name],
+        [true, LBL('ADI matricule verified: ', 'Matricule ADI vérifié : ') + c.student.matric + ' — ' + c.student.name],
+        [true, LBL('MINESUP matricule verified: ', 'Matricule MINESUP vérifié : ') + c.msNo],
         [c.levelOk, LBL('HND or BTS qualification', 'Diplôme HND ou BTS')],
         [platformDone, LBL('Platform charge (500 XAF)', 'Frais de plateforme (500 XAF)')],
         [regDone, LBL('Registration fee', 'Frais d\'inscription')],
@@ -238,16 +251,19 @@
   }
   ACT.msrecheck = () => { CLEAR = null; render(); };
   ACT.msclear = async el => {
-    const m = String((FORMS.msc || {}).matric || '').trim();
-    if (!m) return focusField('msc.matric', LBL('Enter your matricule.', 'Indiquez votre matricule.'));
+    const f = FORMS.msc || {}, own = isOwn(me()), c = clearFor(me()) || {};
+    const m = String(f.matric || '').trim(), no = String(f.msNo || '').trim();
+    if (own && !(c.student) && !m) return focusField('msc.matric', LBL('Enter your ADI matricule.', 'Indiquez votre matricule ADI.'));
+    if (!no) return focusField('msc.msNo', LBL('Enter the unique HND/BTS matricule from your MINESUP registration form.', 'Indiquez le matricule unique HND/BTS de votre fiche d\'inscription MINESUP.'));
     if (el) el.disabled = true;
     try {
-      const d = await api('/api/minesup/clearance', { body: { matric: m } });
-      CLEAR = Object.assign({ _for: me().id }, d); FORMS.msc = { matric: '' }; render();
+      const d = await api('/api/minesup/clearance', { body: { matric: m, msNo: no } });
+      CLEAR = Object.assign({ _for: me().id }, d); FORMS.msc = { matric: '', msNo: '' }; render();
     } catch (e) {
       if (el) el.disabled = false;
       const msg = e.code === 'service_fee' ? LBL('Pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
-      focusField('msc.matric', msg); toast(msg, 1);
+      const field = /MINESUP|26ABC/.test(msg) ? 'msc.msNo' : (own && !c.student ? 'msc.matric' : 'msc.msNo');
+      focusField(field, msg); toast(msg, 1);
     }
   };
 
@@ -362,7 +378,7 @@
     const p = payload(st);
     const docs = ['diploma', 'transcript', 'duplicate', 'copy'].filter(k => p.types[k]).join(', ');
     const rows = [
-      ['Name / Nom', p.certName], ['Matricule', st.matric], ['Programme', st.level + ' — ' + progName(st.specId)],
+      ['Name / Nom', p.certName], ['Matricule', st.matric], ['MINESUP matricule', (clearFor(me()) || {}).msNo || ''], ['Programme', st.level + ' — ' + progName(st.specId)],
       ['Documents', docs], ['Reason / Motif', p.reason], ['Delivery / Remise', p.delivery],
       ['Phone / Téléphone', p.phone], ['Email', p.email]
     ];
@@ -411,7 +427,8 @@
     const st = S.students[a.matric];
     const has = k => hasD(a.id, k);
     const checks = [
-      [!!(st && st.userId), LBL('Linked ADI student account', 'Compte étudiant ADI lié')],
+      [!!(st && (st.userId || a.msNo)), LBL('ADI student record confirmed', 'Dossier étudiant ADI confirmé')],
+      [!!a.msNo, LBL('MINESUP matricule verified on the official list: ', 'Matricule MINESUP vérifié sur la liste officielle : ') + (a.msNo || '—')],
       [levelOk(a) || levelOk(st), LBL('HND or BTS qualification', 'Diplôme HND ou BTS')],
       [!!(st && tuitionOk(st)), LBL('Full tuition paid and confirmed', 'Scolarité intégralement payée et confirmée')],
       [has('id'), LBL('National ID', 'CNI')],
@@ -429,7 +446,7 @@
     if (PARAM && S.msapp[PARAM]) return oneAdmin(S.msapp[PARAM]);
     const rows = Object.values(S.msapp || {}).filter(Boolean).sort((a, b) => (b.at || 0) - (a.at || 0));
     let h = `<p class="ms-kicker">MINESUP</p><h2>${LBL('Transcript and diploma applications', 'Demandes de relevé et de diplôme')}</h2><p class="muted">${LBL('Approve only when every eligibility point below is met. The PDF carries the ADI round seal on each page.', 'N\'approuvez que si chaque point d\'éligibilité est rempli. Le PDF porte le sceau rond ADI sur chaque page.')}</p>`;
-    if (!rows.length) return h + `<div class="note">${LBL('No applications yet.', 'Aucune demande pour le moment.')}</div>`;
+    if (!rows.length) return h + `<div class="note">${LBL('No applications yet.', 'Aucune demande pour le moment.')}</div>` + rosterCard();
     h += table(
       [LBL('Reference', 'Référence'), LBL('Student', 'Étudiant'), LBL('Programme', 'Programme'), LBL('Status', 'Statut'), ''],
       rows.map(a => {
@@ -437,8 +454,25 @@
         return [esc(a.ref || '—'), esc(a.name) + `<div class="small muted">${esc(a.matric)}</div>`, esc(a.level), statusBadge(a.status) + `<div class="small">${au.ok ? '<span class="ms-pass">✓</span>' : '<span class="ms-fail">!</span>'} ${LBL('eligibility', 'éligibilité')}`, `<a class="btn sm" href="#/minesup-admin/${esc(a.id)}">${LBL('Open', 'Ouvrir')}</a> <button class="btn sm ghost" data-a="mspdf" data-id="${esc(a.id)}">PDF</button>`];
       })
     );
-    return h;
+    return h + rosterCard();
   }
+  /* The official MINESUP HND/BTS matricule list: the second proof. The super administrator can replace it. */
+  let ROSTER = null;
+  function rosterCard() {
+    const sa = me() && me().role === 'super_admin';
+    if (!ROSTER) { ROSTER = { list: [], custom: false, loading: true }; api('/api/minesup/roster').then(d => { ROSTER = d; render(); }).catch(() => { ROSTER = { list: [], custom: false, err: true }; render(); }); }
+    const dup = {}; (ROSTER.list || []).forEach(r => { dup[r.no] = (dup[r.no] || 0) + 1; });
+    const rows = (ROSTER.list || []).map(r => [esc(r.no) + (dup[r.no] > 1 ? ` <span class="ms-fail" title="${esc(LBL('Same number given to two candidates', 'Même numéro attribué à deux candidats'))}">⚠</span>` : ''), esc(r.name), esc(r.level || ''), esc(r.field || ''), r.mark == null ? '' : esc(String(r.mark))]);
+    if (!FORMS.msr) FORMS.msr = { text: '' };
+    return `<div class="card gap"><p class="ms-kicker">MINESUP</p><h3>${LBL('Official MINESUP HND/BTS matricule list', 'Liste officielle des matricules HND/BTS du MINESUP')} (${(ROSTER.list || []).length})</h3>
+      <p class="muted">${LBL('A candidate must give the unique MINESUP matricule from the registration form. It must be on this list, under the same name as the ADI student record.', 'Le candidat doit donner le matricule unique MINESUP de sa fiche d\'inscription. Il doit figurer sur cette liste, sous le même nom que le dossier étudiant ADI.')}</p>
+      ${rows.length ? table([LBL('MINESUP matricule', 'Matricule MINESUP'), LBL('Name', 'Nom'), LBL('Level', 'Niveau'), LBL('Field', 'Filière'), LBL('Mark', 'Note')], rows) : ''}
+      ${sa ? `<p class="small muted gap">${LBL('To replace the list, paste one candidate per line: matricule; name; level; field; mark. Example: 26SWE0762; NANSOU NCHIMIE CHARLY JUNIOR; HND; SWE; 18.5', 'Pour remplacer la liste, collez un candidat par ligne : matricule ; nom ; niveau ; filière ; note. Exemple : 26SWE0762 ; NANSOU NCHIMIE CHARLY JUNIOR ; HND ; SWE ; 18,5')}</p>${area('msr.text', LBL('New list', 'Nouvelle liste'))}
+      <div class="row gap"><button class="btn" data-a="msrsave">${LBL('Replace the list', 'Remplacer la liste')}</button>${ROSTER.custom ? `<button class="btn ghost" data-a="msrreset">${LBL('Restore the built-in list', 'Rétablir la liste d\'origine')}</button>` : ''}</div>` : ''}</div>`;
+  }
+  const rosterPost = (body, ok) => api('/api/minesup/roster', { body }).then(d => { ROSTER = d; FORMS.msr = { text: '' }; toast(ok); render(); }).catch(e => toast(e.message || 'Error', 1));
+  ACT.msrsave = () => { const t = String((FORMS.msr || {}).text || '').trim(); if (!t) return focusField('msr.text', LBL('Paste the list first.', 'Collez d\'abord la liste.')); rosterPost({ text: t.replace(/(\d),(\d)(?=\s*$)/gm, '$1.$2') }, LBL('List replaced.', 'Liste remplacée.')); };
+  ACT.msrreset = () => rosterPost({ reset: true }, LBL('Built-in list restored.', 'Liste d\'origine rétablie.'));
   function oneAdmin(a) {
     const au = auditApp(a);
     if (!FORMS.msad || FORMS.msad.id !== a.id) FORMS.msad = { id: a.id, remark: a.remark || '', title: a.endorsedTitle || 'Administrative Director / Directeur administratif', elig: false };
@@ -499,13 +533,13 @@
     if (on) { d.setFillColor(179, 19, 30); d.rect(x + 0.65, y - 2.55, 2.2, 2.2, 'F'); }
   }
   function buildPdf(a) {
-    const d = pdfBase(LBL('MNESUP HND/BTS APPLICATION', 'DEMANDE MINESUP HND/BTS'));
+    const d = pdfBase(LBL('MINESUP HND/BTS APPLICATION', 'DEMANDE MINESUP HND/BTS'));
     const W = 210;
     let y = 54;
     const need = h => { if (y + h > 236) { d.addPage(); y = 20; d.setFont('times', 'bold'); d.setFontSize(9); d.setTextColor(11, 37, 89); d.text('ADI University  ·  ' + (a.ref || 'MINESUP'), 14, 12); d.setDrawColor(11, 37, 89); d.setLineWidth(0.3); d.line(14, 15, 196, 15); d.setTextColor(0); y = 22; } };
     const biLine = (en, fr, gap) => {
-      need(12); d.setFont('times', 'bold'); d.setFontSize(11); d.setTextColor(11, 37, 89); d.text(en, 14, y); y += 4.4;
-      d.setFont('times', 'italic'); d.setFontSize(9); d.setTextColor(80); d.text(fr, 14, y); d.setTextColor(0); y += gap == null ? 6 : gap;
+      need(34); y += 1.5; d.setFont('times', 'bold'); d.setFontSize(11); d.setTextColor(11, 37, 89); d.text(en, 14, y); y += 4.6;
+      d.setFont('times', 'italic'); d.setFontSize(9); d.setTextColor(80); d.text(fr, 14, y); d.setTextColor(0); y += Math.max(6.2, gap == null ? 6 : gap + 3);
     };
     const kv = (en, fr, val) => {
       const v = String(val == null || val === '' ? '—' : val);
@@ -543,6 +577,7 @@
     kv('Specialty or option', 'Spécialité ou option', progName(a.specId));
     kv('Institution', 'Établissement', a.institution || 'American Ditek Institute (ADI University)');
     kv('Matricule', 'Matricule', a.matric);
+    kv('MINESUP matricule (HND/BTS)', 'Matricule MINESUP (HND/BTS)', a.msNo || '—');
     kv('Academic year of graduation', 'Année d\'obtention', a.gradYear);
     kv('Examination session', 'Session d\'examen', a.session);
     kv('Date of result publication', 'Date de publication des résultats', a.resultDate);

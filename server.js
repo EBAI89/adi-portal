@@ -2325,20 +2325,49 @@ async function route(req, res) {
     const state = () => {
       const st = u.role === 'student' ? R.myStudent(u) : (u.msMatric ? S.get('students', u.msMatric) : null);
       const levelOk = !!st && ms.LEVELS.includes(st.level), due = st ? logic.feesDue(S, st) : null, tuition = !!st && ms.tuitionComplete(logic, S, st);
-      return { service: svc, student: view(st), levelOk, due, tuition, cleared: !!(svc && st && levelOk && !due && tuition) };
+      const msOk = ms.msVerified(S, u, st);
+      return { service: svc, student: view(st), msNo: msOk ? ms.normNo(u.msNo) : '', msOk, levelOk, due, tuition, cleared: !!(svc && st && msOk && levelOk && !due && tuition) };
     };
     if (req.method === 'GET') return send(res, 200, state());
-    if (req.method === 'POST' && u.purpose === 'minesup') {
+    if (req.method === 'POST') {
       if (limited('mscl:' + u.id, 10, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
-      if (!svc) return send(res, 403, { error: 'service_fee' });
-      const b = await body(req, 2000), matric = String(b.matric || '').trim().toUpperCase(), st = S.get('students', matric);
-      if (!st) return send(res, 404, { error: 'Matricule not found.' });
-      const toks = String(st.name || '').toLowerCase().split(/\s+/);
-      if (!String(u.name || '').toLowerCase().split(/\s+/).some(x => x.length > 2 && toks.includes(x))) return send(res, 400, { error: 'Name does not match the student record.' });
-      if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === matric)) return send(res, 409, { error: 'This matricule is already used by another MINESUP account.' });
-      await save('users', u.id, Object.assign({}, S.get('users', u.id), { msMatric: matric })); await audit(u, 'minesup clearance ' + matric);
-      u.msMatric = matric; return send(res, 200, state());
+      const own = u.purpose === 'minesup';
+      if (own && !svc) return send(res, 403, { error: 'service_fee' });
+      const b = await body(req, 2000), matric = String(b.matric || '').trim().toUpperCase(), msNo = ms.normNo(b.msNo);
+      let st;
+      if (own) {
+        st = u.msMatric ? S.get('students', u.msMatric) : S.get('students', matric);
+        if (!st) return send(res, 404, { error: 'Matricule not found.' });
+        if (!u.msMatric) {
+          const toks = String(st.name || '').toLowerCase().split(/\s+/);
+          if (!String(u.name || '').toLowerCase().split(/\s+/).some(x => x.length > 2 && toks.includes(x))) return send(res, 400, { error: 'Name does not match the student record.' });
+          if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === matric)) return send(res, 409, { error: 'This matricule is already used by another MINESUP account.' });
+        }
+      } else st = R.myStudent(u);
+      if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'Only HND and BTS students can apply.' });
+      const chk = ms.rosterMatch(S, msNo, st.name);
+      if (!chk.ok) return send(res, 400, { error: chk.why === 'format' ? 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' : chk.why === 'not_listed' ? 'This MINESUP matricule is not on the official HND/BTS list held by ADI.' : 'This MINESUP matricule belongs to a different name than your ADI student record.' });
+      if (chk.entry.level && chk.entry.level !== st.level) return send(res, 400, { error: 'This MINESUP matricule is for ' + chk.entry.level + ', but your ADI record is ' + st.level + '.' });
+      if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.msNo && ms.normNo(x.msNo) === msNo && ((own && x.purpose === 'minesup') || (x.msMatric && x.msMatric !== st.matric)))) return send(res, 409, { error: 'This MINESUP matricule is already used by another account.' });
+      await save('users', u.id, Object.assign({}, S.get('users', u.id), own ? { msMatric: st.matric, msNo } : { msNo })); await audit(u, 'minesup clearance ' + st.matric + ' ' + msNo);
+      u.msNo = msNo; if (own) u.msMatric = st.matric; return send(res, 200, state());
     }
+  }
+  if (p === '/api/minesup/roster' && u && (u.role === 'super_admin' || (R.has && R.has(u, 'manage_students')))) {
+    const ms = sideMod('minesup-api.js');
+    if (req.method === 'GET') return send(res, 200, { list: ms.rosterList(S), custom: !!((S.get('settings', 'main') || {}).msRoster || []).length });
+    if (req.method === 'POST' && u.role === 'super_admin') {
+      const b = await body(req, 60000), rows = [];
+      for (const line of String(b.text || '').split(/\r?\n/)) {
+        const c = line.split(/[;\t,|]/).map(x => x.trim()); if (c.length < 2) continue;
+        if (!ms.noOk(c[0])) { if (/matric/i.test(c[0])) continue; return send(res, 400, { error: 'Bad matricule on this line: ' + line.slice(0, 60) }); }
+        rows.push({ no: ms.normNo(c[0]), name: c[1].slice(0, 120), level: /^(HND|BTS)$/i.test(c[2] || '') ? c[2].toUpperCase() : '', field: (c[3] || ms.normNo(c[0]).slice(2, 5)).slice(0, 8), mark: c[4] ? Number(c[4]) || null : null });
+      }
+      if (b.reset) rows.length = 0; else if (!rows.length) return send(res, 400, { error: 'No valid lines. Use: matricule; name; level; field; mark' });
+      const cur = S.get('settings', 'main') || {}; await save('settings', 'main', Object.assign({}, cur, { msRoster: rows })); await audit(u, 'minesup roster ' + (b.reset ? 'reset' : rows.length + ' rows'));
+      return send(res, 200, { list: ms.rosterList(S), custom: rows.length > 0 });
+    }
+    return send(res, 405, { error: 'method' });
   }
   if (p === '/api/fees/due' && req.method === 'GET') { const st = u && R.myStudent(u); return send(res, 200, { due: st ? logic.feesDue(S, st) : null, platform: logic.PLATFORM_FEE, service: logic.SERVICE_FEE, servicePaid: u ? logic.serviceOk(S, u.id) : false }); }   // what the signed-in student must pay next, by the server's own rules
   if (p.startsWith('/api/att/') && await ATT.handle(req, res, u, p, url)) return;
