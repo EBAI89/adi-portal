@@ -127,7 +127,7 @@
         const ok = st && levelOk(st) && tuitionOk(st);
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${ok ? LBL('Your tuition is confirmed. You may complete the official bilingual application.', 'Votre scolarité est confirmée. Vous pouvez remplir la demande officielle bilingue.') : LBL('An ADI student account is required. The form opens only after Finance confirms that tuition is fully paid.', 'Un compte étudiant ADI est requis. Le formulaire s\'ouvre seulement après confirmation du paiement intégral de la scolarité.')}</p><div class="row">${cta()}</div></div>`;
       } else if (isOwn(u)) {
-        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 2,000 XAF service fee, enter your matricule, and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
+        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 2,000 XAF service fee, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
       } else if (can('manage_students') || u.role === 'super_admin') {
         const n = Object.values(S.msapp || {}).filter(a => a && a.status === 'submitted').length;
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--crimson)"><p class="ms-kicker">MINESUP</p><h3>${LBL('Applications to review', 'Demandes à examiner')}</h3><div class="kpi">${n}</div><p class="muted small">${LBL('Check eligibility, then approve or reject. Download carries the ADI round seal on every page.', 'Vérifiez l\'éligibilité, puis approuvez ou rejetez. Le téléchargement porte le sceau rond ADI sur chaque page.')}</p><a class="btn" href="#/minesup-admin">${LBL('Open the desk', 'Ouvrir le bureau')}</a></div>`;
@@ -176,7 +176,7 @@
   }
   function criteria() {
     const items = [
-      ['You are an ADI student with a portal account linked to your matricule.', 'Vous êtes étudiant(e) à ADI, avec un compte du portail lié à votre matricule.'],
+      ['You are an ADI student with a portal account, and you give the unique MINESUP matricule from your HND/BTS registration form (like 26SWE0762).', 'Vous êtes étudiant(e) à ADI, avec un compte du portail, et vous indiquez le matricule unique MINESUP de votre fiche d\'inscription HND/BTS (comme 26SWE0762).'],
       ['The qualification is HND or BTS (MINESUP).', 'Le diplôme est le HND ou le BTS (MINESUP).'],
       ['Registration and full tuition for this academic year are paid and confirmed by Finance.', 'L\'inscription et la totalité de la scolarité de cette année sont payées et confirmées par les Finances.'],
       ['You attach a national ID, birth certificate, result slip or success attestation, fee receipt, and two passport photographs.', 'Vous joignez la CNI, l\'acte de naissance, le relevé ou l\'attestation de réussite, le reçu des frais et deux photos d\'identité.'],
@@ -268,10 +268,10 @@
     if (!u) return `<h2>MINESUP</h2><div class="note">${LBL('Create an ADI portal account and sign in. Only ADI students can apply.', 'Créez un compte sur le portail ADI et connectez-vous. Seuls les étudiants ADI peuvent postuler.')}</div><p><a class="btn" href="#/login">${LBL('Sign in', 'Connexion')}</a> <a class="btn ghost" href="#/signup">${LBL('Create account', 'Créer un compte')}</a></p>`;
     if (isOwn(u)) { const g = ownGate(u); if (g) return g; }
     else if (u.role !== 'student') {
-      return head() + `<div class="note">${LBL('This application is only for ADI students with a linked matricule.', 'Cette demande est réservée aux étudiants ADI dont le matricule est lié au compte.')}</div>` + (can('manage_students') ? `<p><a class="btn" href="#/minesup-admin">${LBL('Review applications', 'Examiner les demandes')}</a></p>` : '');
+      return head() + `<div class="note">${LBL('This application is only for ADI students.', 'Cette demande est réservée aux étudiants ADI.')}</div>` + (can('manage_students') ? `<p><a class="btn" href="#/minesup-admin">${LBL('Review applications', 'Examiner les demandes')}</a></p>` : '');
     }
     const st = stOf(u);
-    if (!st) return head() + `<div class="note bad">${LBL('Your account is not linked to a student record. Ask the Registry to link your matricule.', 'Votre compte n\'est pas lié à un dossier étudiant. Demandez à la scolarité de lier votre matricule.')}</div>`;
+    if (!st) return head() + `<div class="note bad">${LBL('Your account is not linked to a student record. Ask the Registry to link your account to your student record.', 'Votre compte n\'est pas lié à un dossier étudiant. Demandez à la scolarité de lier votre compte à votre dossier étudiant.')}</div>`;
     if (!levelOk(st)) return head() + `<div class="note bad">${LBL('This MINESUP form is only for HND and BTS students. Your programme is ', 'Ce formulaire MINESUP est réservé au HND et au BTS. Votre programme est ')}${esc(st.level)}.</div>`;
     if (!tuitionOk(st)) { hopFees(); return head() + `<div class="note bad">${LBL('Full tuition is not yet confirmed. You are being taken to the fees page.', 'La scolarité complète n\'est pas encore confirmée. Vous êtes dirigé vers la page des frais.')}</div>`; }
     const rows = mine();
@@ -726,4 +726,17 @@
   }).catch(() => {});
 
   if (typeof render === 'function') render();
+
+  /* "Apply now" stays on screen on every public page, whichever page the visitor opens. */
+  function applyFloat() {
+    let el = document.getElementById('apply-float');
+    const r = location.hash.replace(/^#\/?/, '').split('/')[0];
+    const show = typeof me === 'function' && !me() && !['signup', 'login', 'setup', 'issued'].includes(r) && !!document.querySelector('header.top') && !document.querySelector('.appnav');
+    if (!show) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('a'); el.id = 'apply-float'; el.className = 'btn gold apply-float'; el.href = '#/signup'; document.body.appendChild(el); }
+    el.textContent = (typeof LANG !== 'undefined' && LANG === 'fr') ? 'Postuler maintenant' : 'Apply now';
+  }
+  if (typeof render === 'function') { const prev = render; render = function () { const r = prev.apply(this, arguments); try { applyFloat(); } catch (e) {} return r; }; }
+  window.addEventListener('hashchange', () => setTimeout(applyFloat, 60));
+  setTimeout(applyFloat, 400);
 })();
