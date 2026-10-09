@@ -41,7 +41,7 @@ function localOk(local) {
 }
 
 module.exports = function makeMailbox(ctx) {
-  const { S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD } = ctx;
+  const { S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD, sendEmail, emailOn } = ctx;
   const SECRET = E.SESSION_SECRET || 'dev-secret-change-me';
 
   function fail(status, msg, code) { const e = new Error(msg || code || 'error'); e.status = status; e.code = code || msg; throw e; }
@@ -359,6 +359,44 @@ module.exports = function makeMailbox(ctx) {
     return { error: 'bad_login', status: 401 };
   }
 
+
+  // ---- Migration of existing accounts that sign in with a personal email -------------------------------------------------
+  // The account keeps its id, password and records. It gains an ADI address after the owner proves, with a one-time code
+  // sent to the personal email, that the account is theirs. The personal email stays as an alternative sign-in (altEmail).
+  const migratable = u => !!(u && u.email && !String(u.email).toLowerCase().endsWith('@' + DOMAIN) && u.purpose !== 'minesup' && u.role !== 'super_admin');
+  function migState(u) {
+    if (!migratable(u)) return { eligible: false };
+    const m = byUser(u.id);
+    if (m && !m.migrating) return { eligible: false };
+    return { eligible: true, started: !!(m && m.migrating && m.status === 'pending_setup'), adiEmail: m ? m.email : '' };
+  }
+  async function migrateStart(u) {
+    if (!migState(u).eligible) fail(400, 'not_eligible');
+    const old = byUser(u.id);
+    const kind = u.role === 'student' ? 'student' : u.role === 'lecturer' ? 'lecturer' : u.role === 'applicant' ? 'applicant' : 'staff';
+    const doc = {
+      id: old && old.id, local: old ? old.local : uniqueLocal(suggestLocal(u.name, u.matric || '')),
+      kind, role: u.role, name: clip(u.name, 160), userId: u.id, personalEmail: String(u.email).toLowerCase(), phone: clip(u.phone || '', 40),
+      title: 'Migrated account', titleFr: 'Compte migré', ref: old ? old.ref : await nextRef(),
+      issuedBy: u.id, issuedByName: 'ADI Registry', migrating: true
+    };
+    if (!doc.id) delete doc.id;
+    const { rec, otp } = await persist(doc);
+    await audit(u, 'mailbox migration started ' + rec.email);
+    return { email: rec.email, otp, to: String(u.email) };
+  }
+  async function migrateConfirm(u, code) {
+    const m = byUser(u.id);
+    if (!m || !m.migrating || m.status !== 'pending_setup' || !m.otpHash) fail(400, 'not_eligible');
+    if (!(await checkPw(String(code || '').trim(), m.otpHash))) fail(401, 'bad_otp');
+    const cur = S.get('users', u.id); if (!cur) fail(404, 'not_found');
+    const n = Object.assign({}, cur, { email: m.email, altEmail: cur.email, migratedAt: now() });
+    await save('users', u.id, n);
+    await save('mailbox', m.id, Object.assign({}, m, { status: 'active', setupAt: now(), pw: cur.pw, otpHash: '', otpSeal: '' }));
+    await audit(n, 'account migrated to ' + m.email);
+    return n;
+  }
+
   async function setAcl(actor, b) {
     if (!R.isSuper(actor)) fail(403, 'Only the super administrator sets who may manage mailboxes.', 'forbidden');
     const users = [];
@@ -410,8 +448,20 @@ module.exports = function makeMailbox(ctx) {
     if (!p.startsWith('/api/mail')) return false;
     try {
       if (p === '/api/mail/desk' && req.method === 'GET') return send(res, 200, desk(u)), true;
+      if (p === '/api/mail/migrate' && req.method === 'GET') return send(res, 200, migState(u)), true;
       if (req.method !== 'POST') return send(res, 405, { error: 'method' }), true;
       const b = await body(req, 20000);
+      if (p === '/api/mail/migrate/start' || p === '/api/mail/migrate/confirm') {
+        if (!u) return send(res, 401, { error: 'auth' }), true;
+        if (limited('migrate:' + u.id, 8, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' }), true;
+        if (p.endsWith('/start')) {
+          const r = await migrateStart(u); const mailed = !!(emailOn && emailOn());
+          if (mailed) { try { await sendEmail({ to: r.to, subject: bi('Your ADI one-time code', 'Votre code à usage unique ADI'), text: bi('Your one-time code to move your account to ' + r.email + ' is: ' + r.otp + '\nIf you did not ask for this, ignore this message.', 'Votre code à usage unique pour passer votre compte à ' + r.email + ' est : ' + r.otp + '\nSi vous n\'avez rien demandé, ignorez ce message.') }); } catch (e) { console.error('[mail]', e && e.message || e); } }
+          return send(res, 200, { ok: true, adiEmail: r.email, mailed, otp: mailed ? undefined : r.otp }), true;
+        }
+        const n = await migrateConfirm(u, b.otp);
+        return send(res, 200, { ok: true, adiEmail: n.email }, { 'Set-Cookie': ctx.cookie(ctx.makeToken(n), 7 * 86400) }), true;
+      }
       if (p === '/api/mail/setup') return send(res, 200, await setup(u, b)), true;
       if (p === '/api/mail/issue') return send(res, 200, { mailbox: await issueManual(u, b) }), true;
       if (p === '/api/mail/rename') return send(res, 200, { mailbox: await rename(u, b) }), true;

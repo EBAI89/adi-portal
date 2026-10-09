@@ -319,10 +319,58 @@
     }).catch(e => toast(apiErr(e), 1)).finally(() => { el.disabled = false; });
   };
 
+
+  /* ---- Move an existing personal-email account to its ADI address, proved with a one-time code ---- */
+  let MIG = { uid: '', checking: false, snoozed: {} };
+  function migClose() { const h = document.getElementById('mb-mig'); if (h) h.remove(); }
+  function migShow(st) {
+    migClose();
+    const u = me(); if (!u) return;
+    const host = document.createElement('div'); host.id = 'mb-mig'; document.body.appendChild(host);
+    const draw = (step, info) => {
+      const body = step === 'ask'
+        ? `<p class="muted">${esc(LBL('Your account is signed in with a personal email. ADI is moving every account to its own ' + '@adiuniversity.com address. Nothing is lost: your records, results and payments stay on this account.', 'Votre compte utilise une adresse personnelle. L\'ADI donne à chaque compte sa propre adresse @adiuniversity.com. Rien n\'est perdu : vos dossiers, résultats et paiements restent sur ce compte.'))}</p>
+           <p class="muted">${esc(LBL('We will send a one-time code to ' + u.email + '.', 'Nous enverrons un code à usage unique à ' + u.email + '.'))}</p>
+           <div class="mb-row"><button type="button" class="btn gold lg" id="mb-mig-go">${esc(LBL('Send me the code', 'Envoyer le code'))}</button><button type="button" class="btn ghost" id="mb-mig-later">${esc(LBL('Later', 'Plus tard'))}</button></div>`
+        : `<p class="muted">${esc(info.mailed ? LBL('A code was sent to ' + u.email + '. Enter it below.', 'Un code a été envoyé à ' + u.email + '. Saisissez-le ci-dessous.') : LBL('Email delivery is not switched on yet, so your code is shown here once:', 'L\'envoi par e-mail n\'est pas encore activé : votre code s\'affiche ici une seule fois :'))}</p>
+           ${info.otp ? `<p class="mb-otp" style="font:700 1.4rem/1.2 ui-monospace,monospace;letter-spacing:.06em;user-select:all">${esc(info.otp)}</p>` : ''}
+           <p class="muted">${esc(LBL('Your new address: ', 'Votre nouvelle adresse : '))}<b>${esc(info.adiEmail)}</b></p>
+           <label class="small" for="mb-mig-otp">${esc(LBL('One-time code', 'Code à usage unique'))}</label>
+           <input id="mb-mig-otp" class="inp" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" style="width:100%;margin:4px 0 10px">
+           <p class="small" id="mb-mig-err" role="alert" style="color:var(--crimson);min-height:1.2em"></p>
+           <div class="mb-row"><button type="button" class="btn gold lg" id="mb-mig-ok">${esc(LBL('Confirm and switch', 'Confirmer et basculer'))}</button><button type="button" class="btn ghost" id="mb-mig-later">${esc(LBL('Later', 'Plus tard'))}</button></div>`;
+      host.innerHTML = `<div class="modal"><div class="box" role="dialog" aria-modal="true" style="max-width:480px"><p class="mb-kicker">ADI</p><h3 style="margin-top:0">${esc(LBL('Move to your ADI account', 'Passez à votre compte ADI'))}</h3>${body}</div></div>`;
+      const later = host.querySelector('#mb-mig-later'); if (later) later.onclick = () => { MIG.snoozed[u.id] = 1; migClose(); };
+      const go = host.querySelector('#mb-mig-go');
+      if (go) go.onclick = () => { go.disabled = true; api('/api/mail/migrate/start', { body: {} }).then(r => draw('code', r)).catch(e => { go.disabled = false; toast(apiErr(e), 1); }); };
+      const ok = host.querySelector('#mb-mig-ok');
+      if (ok) {
+        const inp = host.querySelector('#mb-mig-otp'); inp.focus();
+        const submit = () => {
+          const v = inp.value.trim(); const err = host.querySelector('#mb-mig-err');
+          if (!v) { err.textContent = LBL('Enter the code.', 'Saisissez le code.'); inp.focus(); return; }
+          ok.disabled = true;
+          api('/api/mail/migrate/confirm', { body: { otp: v } }).then(r => { migClose(); toast(LBL('Done. Your ADI address is ', 'Terminé. Votre adresse ADI est ') + r.adiEmail); return (typeof apiSync === 'function' ? apiSync() : null); }).then(() => { if (typeof render === 'function') render(); })
+            .catch(e => { ok.disabled = false; err.textContent = (e && e.message === 'bad_otp') ? LBL('That code is not right.', 'Ce code est incorrect.') : apiErr(e); inp.focus(); });
+        };
+        ok.onclick = submit; inp.onkeydown = e => { if (e.key === 'Enter') submit(); };
+      }
+    };
+    draw(st && st.started ? 'code' : 'ask', { mailed: true, adiEmail: (st && st.adiEmail) || '', otp: '' });
+  }
+  function migCheck() {
+    const u = me();
+    if (!u || MIG.checking || MIG.snoozed[u.id] || MIG.uid === u.id) return;
+    if (/@adiuniversity\.com$/i.test(u.email || '') || u.role === 'super_admin' || u.purpose === 'minesup') return;
+    MIG.checking = true;
+    api('/api/mail/migrate').then(st => { MIG.uid = u.id; if (st && st.eligible && me() && me().id === u.id) migShow(st); }).catch(() => {}).finally(() => { MIG.checking = false; });
+  }
+
   if (typeof render === 'function') {
     const prev = render;
     render = function () {
       prev();
+      migCheck();
       if (!DESK && me() && location.hash.indexOf('/mail') >= 0) refresh();
     };
   }
