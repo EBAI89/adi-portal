@@ -212,11 +212,10 @@
 
   function msNoCard(withAdi) {
     const fr = LANG === 'fr';
-    return `<div class="card gap ms-pop"><h3>${withAdi ? LBL('Step 2 — Verify your identity', 'Étape 2 — Vérifiez votre identité') : LBL('Verify your MINESUP matricule', 'Vérifiez votre matricule MINESUP')}</h3>
-      <p class="muted">${withAdi ? LBL('Enter the matricule on your ADI student record. Your name here must match that record. This account stays independent: it is not linked to any other account.', 'Saisissez le matricule de votre dossier étudiant ADI. Votre nom doit correspondre à ce dossier. Ce compte reste indépendant : il n\'est lié à aucun autre compte.') : ''}</p>
-      ${withAdi ? inp('msc.matric', LBL('ADI matricule', 'Matricule ADI')) : ''}
+    return `<div class="card gap ms-pop"><h3>${LBL('Step 2 — Verify your MINESUP matricule', 'Étape 2 — Vérifiez votre matricule MINESUP')}</h3>
+      <p class="muted">${withAdi ? LBL('This account stays independent: it is not linked to any other account. Your name here must match the name on the MINESUP list.', 'Ce compte reste indépendant : il n\'est lié à aucun autre compte. Votre nom doit correspondre à celui de la liste du MINESUP.') : ''}</p>
       ${inp('msc.msNo', LBL('Unique HND/BTS matricule assigned by MINESUP', 'Matricule unique HND/BTS attribué par le MINESUP'), { ph: '26ABC1234' })}
-      <p class="small muted">${LBL('This is the number printed on your HND/BTS registration form (for example 26SWE0762: year, field code, number). It is not your ADI matricule. It is checked against the official MINESUP list and your name.', 'C\'est le numéro imprimé sur votre fiche d\'inscription HND/BTS (par exemple 26SWE0762 : année, code de filière, numéro). Ce n\'est pas votre matricule ADI. Il est vérifié sur la liste officielle du MINESUP et avec votre nom.')}</p>
+      <p class="small muted">${LBL('This is the number printed on your HND/BTS registration form (for example 26SWE0762: year, field code, number). It is checked against the official MINESUP list and your name.', 'C\'est le numéro imprimé sur votre fiche d\'inscription HND/BTS (par exemple 26SWE0762 : année, code de filière, numéro). Il est vérifié sur la liste officielle du MINESUP et avec votre nom.')}</p>
       <button class="btn gold ms-cta" data-a="msclear">${LBL('Verify', 'Vérifier')}</button></div>`;
   }
   function ownGate(u) {
@@ -238,8 +237,7 @@
       const platformDone = due !== 'platform', regDone = platformDone && due !== 'registration';
       const rows = [
         [true, LBL('Service fee (2,000 XAF)', 'Frais de service (2 000 XAF)')],
-        [true, LBL('ADI matricule verified: ', 'Matricule ADI vérifié : ') + c.student.matric + ' — ' + c.student.name],
-        [true, LBL('MINESUP matricule verified: ', 'Matricule MINESUP vérifié : ') + c.msNo],
+        [true, LBL('MINESUP matricule verified: ', 'Matricule MINESUP vérifié : ') + c.msNo + ' — ' + c.student.name],
         [c.levelOk, LBL('HND or BTS qualification', 'Diplôme HND ou BTS')],
         [platformDone, LBL('Platform charge (500 XAF)', 'Frais de plateforme (500 XAF)')],
         [regDone, LBL('Registration fee', 'Frais d\'inscription')],
@@ -253,7 +251,6 @@
   ACT.msclear = async el => {
     const f = FORMS.msc || {}, own = isOwn(me()), c = clearFor(me()) || {};
     const m = String(f.matric || '').trim(), no = String(f.msNo || '').trim();
-    if (own && !(c.student) && !m) return focusField('msc.matric', LBL('Enter your ADI matricule.', 'Indiquez votre matricule ADI.'));
     if (!no) return focusField('msc.msNo', LBL('Enter the unique HND/BTS matricule from your MINESUP registration form.', 'Indiquez le matricule unique HND/BTS de votre fiche d\'inscription MINESUP.'));
     if (el) el.disabled = true;
     try {
@@ -262,8 +259,7 @@
     } catch (e) {
       if (el) el.disabled = false;
       const msg = e.code === 'service_fee' ? LBL('Pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
-      const field = /MINESUP|26ABC/.test(msg) ? 'msc.msNo' : (own && !c.student ? 'msc.matric' : 'msc.msNo');
-      focusField(field, msg); toast(msg, 1);
+      focusField('msc.msNo', msg); toast(msg, 1);
     }
   };
 
@@ -303,7 +299,7 @@
         <div class="grid g2">${lock('Full name on the student record', 'Nom au dossier', st.name)}${inp('ms.certName', both('Full name as on the certificate', 'Nom et prénoms tels qu\'ils figurent sur le diplôme'))}${inp('ms.dob', both('Date of birth', 'Date de naissance'), { type: 'date' })}${inp('ms.pob', both('Place of birth', 'Lieu de naissance'))}${sel('ms.sex', both('Sex', 'Sexe'), [['F', LBL('Female', 'Féminin')], ['M', LBL('Male', 'Masculin')]], { blank: false })}${inp('ms.nationality', both('Nationality', 'Nationalité'))}${inp('ms.nid', both('National ID number', 'Numéro de la carte nationale d\'identité'))}${inp('ms.phone', both('Telephone or WhatsApp', 'Téléphone ou WhatsApp'), { type: 'tel' })}${inp('ms.email', both('Email address', 'Adresse électronique'), { type: 'email' })}${inp('ms.postal', both('Postal address', 'Adresse postale'))}</div>
       </section>
       <section class="ms-sec"><h3><span class="ms-num">B</span> ${both('Academic information', 'Informations académiques')}</h3>
-        <div class="grid g2">${lock('Qualification', 'Diplôme', st.level)}${lock('Specialty or option', 'Spécialité ou option', spec)}${lock('Institution', 'Établissement', 'American Ditek Institute (ADI University)')}${lock('Matricule', 'Matricule', st.matric)}${inp('ms.gradYear', both('Academic year of graduation', 'Année d\'obtention'), { type: 'number', ph: String(new Date().getFullYear()) })}${inp('ms.session', both('Examination session', 'Session d\'examen'), { ph: 'June 2026 / Juin 2026' })}${inp('ms.resultDate', both('Date of result publication', 'Date de publication des résultats'), { type: 'date' })}</div>
+        <div class="grid g2">${lock('Qualification', 'Diplôme', st.level)}${lock('Specialty or option', 'Spécialité ou option', spec)}${lock('Institution', 'Établissement', 'American Ditek Institute (ADI University)')}${lock('MINESUP matricule (HND/BTS)', 'Matricule MINESUP (HND/BTS)', (clearFor(u) || {}).msNo || '')}${inp('ms.gradYear', both('Academic year of graduation', 'Année d\'obtention'), { type: 'number', ph: String(new Date().getFullYear()) })}${inp('ms.session', both('Examination session', 'Session d\'examen'), { ph: 'June 2026 / Juin 2026' })}${inp('ms.resultDate', both('Date of result publication', 'Date de publication des résultats'), { type: 'date' })}</div>
       </section>
       <section class="ms-sec"><h3><span class="ms-num">1</span> ${both('Type of request', 'Type de demande')}</h3>
         ${ticks([['ms.tDiploma', 'Diploma', 'Diplôme'], ['ms.tTranscript', 'Transcript', 'Relevé de notes'], ['ms.tDuplicate', 'Duplicate', 'Duplicata'], ['ms.tCopy', 'Certified true copy', 'Copie certifiée conforme']])}
@@ -378,7 +374,7 @@
     const p = payload(st);
     const docs = ['diploma', 'transcript', 'duplicate', 'copy'].filter(k => p.types[k]).join(', ');
     const rows = [
-      ['Name / Nom', p.certName], ['Matricule', st.matric], ['MINESUP matricule', (clearFor(me()) || {}).msNo || ''], ['Programme', st.level + ' — ' + progName(st.specId)],
+      ['Name / Nom', p.certName], ['MINESUP matricule', (clearFor(me()) || {}).msNo || ''], ['Programme', st.level + ' — ' + progName(st.specId)],
       ['Documents', docs], ['Reason / Motif', p.reason], ['Delivery / Remise', p.delivery],
       ['Phone / Téléphone', p.phone], ['Email', p.email]
     ];
@@ -576,7 +572,6 @@
     kv('Qualification', 'Diplôme', a.level);
     kv('Specialty or option', 'Spécialité ou option', progName(a.specId));
     kv('Institution', 'Établissement', a.institution || 'American Ditek Institute (ADI University)');
-    kv('Matricule', 'Matricule', a.matric);
     kv('MINESUP matricule (HND/BTS)', 'Matricule MINESUP (HND/BTS)', a.msNo || '—');
     kv('Academic year of graduation', 'Année d\'obtention', a.gradYear);
     kv('Examination session', 'Session d\'examen', a.session);

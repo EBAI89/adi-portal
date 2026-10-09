@@ -2334,18 +2334,24 @@ async function route(req, res) {
       const own = u.purpose === 'minesup';
       if (own && !svc) return send(res, 403, { error: 'service_fee' });
       const b = await body(req, 2000), matric = String(b.matric || '').trim().toUpperCase(), msNo = ms.normNo(b.msNo);
-      let st;
+      let st, chk;
       if (own) {
-        st = u.msMatric ? S.get('students', u.msMatric) : S.get('students', matric);
-        if (!st) return send(res, 404, { error: 'Matricule not found.' });
-        if (!u.msMatric) {
-          const toks = String(st.name || '').toLowerCase().split(/\s+/);
-          if (!String(u.name || '').toLowerCase().split(/\s+/).some(x => x.length > 2 && toks.includes(x))) return send(res, 400, { error: 'Name does not match the student record.' });
-          if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === matric)) return send(res, 409, { error: 'This matricule is already used by another MINESUP account.' });
+        // The MINESUP number alone identifies the candidate: the ADI student record is found from the name on MINESUP's list.
+        if (u.msMatric && S.get('students', u.msMatric)) { st = S.get('students', u.msMatric); chk = ms.rosterMatch(S, msNo, st.name); }
+        else {
+          if (!ms.noOk(msNo)) return send(res, 400, { error: 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' });
+          const hits = ms.rosterList(S).filter(r => r.no === msNo); if (!hits.length) return send(res, 400, { error: 'This MINESUP matricule is not on the official HND/BTS list held by ADI.' });
+          const mine = String(u.name || '').toLowerCase().split(/\s+/).filter(x => x.length > 2);
+          const cand = [];
+          hits.forEach(h => { const ht = String(h.name).toLowerCase().split(/\s+/); if (!mine.some(x => ht.includes(x))) return; Object.values(S.all('students')).forEach(x => { if (x && ms.LEVELS.includes(x.level) && (!h.level || h.level === x.level) && ms.rosterMatch(S, msNo, x.name).ok && !cand.includes(x)) cand.push(x); }); });
+          if (!cand.length) return send(res, 400, { error: 'This MINESUP matricule does not match your name, or no ADI student record carries that name.' });
+          if (cand.length > 1) return send(res, 409, { error: 'More than one ADI record matches this MINESUP matricule. Contact the Registry.' });
+          st = cand[0]; chk = ms.rosterMatch(S, msNo, st.name);
+          if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === st.matric)) return send(res, 409, { error: 'This candidate is already registered on another MINESUP account.' });
         }
       } else st = R.myStudent(u);
       if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'Only HND and BTS students can apply.' });
-      const chk = ms.rosterMatch(S, msNo, st.name);
+      if (!chk) chk = ms.rosterMatch(S, msNo, st.name);
       if (!chk.ok) return send(res, 400, { error: chk.why === 'format' ? 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' : chk.why === 'not_listed' ? 'This MINESUP matricule is not on the official HND/BTS list held by ADI.' : 'This MINESUP matricule belongs to a different name than your ADI student record.' });
       if (chk.entry.level && chk.entry.level !== st.level) return send(res, 400, { error: 'This MINESUP matricule is for ' + chk.entry.level + ', but your ADI record is ' + st.level + '.' });
       if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.msNo && ms.normNo(x.msNo) === msNo && ((own && x.purpose === 'minesup') || (x.msMatric && x.msMatric !== st.matric)))) return send(res, 409, { error: 'This MINESUP matricule is already used by another account.' });
