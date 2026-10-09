@@ -19,7 +19,7 @@
 
   function tuitionOk(st) {
     if (!st || typeof feeBook !== 'function') return false;
-    try { const fb = feeBook(st); return !!(fb && fb.regOk && Number(fb.balance) <= 0); }
+    try { if (typeof feesDueNow === 'function' && feesDueNow(st)) return false; const fb = feeBook(st); return !!(fb && fb.regOk && Number(fb.balance) <= 0); }
     catch (e) { return false; }
   }
   const levelOk = st => !!st && (st.level === 'HND' || st.level === 'BTS');
@@ -41,7 +41,8 @@
     try { sessionStorage.setItem(feeGateKey, '1'); } catch (e) {}
     if (hopping) return;
     hopping = true;
-    toast(LBL('Tuition is not fully paid and confirmed. Opening the fees page.', 'La scolarité n\'est pas entièrement payée et confirmée. Ouverture de la page des frais.'), 1);
+    const due = typeof feesDueNow === 'function' && typeof studentOf === 'function' && me() ? feesDueNow(studentOf(me().id)) : null;
+    toast(due ? LBL('Please complete first: ', 'Veuillez d\'abord régler : ') + due.label + '.' : LBL('Tuition is not fully paid and confirmed. Opening the fees page.', 'La scolarité n\'est pas entièrement payée et confirmée. Ouverture de la page des frais.'), 1);
     setTimeout(() => { hopping = false; go('fees-me'); }, 40);
   }
 
@@ -238,7 +239,7 @@
         ${radios('ms.delivery', [['person', 'Collect in person', 'Retrait en personne'], ['rep', 'Authorised representative', 'Retrait par un mandataire'], ['school', 'Send to an institution', 'Envoi à un établissement']])}
         ${f.delivery === 'school' ? `<div class="grid g2">${inp('ms.destName', both('Institution name', 'Nom de l\'établissement'))}${inp('ms.destAddr', both('Institution address', 'Adresse de l\'établissement'))}</div>` : ''}
       </section>
-      <section class="ms-sec"><h3><span class="ms-num">E</span> ${both('Documents attached', 'Pièces jointes')}</h3>
+      <section class="ms-sec" id="ms-docs"><h3><span class="ms-num">E</span> ${both('Documents attached', 'Pièces jointes')}</h3>
         <p class="small muted">${LBL('Choose the document type, then upload a PDF or a clear photo (JPG, PNG). Two passport photographs may be one scan.', 'Choisissez le type de pièce, puis envoyez un PDF ou une photo nette (JPG, PNG). Les deux photos d\'identité peuvent être sur un seul scan.')}</p>
         ${fileBox('ms:' + f.id, { edit: true, types: true })}
         ${chk('ms.photos2', both('I attach two passport photographs', 'Je joins deux photos d\'identité'))}
@@ -265,19 +266,36 @@
       photos2: !!f.photos2, agree: !!f.agree, signName: f.signName, place: f.place, declDate: f.declDate
     };
   }
+  let BAD = '';
   function clientError(st) {
+    BAD = '';
     const p = payload(st), id = FORMS.ms.id;
-    if (!p.types.diploma && !p.types.transcript && !p.types.duplicate && !p.types.copy) return LBL('Choose at least one document.', 'Cochez au moins un document.');
-    if (!p.certName || !p.dob || !p.pob || !p.sex || !p.nationality || !p.nid || !p.phone || !p.email || !p.postal) return LBL('Complete every personal field.', 'Complétez toutes les informations personnelles.');
-    if (!/^\d{4}$/.test(p.gradYear) || !p.session || !p.resultDate) return LBL('Complete the academic information.', 'Complétez les informations académiques.');
-    if (p.reason === 'other' && !(p.reasonOther || '').trim()) return LBL('Specify the other reason.', 'Précisez le motif.');
-    if (p.delivery === 'school' && (!(p.destName || '').trim() || !(p.destAddr || '').trim())) return LBL('Enter the institution name and address.', 'Indiquez le nom et l\'adresse de l\'établissement.');
-    if (!p.signName || !p.place || !p.declDate || !p.agree) return LBL('Complete and accept the declaration.', 'Complétez et acceptez la déclaration.');
-    if (!p.photos2) return LBL('Confirm the two passport photographs.', 'Confirmez les deux photos d\'identité.');
-    if (!hasD(id, 'id') || !hasD(id, 'birth') || !hasD(id, 'results') || !hasD(id, 'receipt') || !hasD(id, 'photo')) return LBL('Upload the national ID, birth certificate, result slip, fee receipt and a passport photograph. Set the correct document type on each file.', 'Envoyez la CNI, l\'acte de naissance, le relevé, le reçu des frais et une photo d\'identité, avec le bon type pour chaque fichier.');
-    if (p.reason === 'lost' && !hasD(id, 'police')) return LBL('Upload the police loss declaration.', 'Envoyez la déclaration de perte.');
-    if (p.delivery === 'rep' && !hasD(id, 'auth')) return LBL('Upload the authorisation letter.', 'Envoyez la lettre d\'autorisation.');
+    const bad = (field, en, fr) => { BAD = field; return LBL(en, fr); };
+    if (!p.types.diploma && !p.types.transcript && !p.types.duplicate && !p.types.copy) return bad('ms.tTranscript', 'Choose at least one document.', 'Cochez au moins un document.');
+    const personal = [['certName', 'Enter the full name as on the certificate.', 'Indiquez le nom tel qu\'il figure sur le diplôme.'], ['dob', 'Enter the date of birth.', 'Indiquez la date de naissance.'], ['pob', 'Enter the place of birth.', 'Indiquez le lieu de naissance.'], ['sex', 'Choose the sex.', 'Choisissez le sexe.'], ['nationality', 'Enter the nationality.', 'Indiquez la nationalité.'], ['nid', 'Enter the national ID number.', 'Indiquez le numéro de la CNI.'], ['phone', 'Enter a telephone number.', 'Indiquez un numéro de téléphone.'], ['email', 'Enter an email address.', 'Indiquez une adresse électronique.'], ['postal', 'Enter the postal address.', 'Indiquez l\'adresse postale.']];
+    for (const x of personal) if (!p[x[0]]) return bad('ms.' + x[0], x[1], x[2]);
+    if (!/^\S+@\S+\.\S+$/.test(p.email)) return bad('ms.email', 'That email address is not valid.', 'Cette adresse électronique n\'est pas valable.');
+    if (!/^\d{4}$/.test(p.gradYear)) return bad('ms.gradYear', 'Enter the four-digit year of graduation.', 'Indiquez l\'année d\'obtention sur quatre chiffres.');
+    if (!p.session) return bad('ms.session', 'Enter the examination session.', 'Indiquez la session d\'examen.');
+    if (!p.resultDate) return bad('ms.resultDate', 'Enter the date the results were published.', 'Indiquez la date de publication des résultats.');
+    if (p.reason === 'other' && !(p.reasonOther || '').trim()) return bad('ms.reasonOther', 'Specify the other reason.', 'Précisez le motif.');
+    if (p.delivery === 'school' && !(p.destName || '').trim()) return bad('ms.destName', 'Enter the institution name.', 'Indiquez le nom de l\'établissement.');
+    if (p.delivery === 'school' && !(p.destAddr || '').trim()) return bad('ms.destAddr', 'Enter the institution address.', 'Indiquez l\'adresse de l\'établissement.');
+    if (!p.photos2) return bad('ms.photos2', 'Confirm the two passport photographs.', 'Confirmez les deux photos d\'identité.');
+    const docs = [['id', 'the national ID'], ['birth', 'the birth certificate'], ['results', 'the result slip or success attestation'], ['receipt', 'the fee receipt'], ['photo', 'a passport photograph']];
+    const miss = docs.filter(d => !hasD(id, d[0]));
+    if (miss.length) { BAD = '#ms-docs'; return LBL('Upload ' + miss.map(d => d[1]).join(', ') + '. Set the correct document type on each file.', 'Envoyez la CNI, l\'acte de naissance, le relevé, le reçu des frais et une photo d\'identité, avec le bon type pour chaque fichier.'); }
+    if (p.reason === 'lost' && !hasD(id, 'police')) { BAD = '#ms-docs'; return LBL('Upload the police loss declaration.', 'Envoyez la déclaration de perte.'); }
+    if (p.delivery === 'rep' && !hasD(id, 'auth')) { BAD = '#ms-docs'; return LBL('Upload the authorisation letter.', 'Envoyez la lettre d\'autorisation.'); }
+    if (!p.declDate) return bad('ms.declDate', 'Enter the declaration date.', 'Indiquez la date de la déclaration.');
+    if (!p.place) return bad('ms.place', 'Enter the place of declaration.', 'Indiquez le lieu de la déclaration.');
+    if (!p.signName) return bad('ms.signName', 'Type your full name as your signature.', 'Saisissez votre nom complet comme signature.');
+    if (!p.agree) return bad('ms.agree', 'Accept the declaration.', 'Acceptez la déclaration.');
     return '';
+  }
+  function jumpToBad(err) {
+    if (BAD && BAD.charAt(0) === '#') { const el = document.querySelector(BAD); if (el) { el.classList.add('fld-bad'); try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} } }
+    else if (BAD && typeof focusField === 'function') focusField(BAD, err);
   }
   function summary(st) {
     const p = payload(st);
@@ -295,7 +313,7 @@
     const u = me(), st = u && studentOf(u.id);
     if (!st || !tuitionOk(st)) { hopFees(); return; }
     const err = clientError(st);
-    if (err) return toast(err, 1);
+    if (err) { jumpToBad(err); return toast(err, 1); }
     confirmBox({
       title: LBL('Proofread before final submission', 'Relisez avant l\'envoi définitif'),
       warn: LBL('Check every name, date and document. After you submit, this application cannot be edited. A false declaration may cause rejection and legal action.', 'Vérifiez chaque nom, date et pièce. Après l\'envoi, cette demande ne pourra plus être modifiée. Toute fausse déclaration peut entraîner le rejet et des poursuites judiciaires.'),

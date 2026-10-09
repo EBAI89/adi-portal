@@ -93,9 +93,23 @@ function perms(store) { const s = store.get('settings', 'main') || {}; const def
 const RES_FEE_DEF = 1000;
 const resFee = store => { const v = (store.get('settings', 'main') || {}).resultsFee; return v == null || v === '' ? RES_FEE_DEF : Math.max(0, Number(v) || 0); };
 const resKind = (ay, sem) => 'res_' + String(ay).replace('/', '-') + '_' + Number(sem);
-function resultsUnlocked(store, r) { if (!resFee(store)) return true; const k = resKind(r.ay, r.sem); return Object.values(store.all('payments')).some(p => p.matric === r.matric && p.kind === k && p.status === 'confirmed'); }
+const PLATFORM_FEE = 500, SERVICE_FEE = 2000;
+const platformOk = (store, st) => !!st && Object.values(store.all('payments')).some(p => p && p.matric === st.matric && p.kind === 'platform' && p.ay === core.AY() && p.status === 'confirmed');
+const serviceOk = (store, userId) => Object.values(store.all('payments')).some(p => p && p.userId === userId && p.kind === 'service' && p.status === 'confirmed');
+// The fee a student must settle next, in the same order the page shows it: platform charge, registration, then any instalment that is open or overdue. null = nothing due.
+function feesDue(store, st) {
+  if (!st) return { k: 'platform' };
+  if (!platformOk(store, st)) return { k: 'platform' };
+  load(store); const fb = core.feeBook(JSON.parse(JSON.stringify(st)));
+  if (!fb.regOk) return { k: 'registration' };
+  const due = fb.insts.find(x => !x.paid && (x.state === 'open' || x.state === 'overdue'));
+  return due ? { k: due.k } : null;
+}
+// Results open only when nothing is due (the old per-semester results fee is retired).
+function resultsUnlocked(store, r) { return !feesDue(store, store.get('students', r.matric)); }
 function priceFor(store, st, kind) {
   load(store);
+  if (kind === 'platform') { const taken = Object.values(store.all('payments')).some(p => p && p.matric === st.matric && p.kind === 'platform' && p.ay === core.AY() && ['pending', 'confirmed'].includes(p.status)); return taken ? null : { amount: PLATFORM_FEE, label: 'Platform charge — ' + core.AY(), custom: false }; }
   if (/^res_\d{4}-\d{4}_[12]$/.test(kind)) {
     const fee = resFee(store); if (!fee) return null; const m = /^res_(\d{4})-(\d{4})_([12])$/.exec(kind); const ay = m[1] + '/' + m[2], sem = Number(m[3]);
     const has = Object.values(store.all('results')).some(r => r.matric === st.matric && r.ay === ay && Number(r.sem) === sem && r.state === 'published'); if (!has) return null;
@@ -120,6 +134,7 @@ function checkFormB(store, st, n, old) {
   const sem = Number(n.sem), yr = Number(n.year), years = Math.max(1, Math.round(((core.LEVELS[st.level] || {}).months || 24) / 12));
   if (![1, 2].includes(sem) || !(yr >= 1 && yr <= years)) return { error: 'semester or year' };
   if (!Array.isArray(n.courses) || n.courses.length > 60) return { error: 'courses' };
+  if (!platformOk(store, st)) return { error: 'platform charge not paid' };
   if (!regOk(store, st)) return { error: 'registration fee not paid' };
   if (!windowOpen(store) && !(old && old.status === 'returned')) return { error: 'registration closed' };      // a form the Registry returned for correction can be fixed after the period closes
   const list = offered(store, st, yr, sem), ids = new Set(n.courses);
@@ -130,7 +145,7 @@ function checkFormB(store, st, n, old) {
   if (total < rule.min && avail >= rule.min) return { error: 'below the minimum of ' + rule.min + ' credits' };
   return { credits: total, courses: chosen.map(c => c.id), sem, year: yr };
 }
-module.exports = { core, priceFor, offered, isOffered, cStatus, fbKey, regOk, windowOpen, checkFormB, resultsUnlocked, resFee, resKind, trCfg, perms, calcRes: (a, b) => core.calcRes(a, b), AY: () => { return core.AY(); }, load, TR_DEF };
+module.exports = { PLATFORM_FEE, SERVICE_FEE, platformOk, serviceOk, feesDue, core, priceFor, offered, isOffered, cStatus, fbKey, regOk, windowOpen, checkFormB, resultsUnlocked, resFee, resKind, trCfg, perms, calcRes: (a, b) => core.calcRes(a, b), AY: () => { return core.AY(); }, load, TR_DEF };
 
 };
 __MODS["./lib/rules"] = function (module, exports, require) {
@@ -254,7 +269,7 @@ module.exports = function makeRules(store, logic) {
         return 'forbidden';
       case 'payments':
         if (del) return 'forbidden';
-        if (create) return n.userId === u.id && has(u, 'fees_pay') && n.status === 'pending' ? true : 'forbidden';
+        if (create) return n.userId === u.id && (has(u, 'fees_pay') || (n.kind === 'service' && ['applicant', 'student'].includes(u.role))) && n.status === 'pending' ? true : 'forbidden';
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
@@ -278,6 +293,7 @@ module.exports = function makeRules(store, logic) {
           if (!logic.windowOpen(store) && !(fb && fb.status === 'returned')) return 'registration closed';
           if (del) { if (logic.cStatus(c) !== 'E') return 'compulsory course'; return true; }
           if (!logic.isOffered(store, c, st, d.year || c.year || 1, sem) || Number(d.sem) !== Number(c.sem)) return 'course not offered';
+          if (!logic.platformOk(store, st)) return 'platform charge not paid';
           if (!logic.regOk(store, st)) return 'registration fee not paid';
         }
         return true;
@@ -2076,6 +2092,18 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'settings' && n && n.site !== undefined) n.site = JSON.parse(JSON.stringify(logic.core.siteSanitize(n.site)));   // site appearance: re-validated on the server whatever the browser sent
   if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email }); if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
   if (c === 'payments') {
+    if (!o && n.kind === 'service') {                                                     // 2,000 XAF service fee: applicants and students, no student record needed
+      if (!['applicant', 'student'].includes(u.role)) throw ['not allowed'];
+      if (Number(n.amount) !== logic.SERVICE_FEE) throw ['amount must be ' + logic.SERVICE_FEE];
+      if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['service fee already paid or waiting for confirmation'];
+      const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
+      if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
+      const st0 = R.myStudent(u);
+      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: 'Service fee', amount: logic.SERVICE_FEE, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      await save(c, id, n);
+      for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
+      return;
+    }
     if (!o) {
       const st = R.myStudent(u); if (!st || st.matric !== n.matric) throw ['student'];
       const price = logic.priceFor(S, st, n.kind); if (!price) throw ['unknown fee item'];
@@ -2291,6 +2319,7 @@ async function route(req, res) {
 
   if (E.NODE_ENV === 'test' && p === '/api/test/outbox' && req.method === 'GET') return send(res, 200, { mails: OUTBOX.splice(0) });
   if (E.NODE_ENV === 'test' && p === '/api/test/clock' && req.method === 'POST') { SKEW = Number((await body(req, 1000)).skewMs) || 0; return send(res, 200, { ok: true, skew: SKEW }); }
+  if (p === '/api/fees/due' && req.method === 'GET') { const st = u && R.myStudent(u); return send(res, 200, { due: st ? logic.feesDue(S, st) : null, platform: logic.PLATFORM_FEE, service: logic.SERVICE_FEE, servicePaid: u ? logic.serviceOk(S, u.id) : false }); }   // what the signed-in student must pay next, by the server's own rules
   if (p.startsWith('/api/att/') && await ATT.handle(req, res, u, p, url)) return;
   if (p.startsWith('/api/library/') && await LIB.handle(req, res, u, p, url)) return;
   if (p.startsWith('/api/cls/') && await CLS.handle(req, res, u, p, url)) return;

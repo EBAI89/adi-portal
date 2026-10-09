@@ -89,6 +89,7 @@ async function apply(ctx, u, id, o, n) {
     const st = R.myStudent(u);
     if (!st || u.role !== 'student' || st.matric !== clip(n.matric, 40)) throw ['Only a linked ADI student can apply. / Seul un étudiant ADI rattaché peut postuler.'];
     if (!LEVELS.includes(st.level)) throw ['This form is only for HND and BTS. / Ce formulaire est réservé au HND et au BTS.'];
+    if (!logic.platformOk(S, st)) throw ['The platform charge (500 XAF) is not paid and confirmed. / Les frais de plateforme (500 XAF) ne sont pas payés et confirmés.'];
     if (!tuitionComplete(logic, S, st)) throw ['Tuition is not fully paid and confirmed. / La scolarité n\'est pas entièrement payée et confirmée.'];
     if (Object.values(S.all('msapp')).some(a => a && a.userId === u.id && a.status === 'submitted')) throw ['An application is already awaiting review. / Une demande est déjà en examen.'];
     const files = filesOf(S, id, u.id);
@@ -163,7 +164,7 @@ async function seed(ctx) {
   await addStudent({ email: 'fees.due@adiuniversity.com', name: 'Tamba Junior Ndi', phone: '+237680445566', matric: 'HND26-0208', entryYear: y, status: 'admitted' });
   logic.load(S);
   const fb = logic.core.feeBook(JSON.parse(JSON.stringify(paid.st)));
-  const amounts = [{ k: 'registration', a: 50000, label: 'Registration + savings' }].concat((fb.plan.inst || []).map((a, i) => ({ k: 'inst' + (i + 1), a, label: 'Tuition instalment ' + (i + 1) })));
+  const amounts = [{ k: 'platform', a: 500, label: 'Platform charge' }, { k: 'registration', a: 50000, label: 'Registration + savings' }].concat((fb.plan.inst || []).map((a, i) => ({ k: 'inst' + (i + 1), a, label: 'Tuition instalment ' + (i + 1) })));
   let n = 1;
   for (const it of amounts) {
     const pid = uid('pay');
