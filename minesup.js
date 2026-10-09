@@ -104,7 +104,9 @@
       const i = h.indexOf(mark);
       if (i < 0) return `<div class="wrap" style="padding:18px 0">${btn}</div>` + h;
       const a = h.lastIndexOf('<a', i);
-      h = h.slice(0, a) + btn + h.slice(a);
+      const e = h.indexOf('</a>', i) + 4;
+      const hand = '<span class="ptr-hand" aria-hidden="true">\u{1F446}</span>';
+      h = h.slice(0, a) + '<span class="ptr-wrap">' + btn + hand + '</span><span class="ptr-wrap">' + h.slice(a, e) + hand + '</span>' + h.slice(e);
       return h;
     };
   }
