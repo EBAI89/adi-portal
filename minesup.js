@@ -1092,11 +1092,9 @@
     })(t0);
   }
   try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
-  function begin() {
-    if (done || live || reduce || !isHome()) return;
-    if (window.adiTyping && window.adiTyping.active && (begin.tries = (begin.tries || 0) + 1) < 80) { setTimeout(begin, 400); return; }
+  let lastTouch = 0, polls = 0, lastH = -1, steady = 0, poller = 0;
+  function start() {
     if (window.scrollY > 4) jump(0);
-    const end = maxY(); if (end < window.innerHeight * 0.8) return;
     live = true; root.style.scrollBehavior = 'auto';
     evs.forEach(n => window.addEventListener(n, onUser, { capture: true, passive: true }));
     window.addEventListener('hashchange', onHash);
@@ -1109,12 +1107,27 @@
         leg(maxY(), 0, 1100, () => setTimeout(cycle, 2500));
       }, 700), true);
     };
-    setTimeout(cycle, 900);
+    setTimeout(cycle, 600);
   }
-  ['pointerdown', 'touchstart', 'keydown'].forEach(n => window.addEventListener(n, () => { if (!live) done = true; }, { capture: true, passive: true }));   /* a touch before the glide begins cancels it too */
-  function arm() { setTimeout(begin, 1400); }
-  window.adiTourRestart = function () { stop(false); done = false; setTimeout(begin, 1200); };
-  if (document.readyState === 'complete') arm(); else window.addEventListener('load', arm);
+  /* the page may still be loading on a slow connection: wait until it is complete, tall enough, stable, finished typing and untouched, then begin */
+  function poll() {
+    if (done || live) { if (done) clearInterval(poller); return; }
+    if (++polls > 150) { clearInterval(poller); return; }          /* about 90 s after arrival */
+    if (!isHome()) return;
+    if (window.adiTyping && window.adiTyping.active) return;
+    if (Date.now() - lastTouch < 3500) return;
+    const h = Math.max(root.scrollHeight, document.body.scrollHeight);
+    steady = h === lastH ? steady + 1 : 0; lastH = h;
+    if (steady < 2 || document.readyState !== 'complete') return;
+    if (maxY() < window.innerHeight * 0.8) return;
+    start();
+  }
+  /* touching or scrolling before the glide begins only postpones it; a deliberate click or key press cancels it */
+  ['pointerdown', 'touchstart', 'touchmove', 'wheel'].forEach(n => window.addEventListener(n, () => { if (!live) lastTouch = Date.now(); }, { capture: true, passive: true }));
+  ['click', 'keydown'].forEach(n => window.addEventListener(n, e => { if (!live && e.isTrusted !== false) done = true; }, { capture: true, passive: true }));
+  function arm() { clearInterval(poller); polls = 0; poller = setInterval(poll, 600); }
+  window.adiTourRestart = function () { stop(false); done = false; arm(); };
+  arm();
 })();
 
 /* ===== Session security: 5-minute inactivity limit, expiry notice, sign-out when the portal is closed ===== */
