@@ -2321,12 +2321,12 @@ async function route(req, res) {
   if (E.NODE_ENV === 'test' && p === '/api/test/outbox' && req.method === 'GET') return send(res, 200, { mails: OUTBOX.splice(0) });
   if (E.NODE_ENV === 'test' && p === '/api/test/clock' && req.method === 'POST') { SKEW = Number((await body(req, 1000)).skewMs) || 0; return send(res, 200, { ok: true, skew: SKEW }); }
   if (p === '/api/minesup/directory' && req.method === 'GET' && u && ((u.purpose === 'minesup' && logic.serviceOk(S, u.id)) || u.role === 'student')) {
-    const ms = sideMod('minesup-api.js'), list = Object.values(S.all('students')).filter(x => x && ms.LEVELS.includes(x.level) && x.msNo).sort((a, b) => String(a.name).localeCompare(b.name));
-    return send(res, 200, { students: list.map(x => ({ matric: x.matric, name: x.name, level: x.level, msNo: ms.normNo(x.msNo) })) });
+    const ms = sideMod('minesup-api.js'), list = Object.values(S.all('students')).filter(x => x && ms.LEVELS.includes(x.level) && (x.msNo || x.adiNo)).sort((a, b) => String(a.name).localeCompare(b.name));
+    return send(res, 200, { students: list.map(x => ({ matric: x.adiNo || x.matric, name: x.name, level: x.level, msNo: x.msNo ? ms.normNo(x.msNo) : '' })) });
   }
   if (p === '/api/minesup/clearance' && u && (u.purpose === 'minesup' || u.role === 'student')) {
     const ms = sideMod('minesup-api.js'), svc = logic.serviceOk(S, u.id);
-    const view = st => st ? { matric: st.matric, name: st.name, level: st.level, specId: st.specId || '' } : null;
+    const view = st => st ? { matric: st.matric, adi: st.adiNo || st.matric, name: st.name, level: st.level, specId: st.specId || '' } : null;
     const state = () => {
       const st = u.role === 'student' ? R.myStudent(u) : (u.msMatric ? S.get('students', u.msMatric) : null);
       const levelOk = !!st && ms.LEVELS.includes(st.level), due = st ? logic.feesDue(S, st) : null, tuition = !!st && ms.tuitionComplete(logic, S, st);
@@ -2355,7 +2355,7 @@ async function route(req, res) {
         if (u.msMatric && S.get('students', u.msMatric)) { st = S.get('students', u.msMatric); chk = ms.rosterMatch(S, msNo, st.name); }
         else if (matric) {
           if (!ms.noOk(msNo)) return send(res, 400, { error: 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' });
-          st = S.get('students', matric);
+          st = S.get('students', matric) || Object.values(S.all('students')).find(x => x && ms.normAdi(x.adiNo) && ms.normAdi(x.adiNo) === ms.normAdi(matric));
           if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'This ADI matricule is not on record for an HND or BTS student. Choose your name from the list.' });
           const mine = ms.fold(u.name), theirs = ms.fold(st.name);
           if (!mine.some(x => theirs.includes(x))) return send(res, 400, { error: 'The name on this account does not match the ADI student record for this matricule.' });
@@ -2374,7 +2374,7 @@ async function route(req, res) {
           st = cand[0]; chk = ms.rosterMatch(S, msNo, st.name);
           if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === st.matric)) return send(res, 409, { error: 'This candidate is already registered on another MINESUP account.' });
         }
-      } else { st = R.myStudent(u); if (st && matric && matric !== st.matric) return send(res, 400, { error: 'This ADI matricule belongs to a different student record.' }); }
+      } else { st = R.myStudent(u); if (st && matric && matric !== st.matric && ms.normAdi(matric) !== ms.normAdi(st.adiNo)) return send(res, 400, { error: 'This ADI matricule belongs to a different student record.' }); }
       if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'Only HND and BTS students can apply.' });
       if (!chk) chk = ms.rosterMatch(S, msNo, st.name);
       if (!chk.ok) return send(res, 400, { error: chk.why === 'format' ? 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' : chk.why === 'not_listed' ? 'This MINESUP matricule is not on the official HND/BTS list held by ADI.' : 'This MINESUP matricule belongs to a different name than your ADI student record.' });
@@ -2793,7 +2793,7 @@ async function seed() {
   await ensureMinCourses();
   await seed();
   await sideMod('minesup-api.js').seed({ S, save, now, uid, logic, hashPw, PROD });
-  try { await sideMod('minesup-api.js').seedCohort({ S, save, now, uid, logic }); } catch (e) { console.error('[cohort] ' + e.message); }
+  try { await sideMod('minesup-api.js').seedCohort({ S, save, now, uid, logic }); await sideMod('minesup-api.js').seedClassLists({ S, save, now, uid, logic }); } catch (e) { console.error('[cohort] ' + e.message); }
   if (MB) await MB.seed();
   setInterval(() => momoPoll().catch(e => console.error(e)), 20000).unref();
   http.createServer((req, res) => route(req, res).catch(e => { console.error(e); if (!res.headersSent) send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too large' : e.code === 400 ? 'bad request' : 'server error' }); }))

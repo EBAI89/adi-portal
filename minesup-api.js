@@ -220,6 +220,55 @@ async function seedCohort(ctx) {
   console.log('[minesup] cohort seeded: ' + made + ' new student records');
 }
 
+
+/* Official ADI class lists (Accountancy HND, Software Engineering HND, Comptabilité BTS): the registration numbers students know. */
+const CLASSLIST = [
+  ['ADI/ACC/HND/25/001', 'Manishimwe Denise', 'HND', 'hnd-biz', 'hnd-biz:accounting'],
+  ['ADI/ACC/HND/25/002', 'Ngo Nkot Enerstine B.', 'HND', 'hnd-biz', 'hnd-biz:accounting'],
+  ['ADI/ACC/HND/25/003', 'Nono Nchimie Audrey', 'HND', 'hnd-biz', 'hnd-biz:accounting'],
+  ['ADI/ACC/HND/25/004', 'Ajangang Francine U.', 'HND', 'hnd-biz', 'hnd-biz:accounting'],
+  ['ADI/ACC/HND/25/005', 'Djogouo Tiokang Jobrelle', 'HND', 'hnd-biz', 'hnd-biz:accounting'],
+  ['ADIET24H006', 'Samuel Dopgim Bumsamia', 'HND', 'hnd-eng', 'hnd-eng:software-engineering'],
+  ['ADIET24H007', 'Bumsamia Joshua Koni', 'HND', 'hnd-eng', 'hnd-eng:software-engineering'],
+  ['ADIET24H009', 'Nansou Nchimie Charly J.', 'HND', 'hnd-eng', 'hnd-eng:software-engineering'],
+  ['ADIET24H010', 'Ngadjou Fotsing Orianne', 'HND', 'hnd-eng', 'hnd-eng:software-engineering'],
+  ['ADIET24H011', 'Ossinbie Messina Denis P.', 'HND', 'hnd-eng', 'hnd-eng:software-engineering'],
+  ['ADIET24H012', 'Bate Gideon Tong', 'HND', 'hnd-eng', 'hnd-eng:software-engineering'],
+  ['ADI/CGE/BTS/25/001', 'Nsoga Mahouth Oscar Guy L.', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion'],
+  ['ADI/CGE/BTS/25/002', 'Tassi Daniele Fleur', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion'],
+  ['ADI/CGE/BTS/25/003', 'Guiebe Patricia', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion'],
+  ['ADI/CGE/BTS/25/004', 'Don A Menghe Chearnle Y.', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion'],
+  ['ADI/CGE/BTS/25/005', 'Bene Bognoko Priscilia', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion'],
+  ['ADI/CGE/BTS/25/006', 'Tadium Armelle Tatiana', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion'],
+  ['ADI/CGE/BTS/25/007', 'Ngah Noah Perpetue Rozana', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion']
+].map(r => ({ adiNo: r[0], name: r[1], level: r[2], gid: r[3], specId: r[4] }));
+const normAdi = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+function lev1(a, b) { if (a === b) return true; if (Math.abs(a.length - b.length) > 1 || Math.min(a.length, b.length) < 5) return false; let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i); }
+function nameScore(a, b) {
+  const ta = String(a).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(x => x.length > 1);
+  const tb = String(b).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(x => x.length > 1);
+  return ta.filter(x => tb.some(y => lev1(x, y))).length;
+}
+async function seedClassLists(ctx) {
+  const { S, save, now, logic } = ctx;
+  if (S.meta && S.meta.classlists26 === 'v1') return;
+  const d = new Date(now()), y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1;
+  let linked = 0, added = 0;
+  for (const c of CLASSLIST) {
+    logic.load(S);
+    const pool = Object.values(S.all('students')).filter(s => s && LEVELS.includes(s.level) && s.level === c.level);
+    const ranked = pool.map(s => ({ s, n: nameScore(s.name, c.name) })).filter(x => x.n >= 2).sort((a, b) => b.n - a.n);
+    let st = ranked.length && (ranked.length === 1 || ranked[0].n > ranked[1].n) ? ranked[0].s : null;
+    if (st) { linked++; await save('students', st.matric, Object.assign({}, st, { adiNo: c.adiNo })); continue; }
+    if (ranked.length) continue;   // ambiguous: leave for the Registry
+    const nm = c.name.replace(/\b(\w)(\w*)/g, (m, a, b) => a.toUpperCase() + b.toLowerCase());
+    st = { matric: logic.core.newMatric(c.level), adiNo: c.adiNo, name: nm, level: c.level, gid: c.gid, specId: c.specId, entryYear: y - 1, status: 'registered', email: '', phone: '' };
+    await save('students', st.matric, st); added++;
+  }
+  await S.setMeta('classlists26', 'v1');
+  console.log('[minesup] class lists: ' + linked + ' linked, ' + added + ' added');
+}
+
 async function seed(ctx) {
   const { S, save, now, uid, logic, hashPw, PROD } = ctx;
   if (PROD) return;
@@ -261,4 +310,4 @@ async function seed(ctx) {
   console.log('MINESUP demo ready — hnd.student@adiuniversity.com / fees.due@adiuniversity.com (Student@2026), registry@adiuniversity.com (Registry@2026)');
 }
 
-module.exports = { apply, seed, seedCohort, COHORT, fold, tuitionComplete, LEVELS, rosterList, rosterMatch, msVerified, normNo, noOk, ROSTER_DEFAULT };
+module.exports = { apply, seed, seedCohort, seedClassLists, CLASSLIST, normAdi, COHORT, fold, tuitionComplete, LEVELS, rosterList, rosterMatch, msVerified, normNo, noOk, ROSTER_DEFAULT };

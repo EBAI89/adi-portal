@@ -259,11 +259,11 @@
   function msNoCard(withAdi) {
     loadDir();
     const list = DIR || [], pick = (FORMS.msc && FORMS.msc.pick) || '';
-    const opts = list.map(x => `<option value="${esc(x.matric)}" ${pick === x.matric ? 'selected' : ''}>${esc(x.name)} — ADI ${esc(x.matric)} — MINESUP ${esc(x.msNo)}</option>`).join('');
+    const opts = list.map(x => `<option value="${esc(x.matric)}" ${pick === x.matric ? 'selected' : ''}>${esc(x.name)} — ADI ${esc(x.matric)}${x.msNo ? ' — MINESUP ' + esc(x.msNo) : ''}</option>`).join('');
     return `<div class="card gap ms-pop"><h3>${LBL('Step 2 — Verify your identity', 'Étape 2 — Vérifiez votre identité')}</h3>
       <p class="muted">${withAdi ? LBL('This account stays independent: it is not linked to any other account. Your name here must match the name on the ADI student record and on the MINESUP list.', 'Ce compte reste indépendant : il n\'est lié à aucun autre compte. Votre nom doit correspondre à celui du dossier ADI et de la liste du MINESUP.') : ''}</p>
       <div class="fld"><label class="f" for="ms-pick">${LBL('Cannot remember your matricules? Select your name', 'Matricules oubliés ? Sélectionnez votre nom')}</label><select id="ms-pick" data-f="msc.pick"><option value="">${list.length ? LBL('— Select your name —', '— Sélectionnez votre nom —') : LBL('Loading the list…', 'Chargement de la liste…')}</option>${opts}</select></div>
-      ${inp('msc.matric', LBL('ADI matricule number', 'Matricule ADI'), { ph: 'ADI26H0001' })}
+      ${inp('msc.matric', LBL('ADI matricule number', 'Matricule ADI'), { ph: 'ADI/ACC/HND/25/001' })}
       ${inp('msc.msNo', LBL('Unique HND/BTS matricule assigned by MINESUP', 'Matricule unique HND/BTS attribué par le MINESUP'), { ph: '26ABC1234' })}
       <p class="small muted">${LBL('The MINESUP number is printed on your HND/BTS registration form (for example 26SWE0762: year, field code, number). Both numbers must belong to the same person. Choosing your name above fills both fields.', 'Le numéro MINESUP figure sur votre fiche d\'inscription HND/BTS (par exemple 26SWE0762 : année, code de filière, numéro). Les deux numéros doivent appartenir à la même personne. Le choix de votre nom remplit les deux champs.')}</p>
       <button class="btn gold ms-cta" data-a="msclear">${LBL('Verify', 'Vérifier')}</button></div>`;
@@ -297,7 +297,7 @@
     const f = c.fee || {}, st = c.student || {}, pay = f.pay, momo = (typeof cfg === 'function' ? cfg().momo : '') || '';
     const done = f.balance <= 0;
     let h = `<div class="card gap ms-pop"><h3>${LBL('Step 3 — Tuition status', 'Étape 3 — Situation de scolarité')}</h3>
-      <p><b>${esc(st.name || '')}</b> · ADI ${esc(st.matric || '')} · MINESUP ${esc(c.msNo || '')}</p>
+      <p><b>${esc(st.name || '')}</b> · ADI ${esc(st.adi || st.matric || '')} · MINESUP ${esc(c.msNo || '')}</p>
       <div class="ms-fee"><div><span>${LBL('Official tuition', 'Scolarité officielle')}</span><b>${money(f.total || 0)}</b></div><div><span>${LBL('Paid and confirmed', 'Payé et confirmé')}</span><b>${money(f.paid || 0)}</b></div><div><span>${LBL('Outstanding balance', 'Solde restant')}</span><b class="${done ? 'ms-pass' : 'ms-fail'}">${money(f.balance || 0)}</b></div></div>`;
     if (f.exempt) h += `<p class="small muted">${LBL('Level 2 student: exempt from registration, T-shirt and bank-account fees.', 'Étudiant de niveau 2 : exonéré des frais d\'inscription, de T-shirt et de compte bancaire.')}</p>`;
     if (done && !pay) h += `<div class="note">${LBL('Your tuition is complete. Press Continue to open the application form.', 'Votre scolarité est complète. Appuyez sur Continuer pour ouvrir le formulaire.')}</div><p><button class="btn gold" data-a="msrecheck">${LBL('Continue', 'Continuer')}</button></p>`;
