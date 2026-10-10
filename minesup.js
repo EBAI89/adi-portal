@@ -1077,6 +1077,7 @@
   function clear() { clearTimeout(hideT); if (io) { io.disconnect(); io = null; } src = null; if (bar) bar.hidden = true; }
   function present(msg, source, ttl) {
     msg = String(msg || '').replace(/\s+/g, ' ').trim(); if (!msg) return;
+    msg = window.politeError ? window.politeError(msg) : msg;
     clear(); const b = ensure();
     b.querySelector('.ef-k').textContent = fr() ? 'À corriger' : 'Please correct';
     b.querySelector('.ef-m').textContent = msg;
@@ -1089,10 +1090,28 @@
     }
     if (ttl) hideT = setTimeout(clear, ttl);
   }
+  /* error wording: a formal, courteous request ("Please enter ...", "Veuillez saisir ...") instead of a bare command */
+  const FRV = { saisissez: 'saisir', entrez: 'saisir', tapez: 'saisir', choisissez: 'choisir', 'sélectionnez': 'sélectionner', selectionnez: 'sélectionner', cochez: 'cocher', confirmez: 'confirmer', indiquez: 'indiquer', joignez: 'joindre', 'téléversez': 'téléverser', renseignez: 'renseigner', acceptez: 'accepter', 'vérifiez': 'vérifier', 'ressaisissez': 'ressaisir', utilisez: 'utiliser', ajoutez: 'ajouter', remplissez: 'remplir', 'téléchargez': 'télécharger', 'précisez': 'préciser', 'attendez': 'patienter' };
+  const ENV = /^(enter|choose|select|type|tick|check|confirm|provide|upload|attach|accept|fill in|fill|add|pick|use|write|re-?enter|repeat|specify|supply|state|include|wait|try|sign in|log in|verify|review|correct|complete|click|tap|press|open|use)\b/i;
+  function polite(m) {
+    m = String(m == null ? '' : m); const t = m.trim(); if (!t || /^please\b|^veuillez\b|^merci de\b|^kindly\b/i.test(t)) return m;
+    const w = (t.match(/^[\p{L}-]+/u) || [''])[0], lw = w.toLowerCase();
+    if (FRV[lw]) return 'Veuillez ' + FRV[lw] + t.slice(w.length);
+    if (ENV.test(t)) return 'Please ' + t.charAt(0).toLowerCase() + t.slice(1);
+    return m;
+  }
+  window.politeError = polite;
+  function sweepTone() {
+    document.querySelectorAll('.ferr,.note.bad,.toast.err,#err-float .ef-m').forEach(el => {
+      if (el.children.length) return; const a = el.textContent, b = polite(a); if (a !== b) el.textContent = b;
+    });
+  }
+  setInterval(sweepTone, 400);
   /* the message sits above the field it concerns */
   if (typeof focusField === 'function') {
     const orig = focusField;
     focusField = function (name, msg) {
+      if (msg && window.politeError) { msg = window.politeError(msg); arguments[1] = msg; }
       const r = orig.apply(this, arguments);
       if (msg) {
         try {
