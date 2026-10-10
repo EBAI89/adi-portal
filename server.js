@@ -79,7 +79,7 @@ __MODS["./lib/logic"] = function (module, exports, require) {
 // so amounts and grades are validated with exactly the same logic the users see.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const src = __EMBED_CORE +
-  '\n;globalThis.__core = { S, payItems, feeBook, calcRes, AY, ayStart, SPEC, LEVELS, PERMS, DEF_PERMS, cfg, siteSanitize, siteContrast, SITE_DEF, clsTM, libTxtML, CLS_REF_SOURCES, CLS_MODELS, ASSOC_KEYS, ASSOC_DEF, assocCfg, UND_DEF, UND_KEYS, undCfg, undGet, CREDIT_DEF, regCreditRule, hasMinistry, regOffered, regwinCfg, regWinCalc, semesterCredits, regIso, CHAT_PAGE, chatChunks, chatPick, chatAuto, chatLang, chatCfg, chatTok, CHAT_SUG, CHAT_WA, INST, CAL_BASE, calCfg, calEvents, calWhen, calDay, calState, calUpcoming, calDaysTo, calIcs, CAL_ISO, pgCfg, PH_BANDS, PH_PHOTOS, PH_ARTS, visPath, visTz, visLang, visCfg, hrVacancy, hrApplication, hrPartner, hrCfg, hrOrcid, hrEmail, hrPhone, HR_CATS, HR_ACADEMIC, HR_STAGES, HR_PSTAGES, ISO_COUNTRIES, clsT, clsBuildPptx, clsCfg, clsMaterial, clsAssignment, clsPlan, clsSession, clsQuestion, CLS_THEMES, CLS_PROVIDERS, libSanitize, libCall, libCite, libLinkSanitize, libCfgSanitize, libVideoParse, libIsbn, libIssn, LIB_DDC, LIB_TYPES, LIB_AUTH, LIB_ACCESS, LIB_RIGHTS, LIB_LINKS_DEFAULT, LIB_LINK_CATS, setLang: v => { LANG = v; } };';
+  '\n;globalThis.__core = { S, newMatric, payItems, feeBook, calcRes, AY, ayStart, SPEC, LEVELS, PERMS, DEF_PERMS, cfg, siteSanitize, siteContrast, SITE_DEF, clsTM, libTxtML, CLS_REF_SOURCES, CLS_MODELS, ASSOC_KEYS, ASSOC_DEF, assocCfg, UND_DEF, UND_KEYS, undCfg, undGet, CREDIT_DEF, regCreditRule, hasMinistry, regOffered, regwinCfg, regWinCalc, semesterCredits, regIso, CHAT_PAGE, chatChunks, chatPick, chatAuto, chatLang, chatCfg, chatTok, CHAT_SUG, CHAT_WA, INST, CAL_BASE, calCfg, calEvents, calWhen, calDay, calState, calUpcoming, calDaysTo, calIcs, CAL_ISO, pgCfg, PH_BANDS, PH_PHOTOS, PH_ARTS, visPath, visTz, visLang, visCfg, hrVacancy, hrApplication, hrPartner, hrCfg, hrOrcid, hrEmail, hrPhone, HR_CATS, HR_ACADEMIC, HR_STAGES, HR_PSTAGES, ISO_COUNTRIES, clsT, clsBuildPptx, clsCfg, clsMaterial, clsAssignment, clsPlan, clsSession, clsQuestion, CLS_THEMES, CLS_PROVIDERS, libSanitize, libCall, libCite, libLinkSanitize, libCfgSanitize, libVideoParse, libIsbn, libIssn, LIB_DDC, LIB_TYPES, LIB_AUTH, LIB_ACCESS, LIB_RIGHTS, LIB_LINKS_DEFAULT, LIB_LINK_CATS, setLang: v => { LANG = v; } };';
 const ctx = { console, Date, Math, JSON, Object, Array, Number, String, RegExp, Set, Map, Promise, Intl, TextEncoder, structuredClone, URL, URLSearchParams,
   navigator: { language: 'en' }, localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} }, crypto: require('crypto').webcrypto, setTimeout, clearTimeout };
 ctx.window = ctx; vm.createContext(ctx); vm.runInContext(src, ctx, { filename: 'client-core.js' });
@@ -213,7 +213,7 @@ module.exports = function makeRules(store, logic) {
       case 'users': { const { pw, ...safe } = d; if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
       case 'apps': return d.userId === u.id || sany(u, 'manage_applications', 'view_students', 'manage_students') ? d : null;
       case 'students': return d.userId === u.id || sany(u, 'view_students', 'manage_students', 'manage_applications', 'view_classlists', 'verify_payments', 'enter_results', 'publish_results', 'manage_transcripts', 'finance_reports') ? d : null;
-      case 'payments': return d.userId === u.id || sany(u, 'verify_payments', 'finance_reports', 'view_students', 'manage_students', 'view_classlists') || (/^tr_/.test(d.kind || '') && sany(u, 'manage_transcripts')) ? d : null;
+      case 'payments': return d.userId === u.id || (d.matric && (ownsMatric(u, d.matric) || (u.purpose === 'minesup' && u.msMatric === d.matric))) || sany(u, 'verify_payments', 'finance_reports', 'view_students', 'manage_students', 'view_classlists') || (/^tr_/.test(d.kind || '') && sany(u, 'manage_transcripts')) ? d : null;
       case 'formb': return d.userId === u.id || sany(u, 'manage_students', 'view_students', 'view_classlists') ? d : null;
       case 'enroll': return ownsMatric(u, d.matric) || sany(u, 'view_classlists', 'manage_students', 'view_students', 'enter_results', 'publish_results', 'transcripts') ? d : null;
       case 'results':
@@ -269,7 +269,7 @@ module.exports = function makeRules(store, logic) {
         return 'forbidden';
       case 'payments':
         if (del) return 'forbidden';
-        if (create) return n.userId === u.id && (has(u, 'fees_pay') || (n.kind === 'service' && ['applicant', 'student'].includes(u.role))) && n.status === 'pending' ? true : 'forbidden';
+        if (create) return n.userId === u.id && (has(u, 'fees_pay') || (n.kind === 'service' && ['applicant', 'student'].includes(u.role)) || (u.purpose === 'minesup' && u.msMatric && n.kind !== 'service' && n.matric === u.msMatric)) && n.status === 'pending' ? true : 'forbidden';
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
@@ -2105,7 +2105,8 @@ async function applyWrite(u, c, id, o, n) {
       return;
     }
     if (!o) {
-      const st = R.myStudent(u); if (!st || st.matric !== n.matric) throw ['student'];
+      const st = R.myStudent(u) || (u.purpose === 'minesup' && u.msMatric ? S.get('students', u.msMatric) : null); if (!st || st.matric !== n.matric) throw ['student'];
+      if (n.kind === 'tuition_balance' && Object.values(S.all('payments')).some(p => p && p.matric === st.matric && p.kind === 'tuition_balance' && p.status === 'pending')) throw ['A balance payment is already awaiting verification'];
       const price = logic.priceFor(S, st, n.kind); if (!price) throw ['unknown fee item'];
       if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== Number(price.amount)) throw ['amount must be ' + price.amount];
       const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
@@ -2319,6 +2320,10 @@ async function route(req, res) {
 
   if (E.NODE_ENV === 'test' && p === '/api/test/outbox' && req.method === 'GET') return send(res, 200, { mails: OUTBOX.splice(0) });
   if (E.NODE_ENV === 'test' && p === '/api/test/clock' && req.method === 'POST') { SKEW = Number((await body(req, 1000)).skewMs) || 0; return send(res, 200, { ok: true, skew: SKEW }); }
+  if (p === '/api/minesup/directory' && req.method === 'GET' && u && ((u.purpose === 'minesup' && logic.serviceOk(S, u.id)) || u.role === 'student')) {
+    const ms = sideMod('minesup-api.js'), list = Object.values(S.all('students')).filter(x => x && ms.LEVELS.includes(x.level) && x.msNo).sort((a, b) => String(a.name).localeCompare(b.name));
+    return send(res, 200, { students: list.map(x => ({ matric: x.matric, name: x.name, level: x.level, msNo: ms.normNo(x.msNo) })) });
+  }
   if (p === '/api/minesup/clearance' && u && (u.purpose === 'minesup' || u.role === 'student')) {
     const ms = sideMod('minesup-api.js'), svc = logic.serviceOk(S, u.id);
     const view = st => st ? { matric: st.matric, name: st.name, level: st.level, specId: st.specId || '' } : null;
@@ -2326,7 +2331,17 @@ async function route(req, res) {
       const st = u.role === 'student' ? R.myStudent(u) : (u.msMatric ? S.get('students', u.msMatric) : null);
       const levelOk = !!st && ms.LEVELS.includes(st.level), due = st ? logic.feesDue(S, st) : null, tuition = !!st && ms.tuitionComplete(logic, S, st);
       const msOk = ms.msVerified(S, u, st);
-      return { service: svc, student: view(st), msNo: msOk ? ms.normNo(u.msNo) : '', msOk, levelOk, due, tuition, cleared: !!(svc && st && msOk && levelOk && !due && tuition) };
+      return { service: svc, student: view(st), msNo: msOk ? ms.normNo(u.msNo) : '', msOk, levelOk, due, tuition, cleared: !!(svc && st && msOk && levelOk && !due && tuition), fee: st ? feeState(st) : null };
+    };
+    const feeState = st => {
+      logic.load(S); const fb = logic.core.feeBook(JSON.parse(JSON.stringify(st))), ay = logic.AY(), due = logic.feesDue(S, st);
+      const pend = Object.values(S.all('payments')).filter(p => p && p.matric === st.matric && p.status === 'pending' && p.ay === ay).map(p => ({ kind: p.kind, amount: p.amount, ref: p.ref, at: p.at }));
+      let pay = null;
+      if (due && due.k === 'platform') pay = { kind: 'platform', amount: logic.PLATFORM_FEE, label: 'Platform charge' };
+      else if (due && due.k === 'registration') { const pr = logic.priceFor(S, st, 'registration'); if (pr) pay = { kind: 'registration', amount: pr.amount, label: pr.label }; }
+      else if (fb.balance > 0) pay = { kind: 'tuition_balance', amount: fb.balance, label: 'Outstanding tuition balance' };
+      if (pay) pay.pending = pend.some(p => p.kind === pay.kind);
+      return { total: fb.plan.total, paid: fb.tuitionPaid, awaiting: fb.tuitionPend, balance: fb.balance, exempt: !!st.exemptReg, pay, pending: pend };
     };
     if (req.method === 'GET') return send(res, 200, state());
     if (req.method === 'POST') {
@@ -2338,6 +2353,16 @@ async function route(req, res) {
       if (own) {
         // The MINESUP number alone identifies the candidate: the ADI student record is found from the name on MINESUP's list.
         if (u.msMatric && S.get('students', u.msMatric)) { st = S.get('students', u.msMatric); chk = ms.rosterMatch(S, msNo, st.name); }
+        else if (matric) {
+          if (!ms.noOk(msNo)) return send(res, 400, { error: 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' });
+          st = S.get('students', matric);
+          if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'This ADI matricule is not on record for an HND or BTS student. Choose your name from the list.' });
+          const mine = ms.fold(u.name), theirs = ms.fold(st.name);
+          if (!mine.some(x => theirs.includes(x))) return send(res, 400, { error: 'The name on this account does not match the ADI student record for this matricule.' });
+          chk = ms.rosterMatch(S, msNo, st.name);
+          if (!chk.ok && chk.why !== 'format' && chk.why !== 'not_listed') return send(res, 400, { error: 'The ADI matricule and the MINESUP matricule do not belong to the same candidate.' });
+          if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === st.matric)) return send(res, 409, { error: 'This candidate is already registered on another MINESUP account.' });
+        }
         else {
           if (!ms.noOk(msNo)) return send(res, 400, { error: 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' });
           const hits = ms.rosterList(S).filter(r => r.no === msNo); if (!hits.length) return send(res, 400, { error: 'This MINESUP matricule is not on the official HND/BTS list held by ADI.' });
@@ -2349,7 +2374,7 @@ async function route(req, res) {
           st = cand[0]; chk = ms.rosterMatch(S, msNo, st.name);
           if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === st.matric)) return send(res, 409, { error: 'This candidate is already registered on another MINESUP account.' });
         }
-      } else st = R.myStudent(u);
+      } else { st = R.myStudent(u); if (st && matric && matric !== st.matric) return send(res, 400, { error: 'This ADI matricule belongs to a different student record.' }); }
       if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'Only HND and BTS students can apply.' });
       if (!chk) chk = ms.rosterMatch(S, msNo, st.name);
       if (!chk.ok) return send(res, 400, { error: chk.why === 'format' ? 'The MINESUP matricule has the form 26ABC1234 (year, field code, number). Copy it from your HND/BTS registration form.' : chk.why === 'not_listed' ? 'This MINESUP matricule is not on the official HND/BTS list held by ADI.' : 'This MINESUP matricule belongs to a different name than your ADI student record.' });
@@ -2539,6 +2564,34 @@ async function route(req, res) {
     const x = S.get('users', t.uid); if (!x) return send(res, 400, { error: 'invalid' });
     const n = Object.assign({}, x, { pw: await hashPw(b.password), mustChange: false }); await save('users', x.id, n); await S.setMeta(key, null);
     await audit(n, 'password reset by email link'); pwChangedMail(n); return send(res, 200, { ok: true });
+  }
+  if (p === '/api/admin/users/create' && req.method === 'POST') {
+    if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
+    const b = await body(req, 4000), name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 120), role = String(b.role || 'student');
+    if (name.length < 3) return send(res, 400, { error: 'Enter the full name.' });
+    if (!/^(applicant|student|lecturer|accountant|admin|super_admin|x_[a-z0-9_]{1,40})$/.test(role)) return send(res, 400, { error: 'Unknown role.' });
+    const users = Object.values(S.all('users')), taken = e => users.some(x => x && String(x.email).toLowerCase() === e);
+    let email = String(b.email || '').trim().toLowerCase();
+    if (b.adiEmail || !email) {
+      const parts = name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(w => w.length >= 2);
+      let base = parts.length >= 2 ? parts[0] + '.' + parts[1] : (parts[0] || 'user'), local = base, n = 1;
+      while (taken(local + '@adiuniversity.com')) local = base + (++n);
+      email = local + '@adiuniversity.com';
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: 'Invalid email address.' });
+    if (taken(email)) return send(res, 409, { error: 'An account with this email already exists.' });
+    const temp = tempPassword(), id = uid('u');
+    await save('users', id, { email, name, phone: String(b.phone || '').slice(0, 30), role, status: 'active', lang: 'en', createdAt: now(), pw: await hashPw(temp), mustChange: true, createdBy: u.id });
+    await audit(u, 'account created ' + email + ' (' + role + ')'); return send(res, 200, { ok: true, id, email, temp });
+  }
+  if (p === '/api/admin/users/delete' && req.method === 'POST') {
+    if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
+    const b = await body(req, 2000), x = S.get('users', String(b.userId || ''));
+    if (!x) return send(res, 404, { error: 'user' });
+    if (x.id === u.id) return send(res, 400, { error: 'You cannot delete your own account.' });
+    if (x.role === 'super_admin' && Object.values(S.all('users')).filter(y => y && y.role === 'super_admin' && y.status === 'active').length < 2) return send(res, 400, { error: 'At least one super administrator must remain.' });
+    for (const st of Object.values(S.all('students'))) if (st && st.userId === x.id) await save('students', st.matric, Object.assign({}, st, { userId: '' }));
+    await remove('users', x.id); await audit(u, 'account deleted ' + x.email); return send(res, 200, { ok: true });
   }
   if (p === '/api/admin/reset-password' && req.method === 'POST') {
     if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
@@ -2740,6 +2793,7 @@ async function seed() {
   await ensureMinCourses();
   await seed();
   await sideMod('minesup-api.js').seed({ S, save, now, uid, logic, hashPw, PROD });
+  try { await sideMod('minesup-api.js').seedCohort({ S, save, now, uid, logic }); } catch (e) { console.error('[cohort] ' + e.message); }
   if (MB) await MB.seed();
   setInterval(() => momoPoll().catch(e => console.error(e)), 20000).unref();
   http.createServer((req, res) => route(req, res).catch(e => { console.error(e); if (!res.headersSent) send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too large' : e.code === 400 ? 'bad request' : 'server error' }); }))

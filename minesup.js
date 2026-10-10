@@ -154,6 +154,47 @@
   const at2 = ROUTES.findIndex(r => r.id === 'students');
   ROUTES.splice(at2 < 0 ? ROUTES.length : at2 + 1, 0, { id: 'minesup-admin', k: 'ms_admin', perm: 'manage_students', v: viewMinesupAdmin });
 
+
+  /* ===== Super-administrator desk: accounts, ADI addresses, forms and receipts ===== */
+  L.sa_desk = ['Accounts and documents', 'Comptes et documents'];
+  ROUTES.splice(Math.max(0, ROUTES.findIndex(r => r.id === 'users')) + 1, 0, { id: 'sa-desk', k: 'sa_desk', perm: '__super', v: viewDesk });
+  function viewDesk() {
+    if (!me() || me().role !== 'super_admin') return `<div class="note bad">${LBL('Forbidden', 'Accès refusé')}</div>`;
+    if (!FORMS.sa) FORMS.sa = { role: 'student', adi: true, q: '', dq: '' };
+    const f = FORMS.sa, q = String(f.q || '').toLowerCase(), dq = String(f.dq || '').toLowerCase();
+    const users = Object.values(S.users).filter(x => x && (!q || (x.name + ' ' + x.email + ' ' + x.role).toLowerCase().includes(q))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 80);
+    const roles = (typeof roleList === 'function' ? roleList() : ['student', 'applicant', 'lecturer', 'accountant', 'admin']).map(r => [r, typeof roleName === 'function' ? roleName(r) : r]);
+    const made = f.made ? `<div class="note"><b>${LBL('Account created', 'Compte créé')}</b><br>${esc(f.made.email)}<br>${LBL('Temporary password: ', 'Mot de passe temporaire : ')}<b>${esc(f.made.temp)}</b><br><span class="small muted">${LBL('Give it to the person. They must change it at first sign-in.', 'Remettez-le à la personne. Elle doit le changer à la première connexion.')}</span></div>` : '';
+    const urow = x => [esc(x.name), esc(x.email), esc(x.role), esc(x.status),
+      (x.id === SESSION ? '' : `<button class="btn sm ghost" data-a="useract" data-id="${esc(x.id)}" data-s="${x.status === 'active' ? 'suspended' : 'active'}">${x.status === 'active' ? LBL('Deactivate', 'Désactiver') : LBL('Activate', 'Activer')}</button> <button class="btn sm ghost" data-a="pwreset" data-id="${esc(x.id)}">🔑 ${LBL('Reset password', 'Réinitialiser')}</button> <button class="btn sm ghost" data-a="saissue" data-id="${esc(x.id)}">@ ${LBL('ADI email', 'Email ADI')}</button> <button class="btn sm red" data-a="sadel" data-id="${esc(x.id)}">${LBL('Delete', 'Supprimer')}</button>`)];
+    const apps = Object.values(S.msapp || {}).filter(a => a && (!dq || (a.name + ' ' + a.ref + ' ' + a.matric).toLowerCase().includes(dq))).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 60);
+    const pays = Object.values(S.payments || {}).filter(p => p && p.status === 'confirmed' && (!dq || ((p.payerName || '') + ' ' + (p.ref || '') + ' ' + (p.matric || '')).toLowerCase().includes(dq))).sort((a, b) => (b.confirmedAt || b.at || 0) - (a.confirmedAt || a.at || 0)).slice(0, 60);
+    const studs = Object.values(S.students || {}).filter(x => x && (!dq || (x.name + ' ' + x.matric).toLowerCase().includes(dq))).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 60);
+    return `<h2>${LBL('Accounts and documents', 'Comptes et documents')}</h2>
+    <div class="card gap"><h3>${LBL('Create an account', 'Créer un compte')}</h3><div class="grid g2">${inp('sa.name', LBL('Full name', 'Nom complet'))}${sel('sa.role', LBL('Role', 'Rôle'), roles, { blank: false })}${inp('sa.phone', LBL('Phone', 'Téléphone'), { type: 'tel' })}${inp('sa.email', LBL('Personal email (optional)', 'Email personnel (facultatif)'), { type: 'email' })}</div>
+      <label class="small"><input type="checkbox" data-f="sa.adi" ${f.adi ? 'checked' : ''}> ${LBL('Generate an @adiuniversity.com address as the sign-in email', 'Générer une adresse @adiuniversity.com comme identifiant de connexion')}</label>
+      <p><button class="btn gold" data-a="sacreate">${LBL('Create account', 'Créer le compte')}</button></p>${made}</div>
+    <div class="card gap"><h3>${LBL('Accounts', 'Comptes')}</h3>${inp('sa.q', LBL('Search by name, email or role', 'Rechercher par nom, email ou rôle'))}${table([LBL('Name', 'Nom'), 'Email', LBL('Role', 'Rôle'), LBL('Status', 'Statut'), ''], users.map(urow))}</div>
+    <div class="card gap"><h3>${LBL('Forms and receipts', 'Formulaires et reçus')}</h3>${inp('sa.dq', LBL('Search by name, matricule or reference', 'Rechercher par nom, matricule ou référence'))}
+      <h4>${LBL('MINESUP applications', 'Demandes MINESUP')}</h4>${apps.length ? table([LBL('Reference', 'Référence'), LBL('Name', 'Nom'), LBL('Status', 'Statut'), ''], apps.map(a => [esc(a.ref || '—'), esc(a.name || ''), esc(a.status || ''), `<button class="btn sm gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download', 'Télécharger')}</button>`])) : `<p class="muted">${LBL('None.', 'Aucune.')}</p>`}
+      <h4>${LBL('Payment receipts', 'Reçus de paiement')}</h4>${pays.length ? table([LBL('Student', 'Étudiant'), LBL('Item', 'Objet'), LBL('Amount', 'Montant'), ''], pays.map(p => [esc(p.payerName || p.matric || ''), esc(p.label || p.kind), esc(typeof xaf === 'function' ? xaf(p.amount) : p.amount), `<button class="btn sm gold" data-a="receipt" data-id="${esc(p.id)}">${LBL('Download', 'Télécharger')}</button>`])) : `<p class="muted">${LBL('None.', 'Aucun.')}</p>`}
+      <h4>Form B</h4>${table([LBL('Student', 'Étudiant'), 'Matricule', ''], studs.map(x => [esc(x.name), esc(x.matric), `<button class="btn sm ghost" data-a="formb" data-m="${esc(x.matric)}" data-s="1">S1</button> <button class="btn sm ghost" data-a="formb" data-m="${esc(x.matric)}" data-s="2">S2</button>`]))}</div>`;
+  }
+  ACT.sacreate = async el => {
+    const f = FORMS.sa || {}, name = String(f.name || '').trim();
+    if (name.length < 3) return focusField('sa.name', LBL('Enter the full name.', 'Saisissez le nom complet.'));
+    if (el) el.disabled = true;
+    try { const r = await api('/api/admin/users/create', { body: { name, role: f.role || 'student', phone: f.phone || '', email: f.email || '', adiEmail: !!f.adi } }); FORMS.sa = { role: f.role, adi: f.adi, q: f.q, dq: f.dq, made: r }; if (typeof apiSync === 'function') await apiSync(); render(); }
+    catch (e) { if (el) el.disabled = false; toast(e.message || 'Error', 1); }
+  };
+  ACT.sadel = async el => {
+    const x = S.users[el.dataset.id]; if (!x || !window.confirm(LBL('Delete the account of ', 'Supprimer le compte de ') + x.name + ' (' + x.email + ') ?')) return;
+    try { await api('/api/admin/users/delete', { body: { userId: x.id } }); if (typeof apiSync === 'function') await apiSync(); toast(LBL('Account deleted.', 'Compte supprimé.')); render(); } catch (e) { toast(e.message || 'Error', 1); }
+  };
+  ACT.saissue = async el => {
+    try { const r = await api('/api/mail/issue', { body: { userId: el.dataset.id } }); const m = r.mailbox || {}; toast(LBL('ADI address issued: ', 'Adresse ADI émise : ') + (m.email || m.address || '')); } catch (e) { toast(e.message || 'Error', 1); }
+  };
+
   function blankForm(st, u) {
     return {
       id: uid('ms'), _matric: st.matric,
@@ -172,7 +213,7 @@
   }
 
   function head() {
-    return `<p class="ms-kicker">MINESUP · ${LBL('Ministry of Higher Education', 'Ministère de l\'Enseignement Supérieur')}</p><h2>${LBL('Application for HND/BTS transcript or diploma', 'Demande de relevé ou de diplôme HND/BTS')}</h2><p class="muted">${LBL('The form is bilingual. Read every line before you submit. A false declaration may lead to rejection and legal action.', 'Le formulaire est bilingue. Lisez chaque ligne avant l\'envoi. Toute fausse déclaration peut entraîner le rejet et des poursuites.')}</p>`;
+    return `<p class="ms-kicker">MINESUP · ${LBL('Ministry of Higher Education', 'Ministère de l\'Enseignement Supérieur')}</p><h2>${LBL('Application for HND/BTS transcript or diploma', 'Demande de relevé ou de diplôme HND/BTS')}</h2><p class="muted">${LBL('The form is bilingual. Read every line before you submit. A false declaration may lead to rejection and legal action.', 'Le formulaire est bilingue. Lisez chaque ligne avant l\'envoi. Toute fausse déclaration peut entraîner le rejet et des poursuites.')}</p><div class="note">${LBL('The transcript or diploma cannot be downloaded online. After approval you collect it in person from the office in charge of issuing transcripts. You can download your application form as proof that you applied, and you are notified at each step.', 'Le relevé ou le diplôme ne peut pas être téléchargé en ligne. Après approbation, vous le retirez en personne au service chargé de leur délivrance. Vous pouvez télécharger votre formulaire de demande comme preuve de dépôt, et vous êtes notifié à chaque étape.')}</div>`;
   }
   function criteria() {
     const items = [
@@ -210,14 +251,30 @@
   }
 
 
+  let DIR = null, DIRBUSY = false;
+  function loadDir() {
+    if (DIR || DIRBUSY) return; DIRBUSY = true;
+    api('/api/minesup/directory').then(d => { DIR = d.students || []; DIRBUSY = false; render(); }).catch(() => { DIR = []; DIRBUSY = false; });
+  }
   function msNoCard(withAdi) {
-    const fr = LANG === 'fr';
-    return `<div class="card gap ms-pop"><h3>${LBL('Step 2 — Verify your MINESUP matricule', 'Étape 2 — Vérifiez votre matricule MINESUP')}</h3>
-      <p class="muted">${withAdi ? LBL('This account stays independent: it is not linked to any other account. Your name here must match the name on the MINESUP list.', 'Ce compte reste indépendant : il n\'est lié à aucun autre compte. Votre nom doit correspondre à celui de la liste du MINESUP.') : ''}</p>
+    loadDir();
+    const list = DIR || [], pick = (FORMS.msc && FORMS.msc.pick) || '';
+    const opts = list.map(x => `<option value="${esc(x.matric)}" ${pick === x.matric ? 'selected' : ''}>${esc(x.name)} — ADI ${esc(x.matric)} — MINESUP ${esc(x.msNo)}</option>`).join('');
+    return `<div class="card gap ms-pop"><h3>${LBL('Step 2 — Verify your identity', 'Étape 2 — Vérifiez votre identité')}</h3>
+      <p class="muted">${withAdi ? LBL('This account stays independent: it is not linked to any other account. Your name here must match the name on the ADI student record and on the MINESUP list.', 'Ce compte reste indépendant : il n\'est lié à aucun autre compte. Votre nom doit correspondre à celui du dossier ADI et de la liste du MINESUP.') : ''}</p>
+      <div class="fld"><label class="f" for="ms-pick">${LBL('Cannot remember your matricules? Select your name', 'Matricules oubliés ? Sélectionnez votre nom')}</label><select id="ms-pick" data-f="msc.pick"><option value="">${list.length ? LBL('— Select your name —', '— Sélectionnez votre nom —') : LBL('Loading the list…', 'Chargement de la liste…')}</option>${opts}</select></div>
+      ${inp('msc.matric', LBL('ADI matricule number', 'Matricule ADI'), { ph: 'ADI26H0001' })}
       ${inp('msc.msNo', LBL('Unique HND/BTS matricule assigned by MINESUP', 'Matricule unique HND/BTS attribué par le MINESUP'), { ph: '26ABC1234' })}
-      <p class="small muted">${LBL('This is the number printed on your HND/BTS registration form (for example 26SWE0762: year, field code, number). It is checked against the official MINESUP list and your name.', 'C\'est le numéro imprimé sur votre fiche d\'inscription HND/BTS (par exemple 26SWE0762 : année, code de filière, numéro). Il est vérifié sur la liste officielle du MINESUP et avec votre nom.')}</p>
+      <p class="small muted">${LBL('The MINESUP number is printed on your HND/BTS registration form (for example 26SWE0762: year, field code, number). Both numbers must belong to the same person. Choosing your name above fills both fields.', 'Le numéro MINESUP figure sur votre fiche d\'inscription HND/BTS (par exemple 26SWE0762 : année, code de filière, numéro). Les deux numéros doivent appartenir à la même personne. Le choix de votre nom remplit les deux champs.')}</p>
       <button class="btn gold ms-cta" data-a="msclear">${LBL('Verify', 'Vérifier')}</button></div>`;
   }
+  document.addEventListener('change', e => {
+    const el = e.target; if (!el || !el.dataset || el.dataset.f !== 'msc.pick') return;
+    const x = (DIR || []).find(r => r.matric === el.value); if (!FORMS.msc) FORMS.msc = {};
+    FORMS.msc.pick = el.value; FORMS.msc.matric = x ? x.matric : ''; FORMS.msc.msNo = x ? x.msNo : '';
+    const a = document.querySelector('[data-f="msc.matric"]'), b = document.querySelector('[data-f="msc.msNo"]');
+    if (a) a.value = FORMS.msc.matric; if (b) b.value = FORMS.msc.msNo;
+  });
   function ownGate(u) {
     const fr = LANG === 'fr';
     if (typeof servicePaid === 'function' && !servicePaid(u)) {
@@ -232,21 +289,43 @@
       return head() + criteria() + msNoCard(true);
     }
     if (!c.msOk) { if (!FORMS.msc) FORMS.msc = { matric: '' }; return head() + criteria() + msNoCard(false); }
-    if (!c.cleared) {
-      const due = c.due ? c.due.k : '';
-      const platformDone = due !== 'platform', regDone = platformDone && due !== 'registration';
-      const rows = [
-        [true, LBL('Service fee (2,000 XAF)', 'Frais de service (2 000 XAF)')],
-        [true, LBL('MINESUP matricule verified: ', 'Matricule MINESUP vérifié : ') + c.msNo + ' — ' + c.student.name],
-        [c.levelOk, LBL('HND or BTS qualification', 'Diplôme HND ou BTS')],
-        [platformDone, LBL('Platform charge (500 XAF)', 'Frais de plateforme (500 XAF)')],
-        [regDone, LBL('Registration fee', 'Frais d\'inscription')],
-        [!!c.tuition, LBL('Tuition: all due instalments paid', 'Scolarité : toutes les tranches exigibles payées')]
-      ];
-      return head() + `<div class="card gap ms-pop"><h3>${LBL('Step 3 — Registration and tuition clearance', 'Étape 3 — Situation d\'inscription et de scolarité')}</h3><ul class="ms-criteria">${rows.map(r => `<li><span class="${r[0] ? 'ms-pass' : 'ms-fail'}">${r[0] ? '✓' : '✕'}</span><span>${esc(r[1])}</span></li>`).join('')}</ul><div class="note">${LBL('The student pays these fees from the student\'s own ADI account (Fees and payments). When the officer in charge confirms the payment, come back and press Check again. The application form then opens.', 'L\'étudiant règle ces frais depuis son compte étudiant ADI (Frais et paiements). Lorsque le responsable confirme le paiement, revenez et appuyez sur Vérifier à nouveau. Le formulaire s\'ouvre alors.')}</div><p><button class="btn gold" data-a="msrecheck">${LBL('Check again', 'Vérifier à nouveau')}</button></p></div>`;
-    }
+    if (!c.cleared) return head() + feePanel(c);
     return '';
   }
+  const money = n => (typeof xaf === 'function' ? xaf(n) : Number(n).toLocaleString('en') + ' XAF');
+  function feePanel(c) {
+    const f = c.fee || {}, st = c.student || {}, pay = f.pay, momo = (typeof cfg === 'function' ? cfg().momo : '') || '';
+    const done = f.balance <= 0;
+    let h = `<div class="card gap ms-pop"><h3>${LBL('Step 3 — Tuition status', 'Étape 3 — Situation de scolarité')}</h3>
+      <p><b>${esc(st.name || '')}</b> · ADI ${esc(st.matric || '')} · MINESUP ${esc(c.msNo || '')}</p>
+      <div class="ms-fee"><div><span>${LBL('Official tuition', 'Scolarité officielle')}</span><b>${money(f.total || 0)}</b></div><div><span>${LBL('Paid and confirmed', 'Payé et confirmé')}</span><b>${money(f.paid || 0)}</b></div><div><span>${LBL('Outstanding balance', 'Solde restant')}</span><b class="${done ? 'ms-pass' : 'ms-fail'}">${money(f.balance || 0)}</b></div></div>`;
+    if (f.exempt) h += `<p class="small muted">${LBL('Level 2 student: exempt from registration, T-shirt and bank-account fees.', 'Étudiant de niveau 2 : exonéré des frais d\'inscription, de T-shirt et de compte bancaire.')}</p>`;
+    if (done && !pay) h += `<div class="note">${LBL('Your tuition is complete. Press Continue to open the application form.', 'Votre scolarité est complète. Appuyez sur Continuer pour ouvrir le formulaire.')}</div><p><button class="btn gold" data-a="msrecheck">${LBL('Continue', 'Continuer')}</button></p>`;
+    else {
+      h += `<div class="note bad">${done ? LBL('Tuition is complete, but one charge is still due before the form opens.', 'La scolarité est complète, mais un frais reste dû avant l\'ouverture du formulaire.') : LBL('Your tuition is not complete. The application form is locked until the balance is paid and confirmed by the Finance Office.', 'Votre scolarité n\'est pas complète. Le formulaire reste verrouillé jusqu\'au paiement et à la confirmation du solde par le service des Finances.')}</div>`;
+      if (pay && pay.pending) h += `<div class="note">${LBL('Your payment of ', 'Votre paiement de ')}<b>${money(pay.amount)}</b>${LBL(' is waiting for verification by the accountant. You will be notified here as soon as it is confirmed.', ' attend la vérification du comptable. Vous serez notifié ici dès sa confirmation.')}</div><p><button class="btn" data-a="msrecheck">${LBL('Check again', 'Vérifier à nouveau')}</button></p>`;
+      else if (pay) {
+        h += `<h4>${LBL('Pay now: ', 'Payer maintenant : ')}${esc(pay.kind === 'platform' ? LBL('Platform charge', 'Frais de plateforme') : pay.kind === 'tuition_balance' ? LBL('Outstanding tuition balance', 'Solde de scolarité restant') : pay.label)} — ${money(pay.amount)}</h4>
+        <p>${LBL('Send exactly this amount by Mobile Money to ', 'Envoyez exactement ce montant par Mobile Money au ')}<b class="ms-momo">${esc(momo)}</b>${LBL('. Then enter the transaction ID from the confirmation message.', '. Puis saisissez l\'identifiant de transaction du message de confirmation.')}</p>
+        ${inp('msp.ref', LBL('MoMo transaction ID', 'Identifiant de transaction MoMo'), { ph: 'e.g. 1234567890' })}${inp('msp.phone', LBL('Phone number used to pay', 'Numéro utilisé pour payer'), { ph: '6XXXXXXXX', type: 'tel' })}
+        <p><button class="btn gold" data-a="mspay">${LBL('Submit payment for verification', 'Soumettre le paiement pour vérification')}</button></p>`;
+      }
+    }
+    return h + `</div>`;
+  }
+  ACT.mspay = async el => {
+    const c = clearFor(me()) || {}, f = c.fee || {}, pay = f.pay, w = FORMS.msp || {};
+    if (!pay || !c.student) return;
+    const ref = String(w.ref || '').trim(), phone = String(w.phone || '').trim();
+    if (ref.length < 6) return focusField('msp.ref', LBL('Enter the MoMo transaction ID (at least 6 characters).', 'Saisissez l\'identifiant de transaction MoMo (6 caractères minimum).'));
+    if (phone.length < 8) return focusField('msp.phone', LBL('Enter the phone number you paid from.', 'Saisissez le numéro utilisé pour payer.'));
+    if (el) el.disabled = true;
+    try {
+      const id = uid('pay');
+      await api('/api/doc/payments/' + id, { method: 'PUT', body: { id, userId: me().id, matric: c.student.matric, kind: pay.kind, label: pay.label, amount: pay.amount, ref, payerPhone: phone, status: 'pending', momoTo: (typeof cfg === 'function' ? cfg().momo : '') } });
+      FORMS.msp = {}; toast(LBL('Payment sent. The accountant will verify it and notify you.', 'Paiement envoyé. Le comptable le vérifiera et vous notifiera.')); if (typeof apiSync === 'function') await apiSync(); CLEAR = null; render();
+    } catch (e) { if (el) el.disabled = false; const m = e.message || LBL('Could not send the payment', 'Envoi impossible'); focusField('msp.ref', m); toast(m, 1); }
+  };
   ACT.msrecheck = () => { CLEAR = null; render(); };
   ACT.msclear = async el => {
     const f = FORMS.msc || {}, own = isOwn(me()), c = clearFor(me()) || {};
@@ -739,4 +818,46 @@
   if (typeof render === 'function') { const prev = render; render = function () { const r = prev.apply(this, arguments); try { applyFloat(); } catch (e) {} return r; }; }
   window.addEventListener('hashchange', () => setTimeout(applyFloat, 60));
   setTimeout(applyFloat, 400);
+
+  /* ===== Tap-to-field and keyboard-safe typing ===== */
+  (function () {
+    const mv = document.querySelector('meta[name="viewport"]');
+    if (mv && !/interactive-widget/.test(mv.content)) mv.content += ', interactive-widget=resizes-content';
+    const isField = el => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !['hidden', 'checkbox', 'radio', 'button', 'submit', 'file'].includes(el.type) && !el.disabled && !el.readOnly;
+    const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+    let intent = 0;
+    document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-a],a[href^="#/"],a[href^="#"]')) intent = Date.now(); }, true);
+    document.addEventListener('touchend', e => { if (e.target.closest && e.target.closest('[data-a],a[href^="#"]')) intent = Date.now(); }, { capture: true, passive: true });
+    function land() {
+      if (Date.now() - intent > 4000) return;
+      if (isField(document.activeElement)) return;
+      if (Array.from(document.querySelectorAll('.modal-bg,.modal,[role="dialog"]')).some(visible)) return;
+      const root = document.getElementById('app') || document.body;
+      if (/^#\/?$/.test(location.hash)) return;
+      const f = Array.from(root.querySelectorAll('input,textarea,select')).filter(el => isField(el) && visible(el) && !el.closest('nav,header,.nav,.topbar,#chat,.chat'));
+      const target = f.find(el => !String(el.value || '').trim()) || null;
+      window.scrollTo({ top: 0 });
+      if (target) { try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); } setTimeout(() => keepVisible(target), 60); }
+      else { const h = root.querySelector('h1,h2'); if (h) h.scrollIntoView({ block: 'start' }); }
+    }
+    window.addEventListener('hashchange', () => { [250, 800, 1600].forEach(ms => setTimeout(land, ms)); });
+    function kbHeight() { const v = window.visualViewport; return v ? Math.max(0, Math.round(window.innerHeight - v.height - v.offsetTop)) : 0; }
+    function keepVisible(el) {
+      el = el || document.activeElement; if (!isField(el)) return;
+      const v = window.visualViewport, h = v ? v.height : window.innerHeight, top = v ? v.offsetTop : 0, r = el.getBoundingClientRect();
+      if (r.bottom > top + h - 24 || r.top < top + 70) {
+        const want = r.top - (top + h / 2 - r.height / 2);
+        window.scrollBy({ top: want, behavior: 'smooth' });
+      }
+    }
+    function padFor() {
+      const kb = kbHeight(), on = kb > 80;
+      document.documentElement.style.setProperty('--kb', kb + 'px');
+      document.body.style.paddingBottom = on ? (kb + 24) + 'px' : '';
+      if (on) setTimeout(() => keepVisible(), 60);
+    }
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', padFor); window.visualViewport.addEventListener('scroll', () => { if (kbHeight() > 80) keepVisible(); }); }
+    document.addEventListener('focusin', e => { if (isField(e.target)) { setTimeout(() => keepVisible(e.target), 320); setTimeout(() => keepVisible(e.target), 700); } });
+    document.addEventListener('focusout', () => setTimeout(() => { if (!isField(document.activeElement)) { document.body.style.paddingBottom = ''; } }, 200));
+  })();
 })();

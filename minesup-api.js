@@ -24,7 +24,7 @@ const ROSTER_DEFAULT = [
   ['26ACC0305', 'AJANGANAG FRANCINE UDAKOH', 'HND', 'ACC', 18.5], ['26ACC0347', 'MANISHIMWE DENISE', 'HND', 'ACC', 18.5],
   ['26ACC0306', 'NGO NKOT ERNESTINE BRENDA', 'HND', 'ACC', 17.5],
   ['26CGE0844', 'NSOGA MAHOTH OSCAR GUY LEBEL', 'BTS', 'CGE', 18], ['26CGE0942', 'BENE BOGNOKO PRISCILIA', 'BTS', 'CGE', 17],
-  ['26CGE0944', 'TADIUM ARMELLE TATIANA', 'BTS', 'CGE', 18], ['26CGE0944', 'NGAH NOAH PERPETUE GIGELE ROZANA', 'BTS', 'CGE', 18.5],
+  ['26CGE0945', 'TADIUM ARMELLE TATIANA', 'BTS', 'CGE', 18], ['26CGE0944', 'NGAH NOAH PERPETUE GIGELE ROZANA', 'BTS', 'CGE', 18.5],
   ['26CGE0910', 'GUIEBIE PATRICIA', 'BTS', 'CGE', 16.5], ['26CGE0943', 'DONA MENGHE CHEARNLE YASMIN', 'BTS', 'CGE', 17.5]
 ].map(r => ({ no: r[0], name: r[1], level: r[2], field: r[3], mark: r[4] }));
 const normNo = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -39,6 +39,8 @@ function rosterMatch(store, no, name) {
   const n = normNo(no); if (!noOk(n)) return { ok: false, why: 'format' };
   const hits = rosterList(store).filter(r => r.no === n); if (!hits.length) return { ok: false, why: 'not_listed' };
   const mine = fold(name);
+  const linked = Object.values(store.all('students')).some(s => s && normNo(s.msNo) === n && fold(s.name).join(' ') === mine.join(' '));
+  if (linked) return { ok: true, entry: hits[0], no: n };
   const hit = hits.find(r => { const t = fold(r.name); const common = t.filter(w => mine.includes(w)).length; return common >= Math.min(2, t.length); });
   return hit ? { ok: true, entry: hit, no: n } : { ok: false, why: 'name' };
 }
@@ -141,6 +143,7 @@ async function apply(ctx, u, id, o, n) {
     await save('msapp', id, doc);
     await audit(u, 'MINESUP application ' + ref);
     for (const s of usersWith('manage_students')) await notifyUser(s.id, bi('MINESUP application to review', 'Demande MINESUP à examiner'), st.name + ' (' + st.matric + ') — ' + ref);
+    await notifyUser(u.id, bi('MINESUP application received', 'Demande MINESUP reçue'), ref + ' — ' + bi('Your application is with the Registry. You may download your application form as proof that you applied. The transcript itself cannot be downloaded: you will be notified when it is ready, and you collect it in person at the office in charge of issuing transcripts.', 'Votre demande est à la scolarité. Vous pouvez télécharger votre formulaire comme preuve de votre demande. Le relevé lui-même ne se télécharge pas : vous serez averti lorsqu\'il est prêt et vous le retirez en personne au bureau chargé de la délivrance des relevés.'));
     return;
   }
   const staff = u.role === 'super_admin' || R.has(u, 'manage_students') || R.has(u, 'manage_transcripts');
@@ -172,7 +175,49 @@ async function apply(ctx, u, id, o, n) {
     : status === 'rejected'
       ? bi('MINESUP application rejected', 'Demande MINESUP rejetée')
       : bi('MINESUP application updated', 'Demande MINESUP mise à jour');
-  await notifyUser(o.userId, title, (o.ref || '') + (remark ? ' — ' + remark : ''));
+  const collect = status === 'approved' ? ' — ' + bi('Your transcript will be issued in person by the office in charge of issuing transcripts. It cannot be downloaded online. You will be told when to come.', 'Votre relevé sera remis en personne par le bureau chargé de la délivrance des relevés. Il ne peut pas être téléchargé en ligne. Vous serez informé de la date de retrait.') : '';
+  await notifyUser(o.userId, title, (o.ref || '') + (remark ? ' — ' + remark : '') + collect);
+}
+
+
+/* The HND/BTS final-year cohort (defence session 2026): ADI names, the MINESUP matricule and the tuition paid to date, as recorded by Finance.
+   All are second-year students, so they are exempt from registration, T-shirt and bank-account fees. Seeded once; ADI matricules are issued by the portal. */
+const COHORT = [
+  ['Manishimwe Denise', '26ACC0347', 'HND', 'hnd-biz', 'hnd-biz:accounting', 350000],
+  ['Ngo Nkot Ernestine Brenda', '26ACC0306', 'HND', 'hnd-biz', 'hnd-biz:accounting', 350000],
+  ['Ajangang Francine Udakoh', '26ACC0305', 'HND', 'hnd-biz', 'hnd-biz:accounting', 350000],
+  ['Ossimbie Messina Denis Le Prince', '26SWE0929', 'HND', 'hnd-eng', 'hnd-eng:software-engineering', 400000],
+  ['Bate Gideon Tong', '26SWE0716', 'HND', 'hnd-eng', 'hnd-eng:software-engineering', 280000],
+  ['Dopgima Samuel Bumsamia', '26SWE0940', 'HND', 'hnd-eng', 'hnd-eng:software-engineering', 290000],
+  ['Nansou Nchimie Charly Junior', '26SWE0762', 'HND', 'hnd-eng', 'hnd-eng:software-engineering', 0],
+  ['Guiebie Patricia', '26CGE0910', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion', 350000],
+  ['Ngah Noah Perpetue Gigele Rozana', '26CGE0944', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion', 325000],
+  ['Don A Menghe Schearyl Yasmine', '26CGE0943', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion', 250000],
+  ['Bene Bognoko Priscillia', '26CGE0942', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion', 250000],
+  ['Nsoga Mahoth Oscar Guy Lebel', '26CGE0844', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion', 100000],
+  ['Tadium Armelle Tatiana', '26CGE0945', 'BTS', 'bts-biz', 'bts-biz:comptabilite-des-entreprises-et-gestion', 100000]
+].map(r => ({ name: r[0], no: r[1], level: r[2], gid: r[3], specId: r[4], paid: r[5] }));
+
+async function seedCohort(ctx) {
+  const { S, save, now, uid, logic } = ctx;
+  if (S.meta && S.meta.cohort26 === 'v1') return;
+  const d = new Date(now()), y = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1, ay = y + '/' + (y + 1);
+  let made = 0, n = 0;
+  for (const c of COHORT) {
+    logic.load(S);
+    const key = fold(c.name).slice().sort().join(' ');
+    let st = Object.values(S.all('students')).find(s => s && LEVELS.includes(s.level) && (normNo(s.msNo) === c.no || fold(s.name).slice().sort().join(' ') === key));
+    if (!st) { st = { matric: logic.core.newMatric(c.level), name: c.name, level: c.level, gid: c.gid, specId: c.specId, entryYear: y - 1, status: 'registered', email: '', phone: '' }; made++; }
+    st = Object.assign({}, st, { msNo: c.no, exemptReg: true });
+    await save('students', st.matric, st);
+    const ref = 'REC-' + st.matric;
+    if (c.paid > 0 && !Object.values(S.all('payments')).some(p => p && p.ref === ref)) {
+      n++;
+      await save('payments', uid('pay'), { userId: '', matric: st.matric, payerName: st.name, kind: 'tuition_rec', label: 'Tuition paid to date (recorded by the Finance Office)', amount: c.paid, ref, payerPhone: '', status: 'confirmed', at: now(), ay, method: 'recorded', momoTo: '', receiptNo: 'ADI/' + String(y) + '/REC' + String(n).padStart(3, '0'), confirmedBy: 'ADI Finance Office', confirmedAt: now() });
+    }
+  }
+  await S.setMeta('cohort26', 'v1');
+  console.log('[minesup] cohort seeded: ' + made + ' new student records');
 }
 
 async function seed(ctx) {
@@ -216,4 +261,4 @@ async function seed(ctx) {
   console.log('MINESUP demo ready — hnd.student@adiuniversity.com / fees.due@adiuniversity.com (Student@2026), registry@adiuniversity.com (Registry@2026)');
 }
 
-module.exports = { apply, seed, tuitionComplete, LEVELS, rosterList, rosterMatch, msVerified, normNo, noOk, ROSTER_DEFAULT };
+module.exports = { apply, seed, seedCohort, COHORT, fold, tuitionComplete, LEVELS, rosterList, rosterMatch, msVerified, normNo, noOk, ROSTER_DEFAULT };
