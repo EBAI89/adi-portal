@@ -1065,7 +1065,7 @@
 (function () {
   const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
   const root = document.documentElement;
-  let raf = 0, live = false, done = false;
+  let raf = 0, live = false, done = false, needIdle = 3500, lastTouch = 0, polls = 0, lastH = -1, steady = 0, poller = 0;
   const isHome = () => /^#?\/?(home)?\/?$/.test(location.hash) && typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
   const maxY = () => Math.max(0, Math.max(root.scrollHeight, document.body.scrollHeight, scroller().scrollHeight) - window.innerHeight);
   const scroller = () => document.scrollingElement || root;
@@ -1074,7 +1074,7 @@
   const evs = ['pointerdown', 'touchstart', 'mousedown', 'click', 'wheel', 'keydown'];
   function stop(toTop) {
     if (!live) return;
-    live = false; done = true; cancelAnimationFrame(raf);
+    live = false; needIdle = 30000; lastTouch = Date.now(); cancelAnimationFrame(raf);
     evs.forEach(n => window.removeEventListener(n, onUser, true));
     window.removeEventListener('hashchange', onHash);
     root.style.scrollBehavior = '';
@@ -1092,7 +1092,7 @@
     })(t0);
   }
   try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
-  let lastTouch = 0, polls = 0, lastH = -1, steady = 0, poller = 0;
+  
   function start() {
     if (window.scrollY > 4) jump(0);
     live = true; root.style.scrollBehavior = 'auto';
@@ -1111,11 +1111,13 @@
   }
   /* the page may still be loading on a slow connection: wait until it is complete, tall enough, stable, finished typing and untouched, then begin */
   function poll() {
-    if (done || live) { if (done) clearInterval(poller); return; }
-    if (++polls > 150) { clearInterval(poller); return; }          /* about 90 s after arrival */
+    if (live) return;
+    if (needIdle <= 3500 && ++polls > 150) needIdle = 30000;       /* the first attempt is made for about 90 s after arrival; afterwards the glide resumes only after 30 s of rest */
     if (!isHome()) return;
     if (window.adiTyping && window.adiTyping.active) return;
-    if (Date.now() - lastTouch < 3500) return;
+    if (Date.now() - lastTouch < needIdle) return;
+    const ae = document.activeElement; if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+    if (Array.from(document.querySelectorAll('.modal-bg,.modal,[role="dialog"],#chat.open,.chat.open')).some(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; })) return;
     const h = Math.max(root.scrollHeight, document.body.scrollHeight);
     steady = h === lastH ? steady + 1 : 0; lastH = h;
     if (steady < 2 || document.readyState !== 'complete') return;
@@ -1123,10 +1125,10 @@
     start();
   }
   /* touching or scrolling before the glide begins only postpones it; a deliberate click or key press cancels it */
-  ['pointerdown', 'touchstart', 'touchmove', 'wheel'].forEach(n => window.addEventListener(n, () => { if (!live) lastTouch = Date.now(); }, { capture: true, passive: true }));
-  ['click', 'keydown'].forEach(n => window.addEventListener(n, e => { if (!live && e.isTrusted !== false) done = true; }, { capture: true, passive: true }));
-  function arm() { clearInterval(poller); polls = 0; poller = setInterval(poll, 600); }
-  window.adiTourRestart = function () { stop(false); done = false; arm(); };
+  /* any touch, scroll gesture, click or key press postpones the glide; after the first interaction it resumes only after 30 s without touching the screen */
+  ['pointerdown', 'touchstart', 'touchmove', 'wheel', 'click', 'keydown'].forEach(n => window.addEventListener(n, e => { if (!live && e.isTrusted !== false) { lastTouch = Date.now(); if (n === 'click' || n === 'keydown') needIdle = 30000; } }, { capture: true, passive: true }));
+  function arm() { clearInterval(poller); polls = 0; poller = setInterval(poll, 800); }
+  window.adiTourRestart = function () { stop(false); needIdle = 3500; lastTouch = 0; arm(); };
   arm();
 })();
 
