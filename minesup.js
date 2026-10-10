@@ -927,8 +927,9 @@
     const g = document.querySelector('.adi-greet:not(.panel)') || document.querySelector('.adi-greet');
     if (!g) { greetOn = 0; return; }
     const holder = g.closest('.adi-bye') ? g : g;
-    if (!greetOn) { greetOn = Date.now(); holder.classList.add('ms-popout'); }
+    if (!greetOn) { greetOn = Date.now(); holder.classList.add('ms-popout'); try { setTimeout(() => window.typeGreeting && window.typeGreeting(holder), 350); } catch (e) {} }
     else if (Date.now() - greetOn < 900 && !holder.classList.contains('ms-popout')) holder.classList.add('ms-popout');
+    if (greetOn && Date.now() - greetOn > 900) { try { setTimeout(() => window.typeGreeting && window.typeGreeting(holder), 350); } catch (e) {} }
   }
   if (typeof render === 'function') { const prevG = render; render = function () { const r = prevG.apply(this, arguments); try { greetEntry(); } catch (e) {} return r; }; }
   function greetExit(e) {
@@ -985,14 +986,50 @@
   })();
 })();
 
+/* ===== Greeting typewriter: the welcome and closing texts are written out character by character, from the first letter to the last ===== */
+(function () {
+  const typed = new Set(); window.adiTyping = { active: false };
+  let cancelFlag = false;
+  const finishNow = () => { cancelFlag = true; };
+  ['pointerdown', 'touchstart', 'keydown'].forEach(n => window.addEventListener(n, finishNow, { capture: true, passive: true }));
+  const completed = new Set(), prog = {}; let token = 0;
+  setInterval(() => { try { document.querySelectorAll('.adi-greet:not(.panel)').forEach(b => { const r = b.getBoundingClientRect(); if (r.height > 20) window.typeGreeting(b); }); } catch (e) {} }, 300);
+  window.typeGreeting = function (box) {
+    if (!box || !box.isConnected || box.classList.contains('panel') || box.dataset.typed) return;
+    const els = Array.from(box.querySelectorAll('h2,.body,.close')).filter(e => e.children.length === 0 && e.textContent.trim());
+    if (!els.length) return;
+    const key = (typeof LANG !== 'undefined' ? LANG : '') + '|' + els.map(e => e.textContent.trim().slice(0, 40)).join('|');
+    if (completed.has(key)) return;
+    box.dataset.typed = '1';
+    const texts = els.map(e => e.textContent), total = texts.reduce((a, t) => a + t.length, 0), per = Math.max(7, Math.min(24, 9000 / total)), my = ++token;
+    els.forEach(e => { e.style.minHeight = e.offsetHeight + 'px'; });
+    let pos = prog[key] || 0;                                   /* characters already written (resumes if the page redraws the box) */
+    const caret = n => { let acc = 0; els.forEach((e, k) => { e.classList.toggle('ms-typing', n >= acc && n < acc + texts[k].length || (n === total && k === els.length - 1 && false)); acc += texts[k].length; }); };
+    const finish = () => { els.forEach((e, k) => { e.textContent = texts[k]; e.style.minHeight = ''; e.classList.remove('ms-typing'); }); completed.add(key); window.adiTyping.active = false; };
+    window.adiTyping.active = true; cancelFlag = false;
+    const stepN = Math.max(1, Math.round(16 / per));
+    (function step() {
+      if (my !== token) return;
+      if (cancelFlag) return finish();
+      if (!box.isConnected) { window.adiTyping.active = false; return; }
+      pos = Math.min(total, pos + stepN); prog[key] = pos;
+      let left = pos; els.forEach((e, k) => { const c = Math.max(0, Math.min(texts[k].length, left)); left -= texts[k].length; e.textContent = texts[k].slice(0, c); });
+      caret(pos);
+      if (pos >= total) return finish();
+      setTimeout(step, per * stepN);
+    })();
+  };
+})();
+
 /* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
 (function () {
-  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
   const root = document.documentElement;
   let raf = 0, live = false, done = false;
   const isHome = () => /^#?\/?(home)?\/?$/.test(location.hash) && typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
-  const maxY = () => Math.max(0, Math.max(root.scrollHeight, document.body.scrollHeight) - window.innerHeight);
-  const jump = y => { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); };
+  const maxY = () => Math.max(0, Math.max(root.scrollHeight, document.body.scrollHeight, scroller().scrollHeight) - window.innerHeight);
+  const scroller = () => document.scrollingElement || root;
+  const jump = y => { root.style.scrollBehavior = 'auto'; document.body.style.scrollBehavior = 'auto'; try { scroller().scrollTop = y; } catch (e) {} if (Math.abs((window.scrollY || scroller().scrollTop) - y) > 3) { try { window.scrollTo(0, y); } catch (e) {} } };
   const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   const evs = ['pointerdown', 'touchstart', 'mousedown', 'click', 'wheel', 'keydown'];
   function stop(toTop) {
@@ -1017,6 +1054,7 @@
   try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
   function begin() {
     if (done || live || reduce || !isHome()) return;
+    if (window.adiTyping && window.adiTyping.active && (begin.tries = (begin.tries || 0) + 1) < 80) { setTimeout(begin, 400); return; }
     if (window.scrollY > 4) jump(0);
     const end = maxY(); if (end < window.innerHeight * 0.8) return;
     live = true; root.style.scrollBehavior = 'auto';
@@ -1031,6 +1069,7 @@
       }, 700), true);
     }, 900);
   }
+  ['pointerdown', 'touchstart', 'keydown'].forEach(n => window.addEventListener(n, () => { if (!live) done = true; }, { capture: true, passive: true }));   /* a touch before the glide begins cancels it too */
   function arm() { setTimeout(begin, 1400); }
   window.adiTourRestart = function () { stop(false); done = false; setTimeout(begin, 1200); };
   if (document.readyState === 'complete') arm(); else window.addEventListener('load', arm);

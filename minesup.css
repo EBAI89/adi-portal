@@ -143,3 +143,7 @@ a.btn.apply-float{position:fixed;left:16px;bottom:16px;z-index:60;min-height:46p
 #sess-exp{position:fixed;left:0;right:0;margin:0 auto;width:fit-content;top:14px;z-index:2147483000;display:flex;gap:.7em;align-items:center;max-width:min(94vw,520px);background:#fff;color:#12151c;border-left:4px solid #C9A227;box-shadow:0 14px 40px rgba(7,24,58,.28);padding:.75em 1em;font-size:.92rem;animation:msPopOut .3s ease both}
 #sess-exp strong{color:#8A6A12;letter-spacing:.04em}
 #sess-exp button{margin-left:auto;background:none;border:0;font-size:1.3rem;line-height:1;cursor:pointer;color:#555}
+
+.ms-typing{position:relative}
+.ms-typing::after{content:'';display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-.12em;background:currentColor;animation:msCaret .8s steps(1) infinite}
+@keyframes msCaret{50%{opacity:0}}
