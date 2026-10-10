@@ -2024,14 +2024,16 @@ async function checkPw(pw, stored) {
 }
 const sign = v => crypto.createHmac('sha256', SECRET).update(v).digest('base64url');
 const pwTag = u => crypto.createHash('sha256').update(String(u.pw)).digest('base64url').slice(0, 10);
-function makeToken(u) { const v = u.id + '.' + (now() + 7 * 864e5) + '.' + pwTag(u); return v + '.' + sign(v); }
-function readToken(t) {
-  const p = String(t || '').split('.'); if (p.length !== 4) return null; const v = p.slice(0, 3).join('.');
-  const a = Buffer.from(sign(v)), b = Buffer.from(p[3]); if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  if (Number(p[1]) < now()) return null; const u = S.get('users', p[0]); if (!u || pwTag(u) !== p[2] || u.status !== 'active') return null; return u;
+const IDLE_SRV = 6 * 60e3, ABS_SRV = 8 * 3600e3;   // idle window (5 min client-side + 1 min grace) and absolute session lifetime
+function makeToken(u, iat) { iat = iat || now(); const v = u.id + '.' + (now() + IDLE_SRV) + '.' + iat + '.' + pwTag(u); return v + '.' + sign(v); }
+function readToken(t, info) {
+  const p = String(t || '').split('.'); if (p.length !== 5) return null; const v = p.slice(0, 4).join('.');
+  const a = Buffer.from(sign(v)), b = Buffer.from(p[4]); if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  if (Number(p[1]) < now() || Number(p[2]) + ABS_SRV < now()) return null; const u = S.get('users', p[0]); if (!u || pwTag(u) !== p[3] || u.status !== 'active') return null; if (info) info.iat = Number(p[2]); return u;
 }
-const cookie = (tok, maxAge) => `adi_sid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${PROD ? '; Secure' : ''}`;
-function userOf(req) { const m = /(?:^|;\s*)adi_sid=([^;]+)/.exec(req.headers.cookie || ''); return m ? readToken(m[1]) : null; }
+// session cookie: no Max-Age, so the browser discards it when it is closed; the signed token itself carries the idle and absolute limits
+const cookie = (tok, maxAge) => `adi_sid=${tok}; Path=/; HttpOnly; SameSite=Lax;${maxAge > 0 ? '' : ' Max-Age=0;'}${PROD ? ' Secure;' : ''}`.replace(/;$/, '');
+function userOf(req, info) { const m = /(?:^|;\s*)adi_sid=([^;]+)/.exec(req.headers.cookie || ''); return m ? readToken(m[1], info) : null; }
 
 const emailOn = () => ['resend', 'brevo'].includes(String(E.EMAIL_PROVIDER || '').toLowerCase());
 function tempPassword() { const A = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'; let s = ''; const r = crypto.randomBytes(12); for (let i = 0; i < 12; i++) s += A[r[i] % A.length]; return s.slice(0, 4) + '-' + s.slice(4, 8) + '-' + s.slice(8); }
@@ -2285,7 +2287,9 @@ function sideMod(name) {
 
 
 async function route(req, res) {
-  const url = new URL(req.url, 'http://x'); const p = url.pathname; const u = userOf(req);
+  const url = new URL(req.url, 'http://x'); const p = url.pathname; const sinfo = {}; const u = userOf(req, sinfo);
+  if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
+  if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
   if (p === '/calendar.ics' && req.method === 'GET') {          // the public calendar: people can subscribe to it, and their phone calendar follows any change the university makes
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
     res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ADI-calendar-2026-2027-' + lang.toUpperCase() + '.ics"', 'Cache-Control': 'public, max-age=900', 'X-Content-Type-Options': 'nosniff' }); return res.end(core.calIcs(ev, lang, new Date().toISOString()));

@@ -1032,3 +1032,77 @@
   function arm() { setTimeout(begin, 1400); }
   if (document.readyState === 'complete') arm(); else window.addEventListener('load', arm);
 })();
+
+/* ===== Session security: 5-minute inactivity limit, expiry notice, sign-out when the portal is closed ===== */
+(function () {
+  const IDLE = 5 * 60 * 1000, KEY = 'adi_tab', LAST = 'adi_last';
+  const ss = { get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} }, del: k => { try { sessionStorage.removeItem(k); } catch (e) {} } };
+  const signed = () => { try { return typeof me === 'function' && !!me(); } catch (e) { return false; } };
+  const fr = () => typeof LANG !== 'undefined' && LANG === 'fr';
+  let lastPing = 0, expiring = false;
+
+  function notice() {
+    const old = document.getElementById('sess-exp'); if (old) old.remove();
+    const d = document.createElement('div'); d.id = 'sess-exp'; d.setAttribute('role', 'alert');
+    d.innerHTML = '<strong>' + (fr() ? 'Session expirée' : 'Session expired') + '</strong><span>' + (fr() ? 'Veuillez vous reconnecter.' : 'Please sign in again.') + '</span><button type="button" aria-label="' + (fr() ? 'Fermer' : 'Close') + '">×</button>';
+    d.querySelector('button').onclick = () => d.remove();
+    document.body.appendChild(d); setTimeout(() => { try { d.remove(); } catch (e) {} }, 20000);
+  }
+  function wipe(then) {
+    const done = () => { try { SESSION = null; COLS.forEach(c => { if (c !== 'settings') S[c] = {}; }); API.vk = ''; } catch (e) {} ss.del(KEY); try { localStorage.removeItem(LAST); } catch (e) {} Promise.resolve(typeof apiSync === 'function' ? apiSync() : 0).catch(() => {}).then(then); };
+    try { if (typeof MODE !== 'undefined' && MODE === 'api') fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' }).catch(() => {}).then(done); else done(); } catch (e) { done(); }
+  }
+  window.sessionExpire = function (silent) {
+    if (expiring) return; expiring = true;
+    wipe(() => { try { go('login'); } catch (e) { location.hash = '#/login'; } if (!silent) notice(); setTimeout(() => { expiring = false; }, 1500); });
+  };
+
+  /* every request made while the visitor is active renews the server-side idle window; a refused session shows the expiry notice */
+  const f0 = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    let url = typeof input === 'string' ? input : (input && input.url) || '';
+    const api = /^\/api\//.test(url.replace(location.origin, ''));
+    if (api) {
+      init = Object.assign({}, init); const h = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
+      if (typeof idleAt !== 'undefined' && Date.now() - idleAt < 90000) h.set('X-ADI-Active', '1');
+      init.headers = h;
+    }
+    return f0(input, init).then(r => {
+      if (api) {
+        const path = url.replace(location.origin, '').split('?')[0];
+        if (r.ok && /^\/api\/(login|signup|mail\/setup|password)$/.test(path)) ss.set(KEY, '1');
+        if (r.status === 401 && signed() && !/^\/api\/(login|logout|session)/.test(path)) setTimeout(() => window.sessionExpire(), 50);
+      }
+      return r;
+    });
+  };
+
+  /* activity: scrolling and reading count as use; a light ping keeps the server window aligned with the on-screen timer */
+  function active() {
+    if (typeof idleAt !== 'undefined') idleAt = Date.now();
+    try { localStorage.setItem(LAST, String(Date.now())); } catch (e) {}
+    if (signed() && Date.now() - lastPing > 45000) {
+      lastPing = Date.now();
+      f0('/api/session/ping', { method: 'POST', headers: { 'X-ADI-Active': '1', 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' })
+        .then(r => r.json()).then(j => { if (signed() && j && !j.me) window.sessionExpire(); }).catch(() => {});
+    }
+  }
+  let thr = 0;
+  ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll'].forEach(ev => window.addEventListener(ev, e => {
+    if (e.target && e.target.closest && e.target.closest('#idle-warn')) return;
+    const t = Date.now(); if (t - thr < 1500) return; thr = t; active();
+  }, { capture: true, passive: true }));
+
+  /* a sleeping device or a restored tab: judge the elapsed time as soon as the page is visible again */
+  function wake() {
+    if (!signed()) return;
+    let last = 0; try { last = Number(localStorage.getItem(LAST)) || 0; } catch (e) {}
+    if (last && Date.now() - last > IDLE) window.sessionExpire();
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+  window.addEventListener('pageshow', wake); window.addEventListener('focus', wake);
+
+  /* closing the portal ends the session: a signed-in page that this tab did not sign in is signed out at once */
+  setInterval(() => { if (signed() && !ss.get(KEY) && !expiring) window.sessionExpire(true); }, 1000);
+  window.addEventListener('pagehide', () => { /* the session cookie is also discarded by the browser; nothing is stored beyond the tab */ });
+})();
