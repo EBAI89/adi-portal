@@ -1021,6 +1021,16 @@
   };
 })();
 
+/* ===== Opening or refreshing the portal always begins at the top of the home page (except password-reset and activation links, and the back button) ===== */
+(function () {
+  let nav = ''; try { nav = (performance.getEntriesByType('navigation')[0] || {}).type || ''; } catch (e) {}
+  let hint = null; try { hint = sessionStorage.getItem('adi_tab'); } catch (e) {}
+  const keep = /^#\/(reset|activate)(\/|$)/.test(location.hash), home = /^#?\/?(home)?\/?$/.test(location.hash);
+  if (nav === 'back_forward' || keep || home || hint) return;
+  try { go('home'); } catch (e) { location.hash = '#/home'; }
+  try { window.scrollTo(0, 0); } catch (e) {}
+})();
+
 /* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
 (function () {
   const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
