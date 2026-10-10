@@ -1106,6 +1106,13 @@
       return r;
     };
   }
+  /* a form-level notice that names a field (e-mail, telephone, password, name, matricule...) is repeated above that field */
+  const KEYS = [[/e-?mail|courriel/i, el => el.type === 'email' || /mail/i.test(el.dataset.f)], [/phone|t[ée]l[ée]phone|mobile/i, el => el.type === 'tel' || /phone|tel/i.test(el.dataset.f)], [/password|mot de passe/i, el => el.type === 'password' && !/2$/.test(el.dataset.f)], [/matric/i, el => /matric|adi|ms/i.test(el.dataset.f)], [/\b(full )?name\b|\bnom\b/i, el => /name|nom/i.test(el.dataset.f)], [/birth|naissance|\bdob\b/i, el => /dob|birth|naiss/i.test(el.dataset.f)]];
+  function toField(msg) {
+    if (!msg || document.querySelector('.fld-bad .ferr')) return;
+    const fs = Array.from(document.querySelectorAll('#app input[data-f],#app select[data-f],#app textarea[data-f]')).filter(el => el.type !== 'hidden' && vis(el));
+    for (const [re, test] of KEYS) { if (!re.test(msg)) continue; const el = fs.find(test); if (el && typeof focusField === 'function') { focusField(el.dataset.f, String(msg).replace(/\s+/g, ' ').trim()); return; } }
+  }
   /* other error notices raised by an action: form-level notes and error toasts */
   ['click', 'touchend', 'keydown', 'submit', 'change'].forEach(n => document.addEventListener(n, () => { lastAct = Date.now(); }, { capture: true, passive: true }));
   new MutationObserver(ms => {
@@ -1114,7 +1121,7 @@
       if (nd.id === 'err-float' || (nd.closest && nd.closest('#err-float'))) continue;
       if (nd.classList.contains('toast') && nd.classList.contains('err')) { present(nd.textContent, null, 9000); continue; }
       const note = nd.matches && nd.matches('.note.bad') ? nd : (nd.querySelector && nd.querySelector('.note.bad'));
-      if (note && Date.now() - lastAct < 5000 && !note.closest('#err-float')) present(note.textContent, note, 0);
+      if (note && Date.now() - lastAct < 5000 && !note.closest('#err-float')) { present(note.textContent, note, 0); try { toField(note.textContent); } catch (e) {} }
     }
   }).observe(document.body, { childList: true, subtree: true });
   window.addEventListener('hashchange', clear);
