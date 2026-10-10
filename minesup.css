@@ -109,3 +109,33 @@ a.btn.apply-float{position:fixed;left:16px;bottom:16px;z-index:60;min-height:46p
 @media(max-width:600px){a.btn.apply-float{left:12px;bottom:12px;padding:10px 18px}}
 
 .ms-fee{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}.ms-fee>div{background:var(--card,#fff);border:1px solid rgba(10,32,72,.15);border-radius:10px;padding:10px 12px}.ms-fee span{display:block;font-size:12px;opacity:.75}.ms-fee b{font-size:17px}.ms-momo{font-size:18px;letter-spacing:.5px;color:#0a2048}.ms-pass{color:#0a7a3d}.ms-fail{color:#b3261e}
+
+/* credentials, warning dialog, hints */
+.ms-credrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 12px;margin:8px 0;border:1px solid rgba(10,32,72,.18);border-radius:10px;background:#f7f9fd}
+.ms-credlab{flex:1 1 100%;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#4a5878}
+.ms-credrow b{flex:1 1 auto;word-break:break-all;font-size:1.02rem;color:#0a2048}.ms-otp{font-size:1.2rem!important;letter-spacing:.12em}
+.ms-warn-bg{position:fixed;inset:0;z-index:100000;background:rgba(7,24,58,.72);display:grid;place-items:center;padding:16px;animation:msFade .25s ease both}
+.ms-warn{max-width:480px;background:#fff;border-radius:16px;padding:22px 22px 20px;border-top:5px solid #c9a227;box-shadow:0 24px 60px rgba(0,0,0,.4);animation:msPopOut .38s cubic-bezier(.2,1.3,.4,1) both}
+.ms-warn h3{margin:.3em 0 .5em}.ms-warn p{font-size:.93rem;line-height:1.5}.ms-warn .btn{width:100%;margin-top:6px}
+.ms-warn-ic{width:42px;height:42px;border-radius:50%;background:#b3261e;color:#fff;font-weight:800;font-size:1.5rem;display:grid;place-items:center}
+.ms-hint{display:block;margin:4px 2px 10px;font-size:.78rem;line-height:1.4;color:#56627f}
+.ms-hint+.ms-hint{display:none}
+/* greeting: compact band with the full welcome text, slim closing box, pop animations */
+.adi-greet .body{display:block!important;-webkit-line-clamp:unset!important;overflow:visible!important;font-size:.84rem!important;line-height:1.5!important}
+.adi-greet .inner{grid-template-columns:minmax(150px,230px) 1fr!important;column-gap:22px!important}
+.adi-greet .body{grid-row:1 / span 3!important}
+.adi-greet .close{grid-column:1!important;margin:2px 0 0!important}
+@media(max-width:700px){.adi-greet .inner{grid-template-columns:1fr!important}.adi-greet .body{grid-column:1!important;grid-row:auto!important;font-size:.8rem!important;display:-webkit-box!important;-webkit-line-clamp:6!important;-webkit-box-orient:vertical;overflow:hidden!important}}
+.adi-bye{min-height:0!important;display:block!important;padding:18px 14px!important}
+.adi-bye .adi-greet{width:min(420px,100%)!important;margin:0 auto!important;border-radius:12px!important;padding:0!important}
+.adi-bye .adi-greet .inner{display:block!important;padding:12px 16px!important}
+.adi-bye .adi-greet h2{font-size:1.05rem!important;margin:.1em 0 .3em!important}
+.adi-bye .adi-greet .body{font-size:.8rem!important;line-height:1.45!important}
+.adi-bye .adi-greet .btn{padding:8px 16px;min-height:38px;font-size:.9rem}
+@keyframes msPopOut{0%{opacity:0;transform:translateY(-14px) scale(.86)}60%{opacity:1;transform:translateY(2px) scale(1.025)}100%{opacity:1;transform:none}}
+@keyframes msPopIn{0%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-12px) scale(.86)}}
+@keyframes msFade{from{opacity:0}to{opacity:1}}
+.ms-popout{animation:msPopOut .55s cubic-bezier(.2,1.2,.4,1) both;transform-origin:top center}
+.ms-popin-clone{animation:msPopIn .38s ease-in both;transform-origin:top center}
+@media(prefers-reduced-motion:reduce){.ms-popout,.ms-popin-clone,.ms-warn{animation:none!important}}
+.adi-bye .adi-greet .crest{display:none!important}.adi-bye .adi-greet .inner{padding:10px 16px!important}

@@ -462,7 +462,7 @@ module.exports = function makeMailbox(ctx) {
         const n = await migrateConfirm(u, b.otp);
         return send(res, 200, { ok: true, adiEmail: n.email }, { 'Set-Cookie': ctx.cookie(ctx.makeToken(n), 7 * 86400) }), true;
       }
-      if (p === '/api/mail/setup') return send(res, 200, await setup(u, b)), true;
+      if (p === '/api/mail/setup') { const r = await setup(u, b); const nu = S.get('users', u.id); return send(res, 200, r, nu ? { 'Set-Cookie': ctx.cookie(ctx.makeToken(nu), 7 * 86400) } : undefined), true; }
       if (p === '/api/mail/issue') return send(res, 200, { mailbox: await issueManual(u, b) }), true;
       if (p === '/api/mail/rename') return send(res, 200, { mailbox: await rename(u, b) }), true;
       if (p === '/api/mail/suspend') return send(res, 200, { mailbox: await setStatus(u, b.id, 'suspended') }), true;

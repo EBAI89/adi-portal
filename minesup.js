@@ -810,7 +810,7 @@
   function applyFloat() {
     let el = document.getElementById('apply-float');
     const r = location.hash.replace(/^#\/?/, '').split('/')[0];
-    const show = typeof me === 'function' && !me() && !['signup', 'login', 'setup', 'issued'].includes(r) && !!document.querySelector('header.top') && !document.querySelector('.appnav');
+    const show = typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
     if (!show) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('a'); el.id = 'apply-float'; el.className = 'btn gold apply-float'; el.href = '#/signup'; document.body.appendChild(el); }
     el.textContent = (typeof LANG !== 'undefined' && LANG === 'fr') ? 'Postuler maintenant' : 'Apply now';
@@ -818,6 +818,129 @@
   if (typeof render === 'function') { const prev = render; render = function () { const r = prev.apply(this, arguments); try { applyFloat(); } catch (e) {} return r; }; }
   window.addEventListener('hashchange', () => setTimeout(applyFloat, 60));
   setTimeout(applyFloat, 400);
+
+
+  /* ===== MINESUP sign-up: credentials screen and activation ===== */
+  const copyText = txt => { try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt); } catch (e) {} return new Promise((ok, no) => { try { const t = document.createElement('textarea'); t.value = txt; t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); ok(); } catch (e) { no(e); } }); };
+  function viewIssuedMs() {
+    const f = FORMS.issued || {}, shown = !!f.show;
+    const warn = f.ack ? '' : `<div class="ms-warn-bg" role="alertdialog" aria-modal="true" aria-labelledby="ms-warn-t"><div class="ms-warn"><div class="ms-warn-ic">!</div><h3 id="ms-warn-t">${LBL('Important: save your sign-in details', 'Important : conservez vos identifiants')}</h3>
+      <p>${LBL('Copy your ADI email address and one-time password now and paste them in a place where you can retrieve them, such as a note on your phone or a saved message. You will need both in the next step to complete the creation of your ADI account and to choose your own password.', 'Copiez dès maintenant votre adresse ADI et votre mot de passe à usage unique et collez-les dans un endroit où vous pourrez les retrouver, par exemple une note sur votre téléphone ou un message enregistré. Vous en aurez besoin à l\'étape suivante pour achever la création de votre compte ADI et choisir votre propre mot de passe.')}</p>
+      <p class="small">${LBL('Both items have also been sent to the personal email address you gave at the start of the registration.', 'Les deux éléments ont aussi été envoyés à l\'adresse e-mail personnelle indiquée au début de l\'inscription.')}</p>
+      <button type="button" class="btn gold" data-a="msissueack">${LBL('I understand — show my details', 'J\'ai compris — afficher mes identifiants')}</button></div></div>`;
+    return pubShell(`${warn}<div class="auth"><div class="card ms-cred"><p class="ms-kicker">${LBL('Step 1 of 2', 'Étape 1 sur 2')}</p><h2>${LBL('Your ADI sign-in details', 'Vos identifiants ADI')}</h2>
+      <p class="muted">${LBL('An institutional account has been opened for your MINESUP application.', 'Un compte institutionnel a été ouvert pour votre demande MINESUP.')}</p>
+      <div class="ms-credrow"><span class="ms-credlab">${LBL('ADI email address', 'Adresse ADI')}</span><b id="ms-c-email">${esc(f.email || '')}</b><button type="button" class="btn sm ghost" data-a="msissuecopy" data-k="email">${LBL('Copy', 'Copier')}</button></div>
+      <div class="ms-credrow"><span class="ms-credlab">${LBL('One-time password', 'Mot de passe à usage unique')}</span><b id="ms-c-otp" class="ms-otp">${shown ? esc(f.otp || '—') : '••••-••••-••••'}</b><button type="button" class="btn sm ghost" data-a="msissueshow">${shown ? LBL('Hide', 'Masquer') : LBL('Check', 'Afficher')}</button><button type="button" class="btn sm ghost" data-a="msissuecopy" data-k="otp">${LBL('Copy', 'Copier')}</button></div>
+      <p><button type="button" class="btn ghost sm" data-a="msissuecopy" data-k="both">${LBL('Copy both', 'Tout copier')}</button> <span id="ms-copied" class="small ms-pass"></span></p>
+      <div class="note">${LBL('A copy of these details was sent to ', 'Une copie de ces éléments a été envoyée à ')}<b>${esc(f.personal || '')}</b>${LBL('. Check your inbox and your spam folder.', '. Consultez votre boîte de réception et vos courriers indésirables.')}</div>
+      <p class="small">${LBL('Next step: the portal opens the activation page with these details already filled in. You then create the new password that you will use to sign in.', 'Étape suivante : le portail ouvre la page d\'activation avec ces éléments déjà remplis. Vous créez alors le nouveau mot de passe que vous utiliserez pour vous connecter.')}</p>
+      <p><button type="button" class="btn gold" data-a="msissuego">${LBL('Continue to activation', 'Continuer vers l\'activation')}</button></p></div></div>`);
+  }
+  PUBLIC.issued = viewIssuedMs;
+  ACT.msissueack = () => { FORMS.issued = Object.assign({}, FORMS.issued, { ack: true }); render(); };
+  ACT.msissueshow = () => { FORMS.issued = Object.assign({}, FORMS.issued, { show: !(FORMS.issued || {}).show }); render(); };
+  ACT.msissuecopy = async el => {
+    const f = FORMS.issued || {}, k = el.dataset.k, txt = k === 'email' ? f.email : k === 'otp' ? f.otp : (LANG === 'fr' ? 'Adresse ADI : ' : 'ADI email: ') + f.email + '\n' + (LANG === 'fr' ? 'Mot de passe à usage unique : ' : 'One-time password: ') + f.otp;
+    try { await copyText(txt || ''); const m = document.getElementById('ms-copied'); if (m) m.textContent = LBL('Copied.', 'Copié.'); toast(LBL('Copied.', 'Copié.')); } catch (e) { toast(LBL('Copy failed. Select the text and copy it manually.', 'Copie impossible. Sélectionnez le texte et copiez-le manuellement.'), 1); }
+  };
+  ACT.msissuego = () => { const f = FORMS.issued || {}; FORMS.act = { email: f.email || '', otp: f.otp || '', pw: '', pw2: '' }; go('activate'); };
+  function viewActivate() {
+    if (!FORMS.act) FORMS.act = { email: '', otp: '', pw: '', pw2: '' };
+    return pubShell(`<div class="auth"><div class="card"><p class="ms-kicker">${LBL('Step 2 of 2', 'Étape 2 sur 2')}</p><h2>${LBL('Activate your ADI account', 'Activez votre compte ADI')}</h2><div id="aerr"></div>
+      <p class="muted">${LBL('Your ADI email address and one-time password are filled in for you. Choose the new password that you will use to sign in from now on.', 'Votre adresse ADI et votre mot de passe à usage unique sont déjà renseignés. Choisissez le nouveau mot de passe que vous utiliserez désormais pour vous connecter.')}</p>
+      ${inp('act.email', LBL('ADI email address', 'Adresse ADI'), { type: 'email' })}${inp('act.otp', LBL('One-time password', 'Mot de passe à usage unique'))}
+      ${inp('act.pw', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('act.pw2', LBL('Confirm the new password', 'Confirmez le nouveau mot de passe'), { type: 'password' })}
+      <p class="small muted">${LBL('At least 10 characters, with at least one letter and one digit, and different from the one-time password.', 'Au moins 10 caractères, avec au moins une lettre et un chiffre, et différent du mot de passe à usage unique.')}</p>
+      <button class="btn gold" style="width:100%" data-a="msactivate">${LBL('Create my ADI account and sign in', 'Créer mon compte ADI et me connecter')}</button></div></div>`);
+  }
+  PUBLIC.activate = viewActivate;
+  ACT.msactivate = async el => {
+    const f = FORMS.act || {}, email = String(f.email || '').trim().toLowerCase(), otp = String(f.otp || '').trim(), pw = String(f.pw || '');
+    const bad = (k, m) => { const box = document.getElementById('aerr'); if (box) box.innerHTML = `<div class="note bad">${esc(m)}</div>`; focusField(k, m); };
+    if (!/^\S+@adiuniversity\.com$/.test(email)) return bad('act.email', LBL('Enter your ADI email address, ending with @adiuniversity.com.', 'Saisissez votre adresse ADI, se terminant par @adiuniversity.com.'));
+    if (!otp) return bad('act.otp', LBL('Enter the one-time password.', 'Saisissez le mot de passe à usage unique.'));
+    if (pw.length < 10 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return bad('act.pw', LBL('The new password needs at least 10 characters, a letter and a digit.', 'Le nouveau mot de passe exige au moins 10 caractères, une lettre et un chiffre.'));
+    if (pw === otp) return bad('act.pw', LBL('The new password must differ from the one-time password.', 'Le nouveau mot de passe doit différer du mot de passe à usage unique.'));
+    if (pw !== f.pw2) return bad('act.pw2', LBL('The two passwords do not match.', 'Les deux mots de passe ne correspondent pas.'));
+    if (el) el.disabled = true;
+    const r = await doLogin(email, otp);
+    if (r.err) { if (el) el.disabled = false; return bad('act.otp', r.err); }
+    try { await api('/api/mail/setup', { body: { otp, password: pw } }); }
+    catch (e) { if (el) el.disabled = false; if (e.code !== 'active') return bad('act.pw', e.message || LBL('Activation failed.', 'Échec de l\'activation.')); }
+    FORMS.act = null; FORMS.issued = null; try { await apiSync(); } catch (e) {}
+    toast(LBL('Your ADI account is active. Welcome.', 'Votre compte ADI est actif. Bienvenue.')); routeAfterLogin();
+  };
+
+  /* ===== Guidance text under every field that needs typing ===== */
+  const HINTS = [
+    [/^su\.name$/, ['Type your full name exactly as it appears on your national identity card or certificate.', 'Saisissez votre nom complet tel qu\'il figure sur votre carte d\'identité ou votre diplôme.']],
+    [/^su\.email$|contactEmail|^sa\.email$/, ['Type a personal email address that you check often. Messages from ADI, including your sign-in details, are sent here.', 'Saisissez une adresse e-mail personnelle que vous consultez souvent. Les messages de l\'ADI, y compris vos identifiants, y sont envoyés.']],
+    [/^su\.phone$|phone|tel$/, ['Type your telephone number with the area code, for example 6XXXXXXXX or +237 6XXXXXXXX. It is used for payment notices.', 'Saisissez votre numéro de téléphone avec l\'indicatif, par exemple 6XXXXXXXX ou +237 6XXXXXXXX. Il sert aux avis de paiement.']],
+    [/^su\.password$|^act\.pw$/, ['Choose a strong password of at least 8 characters, mixing letters and digits. Do not share it.', 'Choisissez un mot de passe robuste d\'au moins 8 caractères, mêlant lettres et chiffres. Ne le communiquez pas.']],
+    [/^su\.password2$|^act\.pw2$/, ['Type the same password again to confirm it.', 'Saisissez à nouveau le même mot de passe pour le confirmer.']],
+    [/^su\.matric$/, ['Type your ADI matricule as printed on your admission letter or student card, for example ADI26H0001.', 'Saisissez votre matricule ADI tel qu\'il figure sur votre lettre d\'admission ou votre carte, par exemple ADI26H0001.']],
+    [/^lg\.email$/, ['Type the email address you used to register. MINESUP applicants use the ADI address that ends with @adiuniversity.com.', 'Saisissez l\'adresse utilisée à l\'inscription. Les candidats MINESUP utilisent l\'adresse ADI se terminant par @adiuniversity.com.']],
+    [/^lg\.pw$/, ['Type your password. If you have just registered for MINESUP, use the new password you created at activation.', 'Saisissez votre mot de passe. Si vous venez de vous inscrire au MINESUP, utilisez le nouveau mot de passe créé à l\'activation.']],
+    [/^act\.email$/, ['Your ADI address is filled in automatically. If it is empty, copy it from the confirmation email.', 'Votre adresse ADI est renseignée automatiquement. Si le champ est vide, copiez-la depuis l\'e-mail de confirmation.']],
+    [/^act\.otp$/, ['The one-time password is filled in automatically. If it is empty, copy it from the confirmation email.', 'Le mot de passe à usage unique est renseigné automatiquement. Si le champ est vide, copiez-le depuis l\'e-mail de confirmation.']],
+    [/^msc\.matric$/, ['Type your ADI matricule, or choose your name in the list above to fill it for you.', 'Saisissez votre matricule ADI, ou choisissez votre nom dans la liste ci-dessus pour le renseigner.']],
+    [/^msc\.msNo$/, ['Type the MINESUP matricule printed on your HND/BTS registration form, for example 26SWE0762.', 'Saisissez le matricule MINESUP imprimé sur votre fiche d\'inscription HND/BTS, par exemple 26SWE0762.']],
+    [/^msp\.ref$|\.ref$|txn|trans/, ['Type the transaction ID from the Mobile Money confirmation message (at least 6 characters).', 'Saisissez l\'identifiant de transaction du message de confirmation Mobile Money (6 caractères minimum).']],
+    [/^sa\.name$/, ['Type the full name of the person, as on their identity document.', 'Saisissez le nom complet de la personne, tel qu\'il figure sur sa pièce d\'identité.']],
+    [/^sa\.q$|^sa\.dq$|search|\.q$/, ['Type part of a name, email, matricule or reference to filter the list.', 'Saisissez une partie d\'un nom, d\'un e-mail, d\'un matricule ou d\'une référence pour filtrer la liste.']],
+    [/dob|birth.*date|date/, ['Choose or type the date in the format day / month / year.', 'Choisissez ou saisissez la date au format jour / mois / année.']],
+    [/pob|place/, ['Type the town and country as written on your birth certificate.', 'Saisissez la ville et le pays tels qu\'ils figurent sur votre acte de naissance.']],
+    [/certName|fullname|name/, ['Type the name exactly as written on the document it refers to.', 'Saisissez le nom exactement comme sur le document concerné.']],
+    [/email/, ['Type a valid email address, for example name@example.com.', 'Saisissez une adresse e-mail valable, par exemple nom@exemple.com.']],
+    [/matric/, ['Type the matricule exactly as printed on your official document.', 'Saisissez le matricule exactement comme imprimé sur votre document officiel.']],
+    [/amount|fee|price|mark|score|credit/, ['Type the number only, without spaces or letters.', 'Saisissez uniquement le nombre, sans espaces ni lettres.']],
+    [/address|addr|street/, ['Type your full postal or residential address, including the town.', 'Saisissez votre adresse postale ou de résidence complète, avec la ville.']],
+    [/note|remark|comment|reason|body|message|desc|text/, ['Write clearly and briefly. State the facts that the reader needs in order to act.', 'Rédigez clairement et brièvement. Indiquez les faits dont le lecteur a besoin pour agir.']]
+  ];
+  function hintFor(key, el, label) {
+    for (const h of HINTS) if (h[0].test(key)) return LBL(h[1][0], h[1][1]);
+    if (el.tagName === 'SELECT') return LBL('Choose one option from the list.', 'Choisissez une option dans la liste.');
+    if (el.tagName === 'TEXTAREA') return LBL('Write your answer in full sentences; the box grows as you type.', 'Rédigez votre réponse en phrases complètes ; la zone s\'agrandit à mesure que vous écrivez.');
+    if (el.type === 'number') return LBL('Type the number only.', 'Saisissez uniquement le nombre.');
+    if (el.type === 'password') return LBL('Type your password. Use the eye button to check what you typed.', 'Saisissez votre mot de passe. Le bouton en forme d\'œil permet de vérifier votre saisie.');
+    return label ? LBL('Type here: ', 'Saisissez ici : ') + label.replace(/[*:]+$/, '').trim() + '.' : LBL('Type your answer in this field.', 'Saisissez votre réponse dans ce champ.');
+  }
+  function addHints() {
+    document.querySelectorAll('[data-f]').forEach(el => {
+      if (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || ['hidden', 'checkbox', 'radio', 'file', 'button', 'submit'].includes(el.type)) return;
+      if (el.closest('.ms-warn-bg,#chat,.chat')) return;
+      const box = el.closest('.fld') || el.parentElement; if (!box || box.querySelector('.ms-hint')) return;
+      if (box.nextElementSibling && box.nextElementSibling.classList.contains('ms-hint')) return;
+      const lab = box.querySelector('label'), txt = hintFor(el.dataset.f || '', el, lab ? lab.textContent : '');
+      const h = document.createElement('small'); h.className = 'ms-hint'; h.id = 'hint-' + (el.id || el.dataset.f).replace(/[^\w-]/g, '_'); h.textContent = txt;
+      (el.closest('.pwwrap') || el).insertAdjacentElement('afterend', h); el.setAttribute('aria-describedby', h.id);
+    });
+  }
+  if (typeof render === 'function') { const prevH = render; render = function () { const r = prevH.apply(this, arguments); try { addHints(); } catch (e) {} return r; }; }
+  setTimeout(() => { try { addHints(); } catch (e) {} }, 500);
+
+  /* ===== Greeting boxes: longer welcome, slim closing box, pop out on entry and pop in on exit ===== */
+  L.greet_body = ['The President and the Registry of the American Ditek Institute receive you at the official portal of the University. Here you may apply for admission, pay your fees, register for courses, consult your results and request official documents, including the MINESUP transcript. Please conduct your academic and administrative business with care, integrity and the courtesy proper to this institution. Our offices remain at your disposal throughout the academic year.', 'Le Président et la Scolarité de l\'American Ditek Institute vous reçoivent au portail officiel de l\'Université. Vous pouvez ici demander votre admission, payer vos frais, vous inscrire aux cours, consulter vos résultats et demander des documents officiels, dont le relevé de notes MINESUP. Veuillez traiter vos affaires académiques et administratives avec soin, intégrité et la courtoisie qui sied à cette institution. Nos services restent à votre disposition tout au long de l\'année académique.'];
+  let greetOn = 0;
+  function greetEntry() {
+    const g = document.querySelector('.adi-greet:not(.panel)') || document.querySelector('.adi-greet');
+    if (!g) { greetOn = 0; return; }
+    const holder = g.closest('.adi-bye') ? g : g;
+    if (!greetOn) { greetOn = Date.now(); holder.classList.add('ms-popout'); }
+    else if (Date.now() - greetOn < 900 && !holder.classList.contains('ms-popout')) holder.classList.add('ms-popout');
+  }
+  if (typeof render === 'function') { const prevG = render; render = function () { const r = prevG.apply(this, arguments); try { greetEntry(); } catch (e) {} return r; }; }
+  function greetExit(e) {
+    const g = document.querySelector('.adi-greet'); if (!g || !e.target.closest) return;
+    if (!e.target.closest('[data-a],a[href^="#"]')) return;
+    const r = g.getBoundingClientRect(); if (r.width < 10 || r.bottom < 0) return;
+    const c = g.cloneNode(true); c.classList.remove('ms-popout'); c.classList.add('ms-popin-clone');
+    c.style.cssText = 'position:fixed;left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;margin:0;z-index:9998;pointer-events:none';
+    document.body.appendChild(c); c.addEventListener('animationend', () => c.remove()); setTimeout(() => c.remove(), 800);
+  }
+  document.addEventListener('click', greetExit, true);
+  setTimeout(greetEntry, 300);
 
   /* ===== Tap-to-field and keyboard-safe typing ===== */
   (function () {
