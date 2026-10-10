@@ -1005,12 +1005,12 @@
   }
   function onUser(e) { if (e.isTrusted !== false) stop(true); }
   function onHash() { stop(false); }
-  function leg(from, to, ms, next) {
+  function leg(from, to, ms, next, lin) {
     const t0 = performance.now();
     (function step(now) {
       if (!live) return;
       const k = Math.min(1, (now - t0) / ms);
-      jump(from + (to - from) * ease(k));
+      jump(from + (to - from) * (lin ? k : ease(k)));
       if (k < 1) raf = requestAnimationFrame(step); else next && next();
     })(t0);
   }
@@ -1022,13 +1022,13 @@
     live = true; root.style.scrollBehavior = 'auto';
     evs.forEach(n => window.addEventListener(n, onUser, { capture: true, passive: true }));
     window.addEventListener('hashchange', onHash);
-    const down = Math.min(18000, Math.max(7000, end * 1.2));
+    const down = Math.min(100000, Math.max(20000, end / 0.2));   /* about 200 px per second, a pace at which the text can be read */
     setTimeout(() => {
       if (!live) return;
       leg(0, maxY(), down, () => setTimeout(() => {
         if (!live) return;
         leg(maxY(), 0, 1100, () => stop(false));
-      }, 500));
+      }, 700), true);
     }, 900);
   }
   function arm() { setTimeout(begin, 1400); }
