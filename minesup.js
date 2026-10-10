@@ -1031,6 +1031,36 @@
   try { window.scrollTo(0, 0); } catch (e) {}
 })();
 
+/* ===== Long passages: after the text has been written, only the first three lines are shown, with a More... control that reveals the whole passage ===== */
+(function () {
+  const fr = () => typeof LANG !== 'undefined' && LANG === 'fr';
+  const opened = new Set();
+  const SKIP = 'form,.modal,.modal-bg,[role="dialog"],.note,#chat,.chat,pre,table,button,textarea,nav,header.top,.ms-hint,.ms-cred,#sess-exp,#idle-warn';
+  const keyOf = el => (el.textContent || '').trim().slice(0, 60);
+  function lab(open) { return open ? (fr() ? 'Moins' : 'Less') : (fr() ? 'Plus…' : 'More…'); }
+  function wire(el) {
+    if (el.dataset.msMore) return; el.dataset.msMore = '1';
+    const k = keyOf(el), grp = el.closest('.adi-greet');
+    el.classList.add('ms-clamp');
+    if (opened.has(k)) { el.classList.remove('ms-clamp'); }
+    let b = el.nextElementSibling && el.nextElementSibling.classList.contains('ms-more') ? el.nextElementSibling : null;
+    if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'ms-more'; el.after(b); }
+    const sync = () => { const open = !el.classList.contains('ms-clamp'); b.textContent = lab(open); b.setAttribute('aria-expanded', String(open)); };
+    /* a passage that already fits in three lines needs no control */
+    requestAnimationFrame(() => { if (el.classList.contains('ms-clamp') && el.scrollHeight <= el.clientHeight + 2) { el.classList.remove('ms-clamp'); b.remove(); el.dataset.msMore = 'fit'; } else sync(); });
+    b.onclick = e => { e.preventDefault(); e.stopPropagation(); const open = el.classList.contains('ms-clamp'); el.classList.toggle('ms-clamp', !open); if (open) opened.add(k); else opened.delete(k); sync(); };
+  }
+  function scan() {
+    if (window.adiTyping && window.adiTyping.active) return;
+    document.querySelectorAll('#app p, main p, .adi-greet .body').forEach(el => {
+      if (el.dataset.msMore || el.closest(SKIP) || el.classList.contains('ms-typing')) return;
+      if ((el.textContent || '').trim().length < 240) return;
+      wire(el);
+    });
+  }
+  setInterval(scan, 700);
+})();
+
 /* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
 (function () {
   const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
@@ -1070,14 +1100,16 @@
     live = true; root.style.scrollBehavior = 'auto';
     evs.forEach(n => window.addEventListener(n, onUser, { capture: true, passive: true }));
     window.addEventListener('hashchange', onHash);
-    const down = Math.min(100000, Math.max(20000, end / 0.2));   /* about 200 px per second, a pace at which the text can be read */
-    setTimeout(() => {
+    /* the glide repeats (down at reading pace, quick return, short rest) until the visitor touches or clicks the screen */
+    const cycle = () => {
       if (!live) return;
-      leg(0, maxY(), down, () => setTimeout(() => {
+      const e2 = maxY(), down = Math.min(100000, Math.max(20000, e2 / 0.2));   /* about 200 px per second, a pace at which the text can be read */
+      leg(0, e2, down, () => setTimeout(() => {
         if (!live) return;
-        leg(maxY(), 0, 1100, () => stop(false));
+        leg(maxY(), 0, 1100, () => setTimeout(cycle, 2500));
       }, 700), true);
-    }, 900);
+    };
+    setTimeout(cycle, 900);
   }
   ['pointerdown', 'touchstart', 'keydown'].forEach(n => window.addEventListener(n, () => { if (!live) done = true; }, { capture: true, passive: true }));   /* a touch before the glide begins cancels it too */
   function arm() { setTimeout(begin, 1400); }
