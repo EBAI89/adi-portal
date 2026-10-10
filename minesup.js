@@ -984,3 +984,51 @@
     document.addEventListener('focusout', () => setTimeout(() => { if (!isField(document.activeElement)) { document.body.style.paddingBottom = ''; } }, 200));
   })();
 })();
+
+/* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
+(function () {
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const root = document.documentElement;
+  let raf = 0, live = false, done = false;
+  const isHome = () => /^#?\/?$/.test(location.hash) && typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
+  const maxY = () => Math.max(0, Math.max(root.scrollHeight, document.body.scrollHeight) - window.innerHeight);
+  const jump = y => { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); };
+  const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const evs = ['pointerdown', 'touchstart', 'mousedown', 'click', 'wheel', 'keydown'];
+  function stop(toTop) {
+    if (!live) return;
+    live = false; done = true; cancelAnimationFrame(raf);
+    evs.forEach(n => window.removeEventListener(n, onUser, true));
+    window.removeEventListener('hashchange', onHash);
+    root.style.scrollBehavior = '';
+    if (toTop) jump(0);
+  }
+  function onUser(e) { if (e.isTrusted !== false) stop(true); }
+  function onHash() { stop(false); }
+  function leg(from, to, ms, next) {
+    const t0 = performance.now();
+    (function step(now) {
+      if (!live) return;
+      const k = Math.min(1, (now - t0) / ms);
+      jump(from + (to - from) * ease(k));
+      if (k < 1) raf = requestAnimationFrame(step); else next && next();
+    })(t0);
+  }
+  function begin() {
+    if (done || live || reduce || !isHome() || window.scrollY > 4) return;
+    const end = maxY(); if (end < window.innerHeight * 0.8) return;
+    live = true; root.style.scrollBehavior = 'auto';
+    evs.forEach(n => window.addEventListener(n, onUser, { capture: true, passive: true }));
+    window.addEventListener('hashchange', onHash);
+    const down = Math.min(18000, Math.max(7000, end * 1.2));
+    setTimeout(() => {
+      if (!live) return;
+      leg(0, maxY(), down, () => setTimeout(() => {
+        if (!live) return;
+        leg(maxY(), 0, 1100, () => stop(false));
+      }, 500));
+    }, 900);
+  }
+  function arm() { setTimeout(begin, 1400); }
+  if (document.readyState === 'complete') arm(); else window.addEventListener('load', arm);
+})();
