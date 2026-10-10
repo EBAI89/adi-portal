@@ -153,3 +153,12 @@ a.btn.apply-float{position:fixed;left:16px;bottom:16px;z-index:60;min-height:46p
 .adi-greet .body:not(.ms-clamp){display:block!important;-webkit-line-clamp:unset!important;overflow:visible!important}
 .ms-more{display:inline-block;grid-column:1 / -1;justify-self:start;margin:.15em 0 .4em;padding:.15em .1em;background:none;border:0;border-bottom:1px solid currentColor;font:inherit;font-weight:500;font-size:.86em;letter-spacing:.02em;cursor:pointer;color:inherit;opacity:.55}
 .ms-more:hover,.ms-more:focus-visible,.ms-more:active{opacity:.85;outline:none}
+
+#err-float{position:fixed;left:0;right:0;margin:0 auto;top:calc(8px + env(safe-area-inset-top,0px));width:fit-content;max-width:min(94vw,560px);z-index:2147482500;display:flex;gap:.6em;align-items:center;background:#fff;color:#12151c;border-left:4px solid #9B2335;box-shadow:0 14px 40px rgba(7,24,58,.3);padding:.6em .8em;font-size:.88rem;line-height:1.35;animation:msPopOut .25s ease both}
+#err-float[hidden]{display:none}
+#err-float .ef-k{color:#9B2335;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+#err-float .ef-m{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+#err-float button{background:none;border:0;cursor:pointer;color:#33407a;font:inherit;font-weight:600;padding:.15em .3em}
+#err-float .ef-x{font-size:1.3rem;line-height:1;color:#555}
+.toast.err{display:none!important}
+.fld-bad>.ferr:first-child,.ferr{margin:0 0 6px}

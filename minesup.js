@@ -1061,6 +1061,66 @@
   setInterval(scan, 700);
 })();
 
+/* ===== Errors: shown above the field concerned and echoed in a floating notice that stays on screen while the page is scrolled ===== */
+(function () {
+  const fr = () => typeof LANG !== 'undefined' && LANG === 'fr';
+  let bar = null, src = null, io = null, hideT = 0, lastAct = 0;
+  const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  function ensure() {
+    if (bar && bar.isConnected) return bar;
+    bar = document.createElement('div'); bar.id = 'err-float'; bar.setAttribute('role', 'alert'); bar.hidden = true;
+    bar.innerHTML = '<span class="ef-k"></span><span class="ef-m"></span><button type="button" class="ef-go"></button><button type="button" class="ef-x" aria-label="Close">×</button>';
+    bar.querySelector('.ef-x').onclick = () => clear();
+    bar.querySelector('.ef-go').onclick = () => { if (src && src.isConnected) { try { src.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { src.scrollIntoView(); } } };
+    document.body.appendChild(bar); return bar;
+  }
+  function clear() { clearTimeout(hideT); if (io) { io.disconnect(); io = null; } src = null; if (bar) bar.hidden = true; }
+  function present(msg, source, ttl) {
+    msg = String(msg || '').replace(/\s+/g, ' ').trim(); if (!msg) return;
+    clear(); const b = ensure();
+    b.querySelector('.ef-k').textContent = fr() ? 'À corriger' : 'Please correct';
+    b.querySelector('.ef-m').textContent = msg;
+    b.querySelector('.ef-go').textContent = fr() ? 'Voir' : 'Show';
+    src = source || null; b.hidden = false;
+    b.querySelector('.ef-go').style.display = src ? '' : 'none';
+    if (src && 'IntersectionObserver' in window) {
+      io = new IntersectionObserver(es => { const e = es[es.length - 1]; if (bar) bar.hidden = !!(e && e.isIntersecting && e.intersectionRatio > 0.9); }, { threshold: [0, .5, .95, 1], rootMargin: '-70px 0px 0px 0px' });
+      io.observe(src);
+    }
+    if (ttl) hideT = setTimeout(clear, ttl);
+  }
+  /* the message sits above the field it concerns */
+  if (typeof focusField === 'function') {
+    const orig = focusField;
+    focusField = function (name, msg) {
+      const r = orig.apply(this, arguments);
+      if (msg) {
+        try {
+          const el = (typeof fid === 'function' && document.getElementById(fid(name))) || document.querySelector('[data-f="' + String(name).replace(/"/g, '') + '"]');
+          const box = el && (el.closest('.fld') || el.closest('label') || el), n = box && box.querySelector('.ferr');
+          if (n) { if (n !== box.firstChild) box.insertBefore(n, box.firstChild); present(msg, n);
+            const done = () => { if (String(el.value || '').trim()) { box.classList.remove('fld-bad'); n.remove(); if (src === n) clear(); el.removeEventListener('input', done); el.removeEventListener('change', done); } };
+            el.addEventListener('input', done); el.addEventListener('change', done); }
+        } catch (e) {}
+      }
+      return r;
+    };
+  }
+  /* other error notices raised by an action: form-level notes and error toasts */
+  ['click', 'touchend', 'keydown', 'submit', 'change'].forEach(n => document.addEventListener(n, () => { lastAct = Date.now(); }, { capture: true, passive: true }));
+  new MutationObserver(ms => {
+    for (const m of ms) for (const nd of m.addedNodes) {
+      if (!nd || nd.nodeType !== 1) continue;
+      if (nd.id === 'err-float' || (nd.closest && nd.closest('#err-float'))) continue;
+      if (nd.classList.contains('toast') && nd.classList.contains('err')) { present(nd.textContent, null, 9000); continue; }
+      const note = nd.matches && nd.matches('.note.bad') ? nd : (nd.querySelector && nd.querySelector('.note.bad'));
+      if (note && Date.now() - lastAct < 5000 && !note.closest('#err-float')) present(note.textContent, note, 0);
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('hashchange', clear);
+  setInterval(() => { if (src && !src.isConnected) clear(); }, 1500);
+})();
+
 /* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
 (function () {
   const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
