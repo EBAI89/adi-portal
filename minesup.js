@@ -990,7 +990,7 @@
   const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = document.documentElement;
   let raf = 0, live = false, done = false;
-  const isHome = () => /^#?\/?$/.test(location.hash) && typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
+  const isHome = () => /^#?\/?(home)?\/?$/.test(location.hash) && typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
   const maxY = () => Math.max(0, Math.max(root.scrollHeight, document.body.scrollHeight) - window.innerHeight);
   const jump = y => { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); };
   const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -1014,8 +1014,10 @@
       if (k < 1) raf = requestAnimationFrame(step); else next && next();
     })(t0);
   }
+  try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
   function begin() {
-    if (done || live || reduce || !isHome() || window.scrollY > 4) return;
+    if (done || live || reduce || !isHome()) return;
+    if (window.scrollY > 4) jump(0);
     const end = maxY(); if (end < window.innerHeight * 0.8) return;
     live = true; root.style.scrollBehavior = 'auto';
     evs.forEach(n => window.addEventListener(n, onUser, { capture: true, passive: true }));
@@ -1030,6 +1032,7 @@
     }, 900);
   }
   function arm() { setTimeout(begin, 1400); }
+  window.adiTourRestart = function () { stop(false); done = false; setTimeout(begin, 1200); };
   if (document.readyState === 'complete') arm(); else window.addEventListener('load', arm);
 })();
 
@@ -1054,7 +1057,7 @@
   }
   window.sessionExpire = function (silent) {
     if (expiring) return; expiring = true;
-    wipe(() => { try { go('login'); } catch (e) { location.hash = '#/login'; } if (!silent) notice(); setTimeout(() => { expiring = false; }, 1500); });
+    wipe(() => { const dest = silent ? 'home' : 'login'; try { go(dest); } catch (e) { location.hash = '#/' + dest; } try { window.scrollTo({ top: 0, behavior: 'instant' }); } catch (e) {} if (!silent) notice(); else if (window.adiTourRestart) window.adiTourRestart(); setTimeout(() => { expiring = false; }, 1500); });
   };
 
   /* every request made while the visitor is active renews the server-side idle window; a refused session shows the expiry notice */
