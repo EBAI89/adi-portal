@@ -1098,7 +1098,7 @@
         try {
           const el = (typeof fid === 'function' && document.getElementById(fid(name))) || document.querySelector('[data-f="' + String(name).replace(/"/g, '') + '"]');
           const box = el && (el.closest('.fld') || el.closest('label') || el), n = box && box.querySelector('.ferr');
-          if (n) { if (n !== box.firstChild) box.insertBefore(n, box.firstChild); present(msg, n);
+          if (n) { let t = el; while (t.parentElement && t.parentElement !== box) t = t.parentElement; if (t.parentElement === box && t !== n) box.insertBefore(n, t); else if (n !== box.firstChild) box.insertBefore(n, box.firstChild); present(msg, n);
             const done = () => { if (String(el.value || '').trim()) { box.classList.remove('fld-bad'); n.remove(); if (src === n) clear(); el.removeEventListener('input', done); el.removeEventListener('change', done); } };
             el.addEventListener('input', done); el.addEventListener('change', done); }
         } catch (e) {}
