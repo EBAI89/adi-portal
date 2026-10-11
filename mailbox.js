@@ -183,7 +183,7 @@
       <p class="mb-kicker">PDF</p>
       <h3 style="margin-top:0">${esc(LBL('Your document is ready', 'Votre document est prêt'))}</h3>
       <p class="muted">${esc(name)}</p>
-      <iframe class="mb-dlframe" title="PDF" src="${url}"></iframe>
+      <div class="mb-dlframe mb-dlpages" id="mb-dl-pages" aria-label="PDF preview"><p class="small muted" style="padding:12px">${esc(LBL('Preparing preview…', 'Préparation de l\'aperçu…'))}</p></div>
       <div class="mb-row" style="margin-top:12px">
         <a class="btn gold lg" id="mb-dl-a">${esc(LBL('Save the PDF', 'Enregistrer le PDF'))}</a>
         <button type="button" class="btn ghost" id="mb-dl-x">${esc(LBL('Close', 'Fermer'))}</button>
@@ -196,7 +196,42 @@
     const close = () => { host.innerHTML = ''; if (host._url) { URL.revokeObjectURL(host._url); host._url = ''; } };
     host.querySelector('#mb-dl-x').addEventListener('click', close);
     host.querySelector('.modal').addEventListener('click', e => { if (e.target.classList.contains('modal')) close(); });
+    paintPreview(host.querySelector('#mb-dl-pages'), data, url);
     return true;
+  }
+
+  // Phone browsers cannot show a PDF inside an iframe, so draw each page onto a canvas with pdf.js.
+  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf';
+  let pdfjsLoad = null;
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (!pdfjsLoad) pdfjsLoad = new Promise((ok, no) => {
+      const s = document.createElement('script');
+      s.src = PDFJS + '.min.js';
+      s.onload = () => { window.pdfjsLib ? (window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + '.worker.min.js', ok(window.pdfjsLib)) : no(new Error('pdfjs')); };
+      s.onerror = () => { pdfjsLoad = null; no(new Error('pdfjs')); };
+      document.head.appendChild(s);
+    });
+    return pdfjsLoad;
+  }
+  function paintPreview(box, data, url) {
+    const fallback = () => { box.outerHTML = `<iframe class="mb-dlframe" title="PDF" src="${url}"></iframe>`; };
+    loadPdfJs().then(lib => lib.getDocument({ data: new Uint8Array(data.slice ? data.slice(0) : data) }).promise).then(async pdf => {
+      if (!box.isConnected) return;
+      box.innerHTML = '';
+      const width = Math.max(240, box.clientWidth - 16);
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const base = page.getViewport({ scale: 1 });
+        const vp = page.getViewport({ scale: (width / base.width) * ratio });
+        const c = document.createElement('canvas');
+        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+        c.style.cssText = 'display:block;width:100%;height:auto;margin:0 auto 8px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)';
+        box.appendChild(c);
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      }
+    }).catch(() => { if (box.isConnected) fallback(); });
   }
 
   function paintCredential(d, m) {
