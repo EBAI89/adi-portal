@@ -1147,6 +1147,45 @@
   setInterval(() => { if (src && !src.isConnected) clear(); }, 1500);
 })();
 
+/* ===== Long placeholders: a hint that is wider than its field glides to the left to reveal the whole message, then repeats ===== */
+(function () {
+  const cv = document.createElement('canvas').getContext('2d');
+  const SKIPT = ['hidden', 'checkbox', 'radio', 'button', 'submit', 'file', 'range', 'color', 'image', 'reset'];
+  function build(el) {
+    const old = el.nextElementSibling && el.nextElementSibling.classList.contains('ms-ph') ? el.nextElementSibling : null;
+    const r = el.getBoundingClientRect(); const txt = el.getAttribute('placeholder') || '';
+    if (!txt || r.width < 40 || r.height < 10) { if (old) old.remove(); el.classList.remove('ms-ph-on'); el.dataset.msPh = ''; return; }
+    const cs = getComputedStyle(el), pcs = getComputedStyle(el, '::placeholder');
+    cv.font = (cs.fontStyle || '') + ' ' + (cs.fontWeight || '') + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    const padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0, bl = parseFloat(cs.borderLeftWidth) || 0, bt = parseFloat(cs.borderTopWidth) || 0;
+    const inner = el.clientWidth - padL - padR, w = cv.measureText(txt).width;
+    if (w <= inner + 1) { if (old) old.remove(); el.classList.remove('ms-ph-on'); el.dataset.msPh = 'fit:' + el.clientWidth + ':' + txt.length; return; }
+    const dist = Math.ceil(w - inner + 8), dur = Math.max(6, Math.min(40, dist / 28 + 4));
+    const ph = old || document.createElement('span'); ph.className = 'ms-ph'; ph.setAttribute('aria-hidden', 'true');
+    ph.innerHTML = '<span class="ms-ph-t"></span>'; ph.firstChild.textContent = txt;
+    ph.style.cssText = 'left:' + (el.offsetLeft + bl + padL) + 'px;top:' + (el.offsetTop + bt) + 'px;width:' + inner + 'px;height:' + el.clientHeight + 'px;line-height:' + el.clientHeight + 'px;font:' + cs.font + ';line-height:' + el.clientHeight + 'px;color:' + pcs.color;
+    ph.firstChild.style.cssText = '--ph-d:-' + dist + 'px;animation-duration:' + dur + 's';
+    if (!old) el.after(ph);
+    el.classList.add('ms-ph-on'); el.dataset.msPh = 'on:' + el.clientWidth + ':' + txt.length;
+  }
+  function scan() {
+    document.querySelectorAll('input[placeholder]').forEach(el => {
+      if (SKIPT.includes(el.type) || el.disabled) return;
+      const sig = el.clientWidth + ':' + (el.getAttribute('placeholder') || '').length;
+      const cur = el.dataset.msPh || '';
+      if (cur && (cur.endsWith(sig) || cur === 'fit:' + sig) ) {
+        const ph = el.nextElementSibling;
+        if (cur.startsWith('on') && ph && ph.classList.contains('ms-ph')) { ph.style.left = (el.offsetLeft + (parseFloat(getComputedStyle(el).borderLeftWidth) || 0) + (parseFloat(getComputedStyle(el).paddingLeft) || 0)) + 'px'; ph.style.top = (el.offsetTop + (parseFloat(getComputedStyle(el).borderTopWidth) || 0)) + 'px'; }
+        return;
+      }
+      try { build(el); } catch (e) {}
+    });
+    document.querySelectorAll('.ms-ph').forEach(ph => { const p = ph.previousElementSibling; if (!p || p.tagName !== 'INPUT') ph.remove(); });
+  }
+  setInterval(scan, 700);
+  window.addEventListener('resize', () => setTimeout(scan, 150));
+})();
+
 /* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
 (function () {
   const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
