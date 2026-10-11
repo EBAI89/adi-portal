@@ -2050,7 +2050,8 @@ function body(req, limit) {
   return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > limit) { bad(Object.assign(new Error('too large'), { code: 413 })); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { ok(ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}); } catch (e) { bad(Object.assign(new Error('bad json'), { code: 400 })); } }); req.on('error', bad); });
 }
 const ip = req => (String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress;
-function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { return new URL(o).host === req.headers.host; } catch (e) { return false; } }
+// A request is same-origin when the browser's Origin matches the Host it reached, or the portal's official public address (PUBLIC_URL), which is how the Cloudflare relay in front of the portal presents itself.
+function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { const u = new URL(o); if (u.host === req.headers.host) return true; const p = E.PUBLIC_URL ? new URL(E.PUBLIC_URL) : null; return !!p && p.origin === u.origin; } catch (e) { return false; } }
 
 /* ---------- writes with hooks ---------- */
 async function save(c, id, doc) { doc.id = id; doc._seq = ++SEQ; await S.put(c, id, doc); }
