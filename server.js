@@ -464,7 +464,7 @@ async function sendEmail({ to, subject, text, replyTo }) {
       if (!r.ok) throw new Error('resend ' + r.status + ' ' + (await r.text()).slice(0, 200));
     } else if (p === 'brevo') {
       const m = from.match(/^(.*)<(.+)>$/); const sender = m ? { name: m[1].trim(), email: m[2].trim() } : { email: from };
-      const r = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': E.BREVO_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: body, textContent: text, replyTo: replyTo ? { email: replyTo } : undefined }) });
+      const r = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': String(E.BREVO_API_KEY || '').replace(/[\s"']/g, ''), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: body, textContent: text, replyTo: replyTo ? { email: replyTo } : undefined }) });
       if (!r.ok) throw new Error('brevo ' + r.status + ' ' + (await r.text()).slice(0, 200));
     } else log('EMAIL to', to, '|', subject, '|', String(text).slice(0, 160));
   } catch (e) { console.error('[notify] email failed:', e.message); }
