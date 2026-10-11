@@ -2294,7 +2294,7 @@ async function route(req, res) {
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
     res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ADI-calendar-2026-2027-' + lang.toUpperCase() + '.ics"', 'Cache-Control': 'public, max-age=900', 'X-Content-Type-Options': 'nosniff' }); return res.end(core.calIcs(ev, lang, new Date().toISOString()));
   }
-  if ((p === '/minesup.js' || p === '/minesup.css' || p === '/mailbox.js' || p === '/mailbox.css') && req.method === 'GET') {
+  if ((p === '/minesup.js' || p === '/minesup.css' || p === '/mailbox.js' || p === '/mailbox.css' || p === '/pager.js' || p === '/pager.css') && req.method === 'GET') {
     const body = sideFile(p.slice(1));
     if (!body) return send(res, 404, { error: 'missing' });
     const mime = p.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
@@ -2313,7 +2313,7 @@ async function route(req, res) {
   if (!p.startsWith('/api/')) {
     if (req.method !== 'GET') return send(res, 405, { error: 'method' });
     let page = __EMBED_HTML;
-    page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css"><link rel="stylesheet" href="/mailbox.css"></head>').replace('</body>', '<script src="/minesup.js"></script><script src="/mailbox.js"></script></body>');
+    page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css"><link rel="stylesheet" href="/mailbox.css"><link rel="stylesheet" href="/pager.css"></head>').replace('</body>', '<script src="/minesup.js"></script><script src="/mailbox.js"></script><script src="/pager.js"></script></body>');
     if (!PROD) {
       page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
     }

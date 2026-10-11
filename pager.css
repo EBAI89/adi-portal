@@ -1,0 +1,5 @@
+.pg-h{display:none!important}
+.pgbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 4px}
+.pgbar .pg-info{flex:1;text-align:center}
+.pgbar .btn{min-height:44px;min-width:92px}
+.pgbar .btn:disabled{opacity:.45;cursor:default}
