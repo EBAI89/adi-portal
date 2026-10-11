@@ -183,6 +183,11 @@
       <p class="mb-kicker">PDF</p>
       <h3 style="margin-top:0">${esc(LBL('Your document is ready', 'Votre document est prêt'))}</h3>
       <p class="muted">${esc(name)}</p>
+      <div class="mb-row mb-dlnav" id="mb-dl-nav" hidden>
+        <button type="button" class="btn sm" id="mb-dl-prev">&larr; ${esc(LBL('Back', 'Retour'))}</button>
+        <span class="small muted grow" id="mb-dl-count" style="text-align:center"></span>
+        <button type="button" class="btn sm" id="mb-dl-next">${esc(LBL('Next', 'Suivant'))} &rarr;</button>
+      </div>
       <div class="mb-dlframe mb-dlpages" id="mb-dl-pages" aria-label="PDF preview"><p class="small muted" style="padding:12px">${esc(LBL('Preparing preview…', 'Préparation de l\'aperçu…'))}</p></div>
       <div class="mb-row" style="margin-top:12px">
         <a class="btn gold lg" id="mb-dl-a">${esc(LBL('Save the PDF', 'Enregistrer le PDF'))}</a>
@@ -215,22 +220,40 @@
     return pdfjsLoad;
   }
   function paintPreview(box, data, url) {
-    const fallback = () => { box.outerHTML = `<iframe class="mb-dlframe" title="PDF" src="${url}"></iframe>`; };
-    loadPdfJs().then(lib => lib.getDocument({ data: new Uint8Array(data.slice ? data.slice(0) : data) }).promise).then(async pdf => {
+    const nav = document.getElementById('mb-dl-nav');
+    const prev = document.getElementById('mb-dl-prev');
+    const next = document.getElementById('mb-dl-next');
+    const count = document.getElementById('mb-dl-count');
+    const fallback = () => { if (nav) nav.hidden = true; box.outerHTML = `<iframe class="mb-dlframe" title="PDF" src="${url}"></iframe>`; };
+    loadPdfJs().then(lib => lib.getDocument({ data: new Uint8Array(data.slice ? data.slice(0) : data) }).promise).then(pdf => {
       if (!box.isConnected) return;
-      box.innerHTML = '';
-      const width = Math.max(240, box.clientWidth - 16);
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const base = page.getViewport({ scale: 1 });
-        const vp = page.getViewport({ scale: (width / base.width) * ratio });
-        const c = document.createElement('canvas');
-        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
-        c.style.cssText = 'display:block;width:100%;height:auto;margin:0 auto 8px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)';
-        box.appendChild(c);
-        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-      }
+      let cur = 1, busy = false, want = 0;
+      const show = async n => {
+        if (busy) { want = n; return; }
+        busy = true; cur = n;
+        prev.disabled = cur <= 1; next.disabled = cur >= pdf.numPages;
+        count.textContent = LBL('Page ', 'Page ') + cur + ' / ' + pdf.numPages;
+        try {
+          const page = await pdf.getPage(cur);
+          const width = Math.max(240, box.clientWidth - 16);
+          const base = page.getViewport({ scale: 1 });
+          const vp = page.getViewport({ scale: (width / base.width) * ratio });
+          const c = document.createElement('canvas');
+          c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+          c.style.cssText = 'display:block;width:100%;height:auto;margin:0 auto;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)';
+          await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+          if (!box.isConnected) return;
+          box.innerHTML = ''; box.appendChild(c); box.scrollTop = 0;
+        } finally {
+          busy = false;
+          if (want && want !== cur) { const w = want; want = 0; show(w); } else want = 0;
+        }
+      };
+      prev.addEventListener('click', () => { if (cur > 1) show(cur - 1); });
+      next.addEventListener('click', () => { if (cur < pdf.numPages) show(cur + 1); });
+      nav.hidden = false;
+      return show(1);
     }).catch(() => { if (box.isConnected) fallback(); });
   }
 
