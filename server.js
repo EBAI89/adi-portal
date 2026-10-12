@@ -134,7 +134,6 @@ function checkFormB(store, st, n, old) {
   const sem = Number(n.sem), yr = Number(n.year), years = Math.max(1, Math.round(((core.LEVELS[st.level] || {}).months || 24) / 12));
   if (![1, 2].includes(sem) || !(yr >= 1 && yr <= years)) return { error: 'semester or year' };
   if (!Array.isArray(n.courses) || n.courses.length > 60) return { error: 'courses' };
-  if (!platformOk(store, st)) return { error: 'platform charge not paid' };
   if (!regOk(store, st)) return { error: 'registration fee not paid' };
   if (!windowOpen(store) && !(old && old.status === 'returned')) return { error: 'registration closed' };      // a form the Registry returned for correction can be fixed after the period closes
   const list = offered(store, st, yr, sem), ids = new Set(n.courses);
@@ -294,7 +293,6 @@ module.exports = function makeRules(store, logic) {
           if (!logic.windowOpen(store) && !(fb && fb.status === 'returned')) return 'registration closed';
           if (del) { if (logic.cStatus(c) !== 'E') return 'compulsory course'; return true; }
           if (!logic.isOffered(store, c, st, d.year || c.year || 1, sem) || Number(d.sem) !== Number(c.sem)) return 'course not offered';
-          if (!logic.platformOk(store, st)) return 'platform charge not paid';
           if (!logic.regOk(store, st)) return 'registration fee not paid';
         }
         return true;
