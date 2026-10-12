@@ -1197,6 +1197,7 @@
     return {
       programme: lv ? prog(lv.en) : '—', programmeFr: lv ? prog(lv.fr) : '—',
       field: g ? lead(g.en, false) : '—', fieldFr: g ? lead(g.fr, true).replace(/ et de /g, ' et ') : '—',
+      unitEn: /^(HND|BTS)$/.test(level || (sp && sp.level) || '') ? 'Field' : 'Faculty', unitFr: /^(HND|BTS)$/.test(level || (sp && sp.level) || '') ? 'Filière' : 'Faculté', unitBi: /^(HND|BTS)$/.test(level || (sp && sp.level) || '') ? 'Field / Filière' : 'Faculty / Faculté',
       specialty: sp ? sp.name : '—', code, specialtyFull: sp ? sp.name + (code ? ' (' + code + ')' : '') : '—'
     };
   };
