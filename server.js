@@ -2820,6 +2820,26 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migHb25: true }));
     console.log('Handbook 2025 courses loaded: ' + n);
   }
+  if (!cur.migMinV6) {
+    // MINESUP HND programmes added (Sector 3 vol. 4 and vol. 6, Sector 4 vol. 7). Strictly additive: only the new specialties' courses are created;
+    // existing courses, Form B and the registration configuration are not read or changed.
+    const { ROWS } = __req('./adi-minesup-extra.js'), byName = {};
+    Object.values(logic.core.SPEC).forEach(sp => { if (sp.level === 'HND') byName[String(sp.name).toLowerCase()] = sp; });
+    let n = 0;
+    for (const name of Object.keys(ROWS)) {
+      const sp = byName[name.toLowerCase()]; if (!sp) { console.warn('MINESUP specialty not in catalogue: ' + name); continue; }
+      for (const [code, title, credits, cat, hours] of ROWS[name]) {
+        const id = ('ms-' + code + '-' + slug(sp.id)).slice(0, 90);
+        if (S.get('courses', id)) continue;
+        const dig = String(code).match(/(\d)(\d)\d$/), off = dig ? Number(dig[2]) : 1;
+        const year = Math.ceil(off / 2), sem = off % 2 === 0 ? 2 : 1;
+        await save('courses', id, { id, code, title, credits, level: 'HND', specId: sp.id, year, sem, cat, status: 'C', compulsory: true, pre: '', src: 'minesup', module: title, lecturerId: '', hours });
+        n++;
+      }
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV6: true }));
+    console.log('MINESUP HND programmes added: ' + n + ' courses');
+  }
 }
 
 async function seed() {
