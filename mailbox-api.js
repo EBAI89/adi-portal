@@ -457,7 +457,7 @@ module.exports = function makeMailbox(ctx) {
         if (p.endsWith('/start')) {
           const r = await migrateStart(u); const mailed = !!(emailOn && emailOn());
           if (mailed) { try { await sendEmail({ to: r.to, subject: bi('Your ADI one-time code', 'Votre code à usage unique ADI'), text: bi('Your one-time code to move your account to ' + r.email + ' is: ' + r.otp + '\nIf you did not ask for this, ignore this message.', 'Votre code à usage unique pour passer votre compte à ' + r.email + ' est : ' + r.otp + '\nSi vous n\'avez rien demandé, ignorez ce message.') }); } catch (e) { console.error('[mail]', e && e.message || e); } }
-          return send(res, 200, { ok: true, adiEmail: r.email, mailed, otp: mailed ? undefined : r.otp }), true;
+          return send(res, 200, { ok: true, adiEmail: r.email, mailed, otp: r.otp }), true;
         }
         const n = await migrateConfirm(u, b.otp);
         return send(res, 200, { ok: true, adiEmail: n.email }, { 'Set-Cookie': ctx.cookie(ctx.makeToken(n), 7 * 86400) }), true;
