@@ -270,6 +270,7 @@ module.exports = function makeRules(store, logic) {
       case 'payments':
         if (del) return 'forbidden';
         if (create) return n.userId === u.id && (has(u, 'fees_pay') || (n.kind === 'service' && ['applicant', 'student'].includes(u.role)) || (u.purpose === 'minesup' && u.msMatric && n.kind !== 'service' && n.matric === u.msMatric)) && n.status === 'pending' ? true : 'forbidden';
+        if (u.role === 'super_admin' && u.status === 'active' && n.status === 'invalidated' && o.status === 'confirmed') return true;   // only the super administrator may reverse a confirmed payment
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
@@ -2118,6 +2119,14 @@ async function applyWrite(u, c, id, o, n) {
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
       return;
+    }
+    if (n.status === 'invalidated') {
+      if (u.role !== 'super_admin' || o.status !== 'confirmed') throw ['not allowed'];
+      const why = String(n.note || '').trim().slice(0, 300); if (why.length < 3) throw ['reason'];
+      const inv = Object.assign({}, o, { status: 'invalidated', note: why, invalidatedBy: u.name, invalidatedAt: now() }); await save(c, id, inv);
+      if (o.kind === 'registration') { const st = S.get('students', o.matric); const other = Object.values(S.all('payments')).some(p => p && p.id !== o.id && p.matric === o.matric && p.kind === 'registration' && p.status === 'confirmed'); if (st && st.status === 'registered' && !other) await save('students', st.matric, Object.assign({}, st, { status: 'admitted' })); }
+      await audit(u, 'payment invalidated ' + o.ref + ' — ' + why);
+      await notifyUser(o.userId, bi('Payment invalidated', 'Paiement invalidé'), (o.label || '') + ' — ' + why, { sms: true }); return;
     }
     if (n.status === 'confirmed') { await confirmPayment(o, u.name); await audit(u, 'payment confirmed ' + o.ref); return; }
     n = Object.assign({}, o, { status: 'rejected', note: String(n.note || '').slice(0, 300), confirmedBy: u.name, rejectedAt: now() }); await save(c, id, n);
