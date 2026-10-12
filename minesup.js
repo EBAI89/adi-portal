@@ -1025,7 +1025,7 @@
 (function () {
   let nav = ''; try { nav = (performance.getEntriesByType('navigation')[0] || {}).type || ''; } catch (e) {}
   let hint = null; try { hint = sessionStorage.getItem('adi_tab'); } catch (e) {}
-  const keep = /^#\/(reset|activate)(\/|$)/.test(location.hash), home = /^#?\/?(home)?\/?$/.test(location.hash);
+  const keep = /^#\/(reset|activate)(\/|$)/.test(location.hash) || /^#\/careers\/apply(\/|$)/.test(location.hash), home = /^#?\/?(home)?\/?$/.test(location.hash);
   if (nav === 'back_forward' || keep || home || hint) return;
   try { go('home'); } catch (e) { location.hash = '#/home'; }
   try { window.scrollTo(0, 0); } catch (e) {}
