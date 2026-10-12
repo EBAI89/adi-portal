@@ -1186,6 +1186,22 @@
   window.addEventListener('resize', () => setTimeout(scan, 150));
 })();
 
+/* ===== Programme, faculty / field and specialty, written in the order used on every official document ===== */
+(function () {
+  const CODES = { 'Accountancy': 'ACC', 'Banking and Finance': 'BFI', 'International Trade': 'INT', 'Microfinance': 'MIF', 'Insurance': 'INS', 'Project Management': 'PRM', 'Human Resources Management': 'HRM', 'Logistics and Transportation Management': 'LTM', 'Information Systems Management': 'MIS', 'Legal Assistant': 'LAS', 'Business Law': 'BLA', 'Career in the Stock Exchange': 'SMC', 'Nursing': 'NUS', 'Medical Laboratory Sciences': 'MLS', 'Pharmacy Technology': 'PHT', 'Midwifery': 'MID', 'Healthcare Management': 'HCM', 'Telecommunications': 'TEL', 'Network and Security': 'NWS', 'Software Engineering': 'SWE', 'Computer Science & Networks': 'CSN', 'Database Management': 'DBM', 'Hardware Maintenance': 'HWM', 'Graphics Web Design': 'CWD' };
+  const lead = (s, fr) => String(s || '').replace(fr ? /^(Fili[èe]re|Facult[ée]|[ÉE]cole)\s+(de l['’]|des |du |de |d['’])?\s*/i : /^(Field|Faculty|School)\s+of\s+(the\s+)?/i, '').replace(/^./, c => c.toUpperCase());
+  window.progParts = function (specId, level) {
+    const sp = (typeof SPEC !== 'undefined' && SPEC[specId]) || null, lv = (typeof LEVELS !== 'undefined' && LEVELS[level || (sp && sp.level)]) || null, g = sp && typeof GRP !== 'undefined' ? GRP[sp.gid] : null;
+    const prog = (txt, short) => { const m = String(txt || '').match(/^(.+?)\s+[—–-]\s+(.+)$/); return m ? m[2] + ' (' + m[1] + ')' : (txt || ''); };
+    const code = sp ? CODES[sp.name] || '' : '';
+    return {
+      programme: lv ? prog(lv.en) : '—', programmeFr: lv ? prog(lv.fr) : '—',
+      field: g ? lead(g.en, false) : '—', fieldFr: g ? lead(g.fr, true).replace(/ et de /g, ' et ') : '—',
+      specialty: sp ? sp.name : '—', code, specialtyFull: sp ? sp.name + (code ? ' (' + code + ')' : '') : '—'
+    };
+  };
+})();
+
 /* ===== Application form: every change is saved as it is made, and kept if the page is closed, so the applicant resumes where they stopped ===== */
 (function () {
   const BK = uid0 => 'adi_appdraft_' + uid0;
