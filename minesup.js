@@ -1186,6 +1186,62 @@
   window.addEventListener('resize', () => setTimeout(scan, 150));
 })();
 
+/* ===== Application form: every change is saved as it is made, and kept if the page is closed, so the applicant resumes where they stopped ===== */
+(function () {
+  const BK = uid0 => 'adi_appdraft_' + uid0;
+  let timer = 0, lastSaved = '', saving = false, again = false;
+  const live = () => typeof me === 'function' && me() && typeof FORMS !== 'undefined' && FORMS.app && typeof appOf === 'function' && typeof LOCKED !== 'undefined';
+  const editable = () => { const u = me(), a = appOf(u.id); return !(a && LOCKED.includes(a.status)); };
+  const snap = () => JSON.stringify(FORMS.app || {});
+  const stash = () => { try { const u = me(); localStorage.setItem(BK(u.id), JSON.stringify({ at: Date.now(), data: FORMS.app })); } catch (e) {} };
+  const unstash = id => { try { localStorage.removeItem(BK(id)); } catch (e) {} };
+  function save(final) {
+    if (!live() || !editable()) return;
+    const u = me(), f = JSON.parse(snap()), now = snap();
+    if (now === lastSaved) return;
+    stash();
+    if (saving) { again = true; return; }
+    const old = appOf(u.id), id = old ? old.id : uid('p');
+    const rec = Object.assign({}, old || {}, { userId: u.id, campus: f.campus === 'buea' ? 'buea' : f.campus === 'yaounde' ? 'yaounde' : '', level: f.level, p: f.p, par: f.par, ac: f.ac, pr: f.pr, rf: f.rf, docs: f.docs, decl: f.decl || {}, photo: f.photo || '', updated: Date.now() });
+    if (!rec.createdAt) rec.createdAt = Date.now();
+    rec.status = rec.status === 'returned' ? 'returned' : 'draft';
+    const done = () => { lastSaved = now; FORMS._for = id + ':' + rec.updated; if (now === snap()) unstash(u.id); saving = false; if (again) { again = false; schedule2(); } };
+    if (typeof MODE !== 'undefined' && MODE === 'api' && typeof api === 'function') {
+      saving = true; rec.id = id; S.apps[id] = JSON.parse(JSON.stringify(rec));
+      api('/api/doc/apps/' + encodeURIComponent(id), { method: 'PUT', body: rec, keepalive: !!final }).then(done).catch(() => { saving = false; });
+    } else { put('apps', id, rec); done(); }
+    flash();
+  }
+  function schedule2() { clearTimeout(timer); timer = setTimeout(() => { timer = 0; save(false); }, 1200); }
+  function flash() {
+    let n = document.getElementById('app-saved');
+    if (!n) { n = document.createElement('div'); n.id = 'app-saved'; n.setAttribute('role', 'status'); n.style.cssText = 'position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:rgba(11,28,61,.92);color:#fff;font:600 12.5px/1 system-ui,sans-serif;padding:8px 14px;border-radius:99px;z-index:9999;pointer-events:none;opacity:0;transition:opacity .25s'; document.body.appendChild(n); }
+    n.textContent = (typeof LANG !== 'undefined' && LANG === 'fr') ? 'Brouillon enregistré' : 'Draft saved';
+    n.style.opacity = '1'; clearTimeout(n._t); n._t = setTimeout(() => { n.style.opacity = '0'; }, 1600);
+  }
+  const mine = e => { const d = e.target && e.target.dataset; return d && typeof d.f === 'string' && d.f.indexOf('app.') === 0; };
+  ['input', 'change'].forEach(n => window.addEventListener(n, e => { if (mine(e) && live() && editable()) { stash(); schedule2(); } }));
+  const flush = () => { if (live() && editable()) { clearTimeout(timer); save(true); } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  window.addEventListener('pagehide', flush);
+  setInterval(() => { if (live() && editable() && snap() !== lastSaved && !saving && !timer) schedule2(); }, 4000);
+  /* restore an unsaved copy left on this device (the page was closed before it reached the server) */
+  if (typeof ensureAppForm === 'function') {
+    const base = ensureAppForm;
+    ensureAppForm = function () {
+      const before = FORMS._for, app = base();
+      try {
+        if (FORMS._for !== before && me()) {
+          const raw = localStorage.getItem(BK(me().id)), b = raw && JSON.parse(raw);
+          if (b && b.data && (!app || (!LOCKED.includes(app.status) && b.at > (app.updated || 0)))) { FORMS.app = b.data; lastSaved = ''; setTimeout(schedule2, 800); }
+          else lastSaved = snap();
+        }
+      } catch (e) {}
+      return app;
+    };
+  }
+})();
+
 /* ===== Homepage guided tour: on arrival the page glides to the end, returns to the top and rests; any touch or click halts it at the top ===== */
 (function () {
   const reduce = false;   /* the tour is requested by the University and is stopped by any touch, so the device motion setting does not disable it */
