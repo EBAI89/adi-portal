@@ -332,20 +332,23 @@
         ? `<p class="muted">${esc(LBL('Your account is signed in with a personal email. ADI is moving every account to its own ' + '@adiuniversity.com address. Nothing is lost: your records, results and payments stay on this account.', 'Votre compte utilise une adresse personnelle. L\'ADI donne à chaque compte sa propre adresse @adiuniversity.com. Rien n\'est perdu : vos dossiers, résultats et paiements restent sur ce compte.'))}</p>
            <p class="muted">${esc(LBL('We will send a one-time code to ' + u.email + '.', 'Nous enverrons un code à usage unique à ' + u.email + '.'))}</p>
            <div class="mb-row"><button type="button" class="btn gold lg" id="mb-mig-go">${esc(LBL('Send me the code', 'Envoyer le code'))}</button><button type="button" class="btn ghost" id="mb-mig-later">${esc(LBL('Later', 'Plus tard'))}</button></div>`
-        : `<p class="muted">${esc(info.mailed ? LBL('A code was sent to ' + u.email + '. Enter it below.', 'Un code a été envoyé à ' + u.email + '. Saisissez-le ci-dessous.') : LBL('Email delivery is not switched on yet, so your code is shown here once:', 'L\'envoi par e-mail n\'est pas encore activé : votre code s\'affiche ici une seule fois :'))}</p>
+        : `<p class="muted">${esc(info.mailed ? LBL('A code was also sent to ' + u.email + '. It is filled in below: tap Confirm and switch.', 'Un code a aussi été envoyé à ' + u.email + '. Il est saisi ci-dessous : touchez Confirmer et basculer.') : LBL('Email delivery is not switched on yet, so your code is shown here once:', 'L\'envoi par e-mail n\'est pas encore activé : votre code s\'affiche ici une seule fois :'))}</p>
            ${info.otp ? `<p class="mb-otp" style="font:700 1.4rem/1.2 ui-monospace,monospace;letter-spacing:.06em;user-select:all">${esc(info.otp)}</p>` : ''}
            <p class="muted">${esc(LBL('Your new address: ', 'Votre nouvelle adresse : '))}<b>${esc(info.adiEmail)}</b></p>
            <label class="small" for="mb-mig-otp">${esc(LBL('One-time code', 'Code à usage unique'))}</label>
            <input id="mb-mig-otp" class="inp" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" style="width:100%;margin:4px 0 10px">
            <p class="small" id="mb-mig-err" role="alert" style="color:var(--crimson);min-height:1.2em"></p>
-           <div class="mb-row"><button type="button" class="btn gold lg" id="mb-mig-ok">${esc(LBL('Confirm and switch', 'Confirmer et basculer'))}</button><button type="button" class="btn ghost" id="mb-mig-later">${esc(LBL('Later', 'Plus tard'))}</button></div>`;
+           <div class="mb-row"><button type="button" class="btn gold lg" id="mb-mig-ok">${esc(LBL('Confirm and switch', 'Confirmer et basculer'))}</button><button type="button" class="btn" id="mb-mig-resend">${esc(LBL('Send a new code', 'Renvoyer un code'))}</button><button type="button" class="btn ghost" id="mb-mig-later">${esc(LBL('Later', 'Plus tard'))}</button></div>`;
       host.innerHTML = `<div class="modal"><div class="box" role="dialog" aria-modal="true" style="max-width:480px"><p class="mb-kicker">ADI</p><h3 style="margin-top:0">${esc(LBL('Move to your ADI account', 'Passez à votre compte ADI'))}</h3>${body}</div></div>`;
       const later = host.querySelector('#mb-mig-later'); if (later) later.onclick = () => { MIG.snoozed[u.id] = 1; migClose(); };
       const go = host.querySelector('#mb-mig-go');
       if (go) go.onclick = () => { go.disabled = true; api('/api/mail/migrate/start', { body: {} }).then(r => draw('code', r)).catch(e => { go.disabled = false; toast(apiErr(e), 1); }); };
       const ok = host.querySelector('#mb-mig-ok');
       if (ok) {
-        const inp = host.querySelector('#mb-mig-otp'); inp.focus();
+        const inp = host.querySelector('#mb-mig-otp'); inp.value = info.otp || ''; inp.focus();
+        const rs = host.querySelector('#mb-mig-resend');
+        if (rs) rs.onclick = () => { rs.disabled = true; rs.textContent = LBL('Sending…', 'Envoi…'); api('/api/mail/migrate/start', { body: {} }).then(r => { draw('code', r); toast(LBL('A new code has been generated.', 'Un nouveau code a été généré.')); }).catch(e => { rs.disabled = false; rs.textContent = LBL('Send a new code', 'Renvoyer un code'); toast(apiErr(e), 1); }); };
+        if (!info.otp) { rs && rs.click(); }
         const submit = () => {
           const v = inp.value.trim(); const err = host.querySelector('#mb-mig-err');
           if (!v) { err.textContent = LBL('Enter the code.', 'Saisissez le code.'); inp.focus(); return; }
