@@ -2840,6 +2840,48 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV6: true }));
     console.log('MINESUP HND programmes added: ' + n + ' courses');
   }
+  const splitInt = (total, weights) => {                 // whole numbers adding up to total, in proportion to the weights (largest remainder)
+    const w = weights.map(x => Math.max(0, Number(x) || 0)), sm = w.reduce((x, y) => x + y, 0) || 1, raw = w.map(x => total * x / sm), base = raw.map(Math.floor); let left = total - base.reduce((x, y) => x + y, 0);
+    raw.map((x, i) => [x - Math.floor(x), i]).sort((x, y) => y[0] - x[0]).forEach(([, i]) => { if (left > 0) { base[i]++; left--; } }); return base;
+  };
+  const scaleHrs = (h, credits) => {                       // hours of a whole code shared among the courses made from it, in proportion to credits
+    const tot = h.l + h.t + h.p + h.s, target = Math.round(credits * 15); if (!tot || target >= tot) return h;
+    const v = splitInt(target, [h.l, h.t, h.p, h.s]); return { l: v[0], t: v[1], p: v[2], s: v[3] };
+  };
+  if (!cur.migMinV7) {
+    // Contact hours (lectures, tutorials, practicals, student personal workload) of the Ministry's courses, for the course outlines.
+    // Adds one descriptive field (hrs) only; credits, titles, semesters, registration and Form B are not touched.
+    const H = __req('./adi-minesup-hours.js'); let n = 0;
+    for (const c of Object.values(S.all('courses'))) {
+      if (!c || c.src !== 'minesup' || c.hrs) continue; const h = H[String(c.code || '').toUpperCase()]; if (!h) continue;
+      await save('courses', c.id, Object.assign({}, c, { hrs: scaleHrs({ l: h[0], t: h[1], p: h[2], s: h[3] }, Number(c.credits) || 1) })); n++;
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV7: true }));
+    console.log('Course hours (L/T/P/SPW) added: ' + n);
+  }
+  if (!cur.migMinV8) {
+    // The specialties added by migMinV6 take the Ministry's module structure used by every other HND specialty (a code made of several modules is
+    // registered module by module), so that registration offers them exactly as it offers the existing ones. Only those new specialties are processed.
+    const { ROWS } = __req('./adi-minesup-extra.js'), ids = new Set();
+    Object.values(logic.core.SPEC).forEach(sp => { if (sp.level === 'HND' && ROWS[sp.name]) ids.add(sp.id); });
+    let n = 0;
+    for (const c of Object.values(S.all('courses')).slice()) {
+      if (!c || c.src !== 'minesup' || !ids.has(c.specId) || c.id !== ('ms-' + c.code + '-' + slug(c.specId)).slice(0, 90)) continue;
+      const P = PARTS[String(c.code || '').toUpperCase()]; if (!P || !P.parts || !P.parts.length) continue;
+      if (P.parts.some(x => norm(x[0]) === norm(c.title))) continue;
+      let parts = fitParts(P.parts, c.credits);
+      if (!parts || parts.length < 2) { const ps = P.parts.slice(); if (ps.length >= 2 && ps.length <= c.credits) { const cr = splitInt(c.credits - ps.length, ps.map(x => x[1])); parts = ps.map((x, i) => [x[0], cr[i] + 1]); } else parts = null; }
+      if (!parts) { await save('courses', c.id, Object.assign({}, c, { title: String(P.parts[0][0]).slice(0, 180), module: P.stem })); n++; continue; }
+      for (let i = 0; i < parts.length; i++) {
+        const title = String(parts[i][0]).slice(0, 180), credits = Math.max(1, Number(parts[i][1]) || 1), hrs = c.hrs ? scaleHrs(c.hrs, credits) : undefined;
+        const id = i === 0 ? c.id : ('ms-' + c.code + '-' + slug(c.specId) + '-' + slug(title)).slice(0, 90); if (i > 0 && S.get('courses', id)) continue;
+        const doc = Object.assign({}, c, { id: id, title: title, credits: credits, module: P.stem }); if (hrs) doc.hrs = hrs; delete doc._seq;
+        await save('courses', id, doc); n++;
+      }
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV8: true }));
+    console.log('Module structure applied to the new specialties: ' + n);
+  }
 }
 
 async function seed() {
