@@ -2802,6 +2802,24 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV5: true }));
     console.log('Course semesters aligned to the MINESUP code: ' + fixed);
   }
+  if (!cur.migHb25) {
+    // Bachelor and Master curricula of the School of Social and Management Sciences Handbook 2025–2026 (only what the Handbook gives in full)
+    const { SETS } = __req('./adi-handbook.js'), byName = {};
+    Object.values(logic.core.SPEC).forEach(sp => { if (sp.level === 'BSC' || sp.level === 'MSC') byName[sp.level + '|' + sp.name] = sp; });
+    let n = 0;
+    for (const [level, name, rows] of SETS) {
+      const sp = byName[level + '|' + name]; if (!sp) { console.warn('Handbook programme not in catalogue: ' + name); continue; }
+      for (const r of rows) {
+        const [year, sem, code, title, credits, st, l, t, p] = r, id = ('hb25-' + code + '-' + slug(sp.id)).slice(0, 90);
+        if (S.get('courses', id)) continue;
+        const cat = /Internship|Attachment/i.test(title) ? 'siwes' : /Project|Thesis|Long Essay/i.test(title) ? 'research' : st === 'U' ? 'cross' : (year === 1 ? 'fund' : 'prof');
+        const status = st === 'U' ? 'R' : st;
+        await save('courses', id, { id, code, title, credits, level, specId: sp.id, year, sem, cat, status, compulsory: status !== 'E', pre: '', lecturerId: '', src: 'adi', hb: '2025', hrs: { l, t, p } }); n++;
+      }
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migHb25: true }));
+    console.log('Handbook 2025 courses loaded: ' + n);
+  }
 }
 
 async function seed() {
