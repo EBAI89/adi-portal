@@ -1033,8 +1033,8 @@ module.exports = function makeHr(ctx) {
     shortlisted: [['Your application has been shortlisted', 'Votre candidature est présélectionnée'], (r, d) => ['Good news: your application ' + r + ' for "' + d.title + '" has been shortlisted. We will contact you about the next step.', 'Bonne nouvelle : votre candidature ' + r + ' pour « ' + d.title + ' » est présélectionnée. Nous vous contacterons pour la suite.']],
     interview: [['Invitation to an interview', 'Invitation à un entretien'], (r, d) => ['We invite you to an interview for "' + d.title + '" (' + r + ').\nWhen: ' + d.when + '\nHow: ' + d.mode + (d.where ? '\nWhere / link: ' + d.where : '') + '\nPlease reply to this e-mail to confirm.', 'Nous vous invitons à un entretien pour « ' + d.title + ' » (' + r + ').\nQuand : ' + d.when + '\nComment : ' + d.mode + (d.where ? '\nLieu / lien : ' + d.where : '') + '\nMerci de répondre à cet e-mail pour confirmer.']],
     references: [['Your application: next step', 'Votre candidature : prochaine étape'], (r, d) => ['Your application ' + r + ' is progressing. With the permission you gave, we will now contact your referees.', 'Votre candidature ' + r + ' avance. Avec l\'autorisation que vous avez donnée, nous allons maintenant contacter vos référents.']],
-    offer: [['Your application: an offer', 'Votre candidature : une proposition'], (r, d) => ['We would like to make you an offer for "' + d.title + '" (' + r + '). Our HR team will contact you with the details.', 'Nous souhaitons vous faire une proposition pour « ' + d.title + ' » (' + r + '). Notre équipe RH vous contactera avec les détails.']],
-    hired: [['Welcome to American Ditek Institute', 'Bienvenue à l\'American Ditek Institute'], (r, d) => ['We are delighted to confirm your appointment ("' + d.title + '", ' + r + '). Our team will send your onboarding information.', 'Nous avons le plaisir de confirmer votre nomination (« ' + d.title + ' », ' + r + '). Notre équipe vous enverra les informations d\'accueil.']],
+    offer: [['Your application: an offer', 'Votre candidature : une proposition'], (r, d) => ['We would like to make you an offer for "' + d.title + '" (' + r + '). To take up the appointment you must sign in to your ADI account (or create one with this e-mail address) and link this application under "My applications"; your ADI work e-mail address, ending with @adiuniversity.com, will then be issued to that account. Our HR team will contact you with the details.', 'Nous souhaitons vous faire une proposition pour « ' + d.title + ' » (' + r + '). Pour prendre vos fonctions, vous devez vous connecter à votre compte ADI (ou en créer un avec cette adresse e-mail) et rattacher cette candidature dans « Mes candidatures » ; votre adresse professionnelle ADI, se terminant par @adiuniversity.com, sera alors délivrée à ce compte. Notre équipe RH vous contactera avec les détails.']],
+    hired: [['Welcome to American Ditek Institute', 'Bienvenue à l\'American Ditek Institute'], (r, d) => ['We are delighted to confirm your appointment ("' + d.title + '", ' + r + '). Your ADI work e-mail address (ending with @adiuniversity.com) has been issued to your ADI account: sign in, open "My applications" or the Mailbox page, and activate it with the one-time password shown there. Our team will send your onboarding information.', 'Nous avons le plaisir de confirmer votre nomination (« ' + d.title + ' », ' + r + '). Votre adresse professionnelle ADI (se terminant par @adiuniversity.com) a été délivrée à votre compte ADI : connectez-vous, ouvrez « Mes candidatures » ou la page Messagerie, et activez-la avec le mot de passe à usage unique qui y est affiché. Notre équipe vous enverra les informations d\'accueil.']],
     rejected: [['Your application: outcome', 'Votre candidature : résultat'], (r, d) => ['Thank you for your interest in "' + d.title + '" (' + r + '). After careful consideration we will not be taking your application further. We keep your details only for the period stated in our privacy notice. We wish you every success.', 'Merci de votre intérêt pour « ' + d.title + ' » (' + r + '). Après examen attentif, nous ne donnerons pas suite à votre candidature. Vos données ne sont conservées que pendant la durée indiquée dans notre avis de confidentialité. Nous vous souhaitons plein succès.']],
     negotiation: [['Your partnership proposal: next step', 'Votre proposition de partenariat : prochaine étape'], (r, d) => ['We would like to discuss your proposal (' + r + ') in more detail. A member of our team will contact you.', 'Nous souhaitons discuter plus en détail de votre proposition (' + r + '). Un membre de notre équipe vous contactera.']],
     agreed: [['Your partnership proposal: agreed in principle', 'Votre proposition de partenariat : accord de principe'], (r, d) => ['We are pleased to confirm agreement in principle on your proposal (' + r + '). We will send a draft memorandum of understanding for your review.', 'Nous avons le plaisir de confirmer un accord de principe sur votre proposition (' + r + '). Nous vous enverrons un projet de protocole d\'accord pour examen.']],
@@ -1070,14 +1070,15 @@ module.exports = function makeHr(ctx) {
   async function keepFiles(id, fl) { for (let i = 0; i < fl.length; i++) await S.putBlob('hr_' + id + '_' + i, fl[i].buf); return fl.map((f, i) => Object.assign({ n: i }, f.meta)); }
 
   /* ---- an application from outside ---- */
-  async function apply(req, b) {
+  async function apply(req, b, u) {
+    if (!u || u.status !== 'active') fail('AUTH', 'Please sign in, or create your ADI account, before applying.', 401);
     const c = cfg(); if (!c.on) fail('OFF', 'Applications are closed at the moment.', 503); if (b.hp) return { ok: true, ref: 'ADI/REC/' + yr() + '/00000', code: '00000000' };      // honeypot: a robot filled the hidden field
     const general = !b.vacancyId || b.vacancyId === 'general', vac = general ? null : S.get('hrv', String(b.vacancyId)); if (!general && (!vac || vac.status !== 'published' || (vac.closes && vac.closes < today()))) fail('CLOSED', 'This vacancy is closed.', 409);
     const cat = vac ? vac.cat : (core.HR_CATS[b.cat] ? b.cat : 'lecturer'), { a, err } = core.hrApplication(b.app, cat); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
     const vid = vac ? vac.id : 'general'; if (Object.values(S.all('hra')).some(x => x.a && x.a.email === a.email && x.vac === vid && now() - x.at < 30 * 864e5 && x.stage !== 'withdrawn')) fail('DUPLICATE', 'You have already applied for this position.', 409);
     const fl = readFiles(b.files, true), id = rid(8), ref = await nextRef('REC'), code = rid(4), lang = b.lang === 'fr' ? 'fr' : 'en', title = vac ? vac.title : (lname(core.HR_CATS, cat, lang) + ' — general application');
     const eeo = a.eeo; delete a.eeo; const files = await keepFiles(id, fl);
-    const doc = { id, ref, vac: vid, vacTitle: title, cat, lang, a, eeo, files, stage: 'received', at: now(), upd: now(), codeHash: sha(code), log: [{ at: now(), by: 'applicant', stage: 'received' }], scores: {}, notes: [], msgs: [] };
+    const doc = { id, ref, userId: u.id, vac: vid, vacTitle: title, cat, lang, a, eeo, files, stage: 'received', at: now(), upd: now(), codeHash: sha(code), log: [{ at: now(), by: 'applicant', stage: 'received' }], scores: {}, notes: [], msgs: [] };
     await save('hra', id, doc); await mailTo(a.email, 'ack', ref, { title, code }, lang); await tell(bi('New job application', 'Nouvelle candidature'), ref + ' — ' + a.name + ' — ' + title); return { ok: true, ref, code };
   }
   async function partner(req, b) {
@@ -1095,6 +1096,7 @@ module.exports = function makeHr(ctx) {
     need(u); const coll = kind === 'prt' ? 'hrp' : 'hra', d = S.get(coll, id); if (!d) fail('NOT_FOUND', 'Not found', 404); if (d.anon) fail('ANON', 'This record was anonymised.', 409);
     const st = String(b.stage), ok = kind === 'prt' ? core.HR_PSTAGES : core.HR_STAGES; if (!ok.includes(st)) fail('STAGE', 'Unknown stage'); let iv = d.interview || null;
     if (kind !== 'prt' && st === 'interview') { const at = Number(b.interview && b.interview.at), mode = b.interview && MODES[b.interview.mode] ? b.interview.mode : ''; if (!(at > now() - 3600e3) || !mode) fail('WHEN', 'Choose the interview date, time and type.'); iv = { at, mode, where: core.clsT(b.interview.where, 200) }; }
+    if (kind !== 'prt' && st === 'hired' && !d.userId) fail('NO_ACCOUNT', 'The candidate must first create an ADI account and link this application (My applications) before the appointment can be confirmed and the @adiuniversity.com work address issued.', 409);
     const note = core.clsTM(b.msg, 600), next = Object.assign({}, d, { stage: st, upd: now(), interview: iv, log: (d.log || []).concat([{ at: now(), by: u.name, stage: st }]), msgs: note ? (d.msgs || []).concat([{ at: now(), text: note }]) : (d.msgs || []) });
     await save(coll, id, next); await audit(u, (kind === 'prt' ? 'partnership ' : 'application ') + st + ' ' + d.ref);
     if (kind !== 'prt' && st === 'hired' && typeof global.__adiMailHire === 'function') { try { await global.__adiMailHire(u, next); } catch (e) { console.error('[mail] hire', e && e.message || e); } }
@@ -1150,21 +1152,45 @@ module.exports = function makeHr(ctx) {
     await audit(u, 'applications anonymised after the retention period: ' + list.length); return { ok: true, n: list.length };
   }
 
+
+  /* ---- applicants with an ADI account: list, update, and claim an application made earlier without an account ---- */
+  const EDITABLE = ['received', 'screening'];
+  const mineView = d => ({ id: d.id, ref: d.ref, title: d.vacTitle, cat: d.cat, vac: d.vac, stage: d.stage, at: d.at, upd: d.upd, a: Object.assign({}, d.a, { eeo: d.eeo }), files: (d.files || []).map(f => ({ n: f.n, kind: f.kind, name: f.name, size: f.size })), msgs: (d.msgs || []).slice(-5), interview: d.stage === 'interview' ? d.interview : null, canEdit: EDITABLE.includes(d.stage), canWithdraw: !['hired', 'rejected', 'withdrawn'].includes(d.stage), work: d.stage === 'hired' && typeof global.__adiMailOf === 'function' ? global.__adiMailOf(d) : null });
+  const mine = u => ({ list: Object.values(S.all('hra')).filter(d => d && !d.anon && d.userId === u.id).sort((a, b) => b.at - a.at).map(mineView) });
+  async function claim(u, b) {
+    const d = lookup({ headers: {}, socket: { remoteAddress: 'claim:' + u.id } }, b);
+    if (!d.a) fail('NOT_FOUND', 'We could not find an application with these details.', 404);
+    if (d.userId && d.userId !== u.id) fail('TAKEN', 'This application is already linked to another account.', 409);
+    if (!d.userId) { await save('hra', d.id, Object.assign({}, d, { userId: u.id, upd: now(), log: d.log.concat([{ at: now(), by: 'applicant', stage: 'account linked' }]) })); await audit(u, 'recruitment application linked to account: ' + d.ref); }
+    return { ok: true, ref: d.ref };
+  }
+  async function updateMine(u, b) {
+    const d = S.get('hra', String(b.id || '')); if (!d || d.anon || d.userId !== u.id) fail('NOT_FOUND', 'Not found', 404);
+    if (!EDITABLE.includes(d.stage)) fail('LOCKED', 'This application is already being assessed and can no longer be edited. Write to the recruitment office to add information.', 409);
+    const { a, err } = core.hrApplication(b.app, d.cat); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
+    const eeo = a.eeo; delete a.eeo; const fl = readFiles(b.files, false); let files = (d.files || []).slice();
+    for (const f of fl) { const k = f.meta.kind, old = files.find(x => x.kind === k), n = old ? old.n : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].find(i => !files.some(x => x.n === i)); if (n == null) fail('FILES', 'Too many documents.'); await S.putBlob('hr_' + d.id + '_' + n, f.buf); files = files.filter(x => x.n !== n).concat([Object.assign({ n }, f.meta)]); }
+    await save('hra', d.id, Object.assign({}, d, { a, eeo, files: files.sort((x, y) => x.n - y.n), upd: now(), log: d.log.concat([{ at: now(), by: 'applicant', stage: 'updated' }]) }));
+    await tell(bi('Application updated by the applicant', 'Candidature mise à jour par le candidat'), d.ref + ' — ' + a.name); return { ok: true, ref: d.ref };
+  }
+
   /* ---- router ---- */
   async function handle(req, res, u, p, url) {
     if (!p.startsWith('/api/hr/')) return false; let m;
     try {
       if (req.method === 'POST') {
-        if (p === '/api/hr/apply') return send(res, 200, await apply(req, await body(req, 19e6))), true; if (p === '/api/hr/partner') return send(res, 200, await partner(req, await body(req, 19e6))), true;
+        if (p === '/api/hr/apply') return send(res, 200, await apply(req, await body(req, 19e6), u)), true; if (p === '/api/hr/partner') return send(res, 200, await partner(req, await body(req, 19e6))), true;
         if (p === '/api/hr/track') return send(res, 200, track(req, await body(req, 3000))), true; if (p === '/api/hr/withdraw') return send(res, 200, await withdraw(req, await body(req, 3000))), true;
       }
       if (!u || u.status !== 'active') return send(res, 401, { error: 'auth' }), true;
       if (req.method === 'GET') {
         if ((m = /^\/api\/hr\/file\/([\w-]{1,40})\/(\d)$/.exec(p))) return await fileOut(res, u, m[1], m[2]), true;
+        if (p === '/api/hr/mine') return send(res, 200, mine(u)), true;
         if (p === '/api/hr/stats') { need(u); return send(res, 200, stats()), true; }
         if (p === '/api/hr/export') { need(u); const kind = ['partners', 'vacancies'].includes(url.searchParams.get('kind')) ? url.searchParams.get('kind') : 'apps'; res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="ADI-' + kind + '-' + today() + '.csv"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(exportCsv(kind)), true; }
       }
       if (req.method === 'POST') {
+        if (p === '/api/hr/claim') return send(res, 200, await claim(u, await body(req, 3000))), true; if (p === '/api/hr/update') return send(res, 200, await updateMine(u, await body(req, 19e6))), true;
         if (p === '/api/hr/vacancy') return send(res, 200, await saveVacancy(u, await body(req, 30000))), true; if (p === '/api/hr/purge') return send(res, 200, await purge(u)), true;
         if ((m = /^\/api\/hr\/(app|prt)\/([\w-]{1,40})\/(stage|score|note)$/.exec(p))) { const b = await body(req, 8000); return send(res, 200, m[3] === 'stage' ? await setStage(u, m[2], b, m[1]) : m[3] === 'score' ? await score(u, m[2], b) : await note(u, m[2], b, m[1])), true; }
       }
@@ -2796,6 +2822,7 @@ async function seed() {
   HR = makeHr({ S, save, audit, now, uid, R, E, limited, usersWith, notifyUser, send, body, bi, logic, remove, sniff: (b, n) => LIB.sniff(b, n), mail, ip }); await HR.init();
   MB = sideMod('mailbox-api.js')({ S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD, sendEmail, emailOn, cookie, makeToken });
   global.__adiMailHire = (actor, doc) => MB.issueFromHire(actor, doc);
+  global.__adiMailOf = d => { const m = MB.byHr ? MB.byHr(d.id) : null; if (!m) return null; const w = MB.withOtp ? MB.withOtp(m, { id: d.userId }) : null; return { email: m.email, status: m.status, otp: w && w.otp || '' }; };
   CLS = makeCls({ S, save, audit, now, uid, R, E, limited, notifyUser, usersWith, send, body, bi, logic, remove, sniff: (b, n) => LIB.sniff(b, n) }); await CLS.init();
   LIB = makeLib({ S, save, audit, now, uid, R, limited, notifyUser, usersWith, send, body, bi, logic, remove }); await LIB.init();
   ATT = makeAtt({ S, save, audit, now, uid, R, E, PROD, limited, notifyUser, usersWith, send, body, bi, logic, ip }); await ATT.init();

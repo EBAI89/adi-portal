@@ -190,7 +190,8 @@ module.exports = function makeMailbox(ctx) {
     const kind = ACADEMIC.has(cat) ? 'lecturer' : 'staff';
     const role = kind === 'lecturer' ? 'lecturer' : 'x_staff';
     const titles = CAT[cat] || ['Staff', 'Personnel'];
-    let user = Object.values(S.all('users')).find(u => u && (String(u.email || '').toLowerCase() === personal || String(u.altEmail || '').toLowerCase() === personal || String(u.adiEmail || '').toLowerCase() === personal));
+    let user = hra.userId ? S.get('users', hra.userId) : null;
+    if (!user) user = Object.values(S.all('users')).find(u => u && (String(u.email || '').toLowerCase() === personal || String(u.altEmail || '').toLowerCase() === personal || String(u.adiEmail || '').toLowerCase() === personal));
     const local = uniqueLocal(suggestLocal(name));
     const otp = otpPlain();
     if (!user) {
@@ -528,5 +529,5 @@ module.exports = function makeMailbox(ctx) {
     }
   }
 
-  return { handle, issueFromAdmission, issueFromHire, issueForSignup, otpOk, onUserPassword, login, seed, officer, DOMAIN };
+  return { handle, byHr, withOtp, issueFromAdmission, issueFromHire, issueForSignup, otpOk, onUserPassword, login, seed, officer, DOMAIN };
 };
