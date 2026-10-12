@@ -1114,13 +1114,21 @@ module.exports = function makeHr(ctx) {
 
   /* ---- what an applicant may see: only with reference + e-mail + private code ---- */
   const findRef = ref => Object.values(S.all('hra')).find(x => x.ref === ref) || Object.values(S.all('hrp')).find(x => x.ref === ref);
-  function lookup(req, b) {
-    if (limited('hrtrack:' + ip(req), 60, 3600e3)) fail('RATE', 'Too many attempts. Try again later.', 429);
-    const ref = String(b.ref || '').trim().toUpperCase(), email = core.hrEmail(b.email), code = String(b.code || '').trim().toLowerCase(), d = findRef(ref);
-    if (!d || d.anon || ((d.a || d.p).email !== email) || !code || sha(code) !== d.codeHash) fail('NOT_FOUND', 'We could not find an application with these details. Check the reference, e-mail address and code in your confirmation e-mail.', 404); return d;
+  function normRef(v) {
+    let r = String(v || '').trim().toUpperCase().replace(/[\s\\\-_.]+/g, '/').replace(/\/+/g, '/');
+    if (/^\d{4}\/\d{1,5}$/.test(r)) r = 'ADI/REC/' + r.replace(/\/(\d+)$/, (m, n) => '/' + n.padStart(5, '0'));
+    r = r.replace(/^(ADI\/(?:REC|PRT)\/\d{4}\/)(\d{1,5})$/, (m, p, n) => p + n.padStart(5, '0'));
+    return r;
   }
-  function track(req, b) {
-    const d = lookup(req, b), app = !!d.a;
+  function lookup(req, b, u) {
+    if (limited('hrtrack:' + ip(req), 60, 3600e3)) fail('RATE', 'Too many attempts. Try again later.', 429);
+    const ref = normRef(b.ref), email = core.hrEmail(b.email), code = String(b.code || '').toLowerCase().replace(/[^a-z0-9]/g, ''), d = findRef(ref);
+    const owner = !!(u && d && d.a && d.userId && d.userId === u.id);      // the signed-in owner of an application needs no e-mail address or code
+    if (!d || d.anon || (!owner && ((d.a || d.p).email !== email || !code || sha(code) !== d.codeHash))) fail('NOT_FOUND', 'We could not find an application with these details. Check the reference, e-mail address and code in your confirmation e-mail. If you applied with your ADI account, sign in and open "My applications".', 404);
+    return d;
+  }
+  function track(req, b, u) {
+    const d = lookup(req, b, u), app = !!d.a;
     return { kind: app ? 'app' : 'partner', ref: d.ref, title: app ? d.vacTitle : d.p.org, stage: d.stage, at: d.at, upd: d.upd, interview: app && d.stage === 'interview' ? d.interview : null, msgs: (d.msgs || []).slice(-5), canWithdraw: app && !['hired', 'rejected', 'withdrawn'].includes(d.stage) };
   }
   async function withdraw(req, b) {
@@ -1180,7 +1188,7 @@ module.exports = function makeHr(ctx) {
     try {
       if (req.method === 'POST') {
         if (p === '/api/hr/apply') return send(res, 200, await apply(req, await body(req, 19e6), u)), true; if (p === '/api/hr/partner') return send(res, 200, await partner(req, await body(req, 19e6))), true;
-        if (p === '/api/hr/track') return send(res, 200, track(req, await body(req, 3000))), true; if (p === '/api/hr/withdraw') return send(res, 200, await withdraw(req, await body(req, 3000))), true;
+        if (p === '/api/hr/track') return send(res, 200, track(req, await body(req, 3000), u)), true; if (p === '/api/hr/withdraw') return send(res, 200, await withdraw(req, await body(req, 3000))), true;
       }
       if (!u || u.status !== 'active') return send(res, 401, { error: 'auth' }), true;
       if (req.method === 'GET') {
