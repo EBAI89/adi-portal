@@ -180,7 +180,7 @@ module.exports = function makeMailbox(ctx) {
   }
 
   async function issueFromHire(actor, hra) {
-    if (!hra || hra.stage !== 'hired' || hra.anon) return null;
+    if (!hra || hra.stage !== 'hired' || hra.anon || !hra.userId) return null;      // the work address is issued only to the candidate's own ADI account
     const existing = byHr(hra.id);
     if (existing) return withOtp(existing, actor);
     const a = hra.a || {};
@@ -246,6 +246,7 @@ module.exports = function makeMailbox(ctx) {
     if (b.hrId) {
       const h = S.get('hra', String(b.hrId));
       if (!h || h.stage !== 'hired') fail(400, 'Only an appointed candidate can receive an ADI address.', 'not_hired');
+      if (!h.userId) fail(409, 'The candidate must first create an ADI account and link this application (My applications); the address is then issued to that account.', 'no_account');
       return issueFromHire(actor, h);
     }
     const userId = String(b.userId || '');
