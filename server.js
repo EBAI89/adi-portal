@@ -1018,6 +1018,8 @@ __MODS["./lib/careers"] = function (module, exports, require) {
 const crypto = require('crypto');
 module.exports = function makeHr(ctx) {
   const { S, save, audit, now, uid, R, E, limited, usersWith, notifyUser, send, body, bi, logic, remove, sniff, mail, ip } = ctx; const core = logic.core, J = x => JSON.parse(JSON.stringify(x));
+  // Only COMPLETED submissions count toward the per-network allowance (a failed or corrected form never locks a genuine applicant out); raw attempts are capped far higher to stop robots.
+  const DONE = new Map(), doneOver = (key, max, win) => { const t = now(), a = (DONE.get(key) || []).filter(x => t - x < win); DONE.set(key, a); return a.length >= max; }, doneMark = key => { const a = DONE.get(key) || []; a.push(now()); DONE.set(key, a); };
   const fail = (code, msg, status = 400, extra) => { throw [status, msg || code, code, extra]; };
   const cfg = () => J(core.hrCfg((S.get('settings', 'main') || {}).hr)), rid = n => crypto.randomBytes(n || 8).toString('hex'), sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
   const mgr = u => !!u && R.has(u, 'hr_manage'), need = u => { if (!mgr(u)) fail('FORBIDDEN', 'Not allowed', 403); };
@@ -1072,22 +1074,22 @@ module.exports = function makeHr(ctx) {
   /* ---- an application from outside ---- */
   async function apply(req, b) {
     const c = cfg(); if (!c.on) fail('OFF', 'Applications are closed at the moment.', 503); if (b.hp) return { ok: true, ref: 'ADI/REC/' + yr() + '/00000', code: '00000000' };      // honeypot: a robot filled the hidden field
-    if (limited('hrapply:' + ip(req), E.NODE_ENV === 'test' ? 40 : 6, 3600e3)) fail('RATE', 'Too many applications from this network. Try again later.', 429);
+    if (limited('hrapplytry:' + ip(req), 300, 3600e3) || doneOver('hrapply:' + ip(req), E.NODE_ENV === 'test' ? 40 : 30, 3600e3)) fail('RATE', 'Too many applications from this network. Try again later.', 429);
     const general = !b.vacancyId || b.vacancyId === 'general', vac = general ? null : S.get('hrv', String(b.vacancyId)); if (!general && (!vac || vac.status !== 'published' || (vac.closes && vac.closes < today()))) fail('CLOSED', 'This vacancy is closed.', 409);
     const cat = vac ? vac.cat : (core.HR_CATS[b.cat] ? b.cat : 'lecturer'), { a, err } = core.hrApplication(b.app, cat); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
     const vid = vac ? vac.id : 'general'; if (Object.values(S.all('hra')).some(x => x.a && x.a.email === a.email && x.vac === vid && now() - x.at < 30 * 864e5 && x.stage !== 'withdrawn')) fail('DUPLICATE', 'You have already applied for this position.', 409);
     const fl = readFiles(b.files, true), id = rid(8), ref = await nextRef('REC'), code = rid(4), lang = b.lang === 'fr' ? 'fr' : 'en', title = vac ? vac.title : (lname(core.HR_CATS, cat, lang) + ' — general application');
     const eeo = a.eeo; delete a.eeo; const files = await keepFiles(id, fl);
     const doc = { id, ref, vac: vid, vacTitle: title, cat, lang, a, eeo, files, stage: 'received', at: now(), upd: now(), codeHash: sha(code), log: [{ at: now(), by: 'applicant', stage: 'received' }], scores: {}, notes: [], msgs: [] };
-    await save('hra', id, doc); await mailTo(a.email, 'ack', ref, { title, code }, lang); await tell(bi('New job application', 'Nouvelle candidature'), ref + ' — ' + a.name + ' — ' + title); return { ok: true, ref, code };
+    doneMark('hrapply:' + ip(req)); await save('hra', id, doc); await mailTo(a.email, 'ack', ref, { title, code }, lang); await tell(bi('New job application', 'Nouvelle candidature'), ref + ' — ' + a.name + ' — ' + title); return { ok: true, ref, code };
   }
   async function partner(req, b) {
     const c = cfg(); if (!c.on) fail('OFF', 'Enquiries are closed at the moment.', 503); if (b.hp) return { ok: true, ref: 'ADI/PRT/' + yr() + '/00000', code: '00000000' };
-    if (limited('hrpartner:' + ip(req), E.NODE_ENV === 'test' ? 40 : 6, 3600e3)) fail('RATE', 'Too many enquiries from this network. Try again later.', 429); const { p, err } = core.hrPartner(b.p); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
+    if (limited('hrpartnertry:' + ip(req), 300, 3600e3) || doneOver('hrpartner:' + ip(req), E.NODE_ENV === 'test' ? 40 : 20, 3600e3)) fail('RATE', 'Too many enquiries from this network. Try again later.', 429); const { p, err } = core.hrPartner(b.p); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
     if (Object.values(S.all('hrp')).some(x => x.p && x.p.email === p.email && x.p.org === p.org && now() - x.at < 14 * 864e5)) fail('DUPLICATE', 'We already have your enquiry. We will reply soon.', 409);
     const fl = readFiles(b.files, false), id = rid(8), ref = await nextRef('PRT'), code = rid(4), lang = b.lang === 'fr' ? 'fr' : 'en', files = await keepFiles(id, fl);
     const doc = { id, ref, lang, p, files, stage: 'received', at: now(), upd: now(), codeHash: sha(code), log: [{ at: now(), by: 'applicant', stage: 'received' }], notes: [], msgs: [] };
-    await save('hrp', id, doc); await mailTo(p.email, 'pack', ref, { code }, lang); await tell(bi('New partnership enquiry', 'Nouvelle demande de partenariat'), ref + ' — ' + p.org); return { ok: true, ref, code };
+    doneMark('hrpartner:' + ip(req)); await save('hrp', id, doc); await mailTo(p.email, 'pack', ref, { code }, lang); await tell(bi('New partnership enquiry', 'Nouvelle demande de partenariat'), ref + ' — ' + p.org); return { ok: true, ref, code };
   }
 
   /* ---- the HR desk: stages, interview invitations, panel scores, notes ---- */
@@ -1114,7 +1116,7 @@ module.exports = function makeHr(ctx) {
   /* ---- what an applicant may see: only with reference + e-mail + private code ---- */
   const findRef = ref => Object.values(S.all('hra')).find(x => x.ref === ref) || Object.values(S.all('hrp')).find(x => x.ref === ref);
   function lookup(req, b) {
-    if (limited('hrtrack:' + ip(req), 20, 3600e3)) fail('RATE', 'Too many attempts. Try again later.', 429);
+    if (limited('hrtrack:' + ip(req), 60, 3600e3)) fail('RATE', 'Too many attempts. Try again later.', 429);
     const ref = String(b.ref || '').trim().toUpperCase(), email = core.hrEmail(b.email), code = String(b.code || '').trim().toLowerCase(), d = findRef(ref);
     if (!d || d.anon || ((d.a || d.p).email !== email) || !code || sha(code) !== d.codeHash) fail('NOT_FOUND', 'We could not find an application with these details. Check the reference, e-mail address and code in your confirmation e-mail.', 404); return d;
   }
