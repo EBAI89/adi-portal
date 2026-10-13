@@ -806,7 +806,7 @@
 
   if (typeof render === 'function') render();
 
-  /* "Apply now" stays on screen on every public page, whichever page the visitor opens. */
+  /* "Apply now" stays on screen on every public page, whichever page the visitor opens. Pages with a sticky action bar (such as "Submit my application") lift that bar above the button in the stylesheet, so the two never overlap. */
   function applyFloat() {
     let el = document.getElementById('apply-float');
     const r = location.hash.replace(/^#\/?/, '').split('/')[0];
@@ -1079,7 +1079,7 @@
     msg = String(msg || '').replace(/\s+/g, ' ').trim(); if (!msg) return;
     msg = window.politeError ? window.politeError(msg) : msg;
     clear(); const b = ensure();
-    b.querySelector('.ef-k').textContent = fr() ? 'À corriger' : 'Please correct';
+    b.querySelector('.ef-k').textContent = fr() ? 'Correction requise' : 'Correction required';
     b.querySelector('.ef-m').textContent = msg;
     b.querySelector('.ef-go').textContent = fr() ? 'Voir' : 'Show';
     src = source || null; b.hidden = false;
@@ -1128,7 +1128,7 @@
   /* a form-level notice that names a field (e-mail, telephone, password, name, matricule...) is repeated above that field */
   const KEYS = [[/e-?mail|courriel/i, el => el.type === 'email' || /mail/i.test(el.dataset.f)], [/phone|t[ée]l[ée]phone|mobile/i, el => el.type === 'tel' || /phone|tel/i.test(el.dataset.f)], [/password|mot de passe/i, el => el.type === 'password' && !/2$/.test(el.dataset.f)], [/matric/i, el => /matric|adi|ms/i.test(el.dataset.f)], [/\b(full )?name\b|\bnom\b/i, el => /name|nom/i.test(el.dataset.f)], [/birth|naissance|\bdob\b/i, el => /dob|birth|naiss/i.test(el.dataset.f)]];
   function toField(msg) {
-    if (!msg || document.querySelector('.fld-bad .ferr')) return;
+    if (!msg || document.querySelector('.fld-bad .ferr') || document.querySelector('.hrsec')) return;   /* the recruitment forms mark each field themselves */
     const fs = Array.from(document.querySelectorAll('#app input[data-f],#app select[data-f],#app textarea[data-f]')).filter(el => el.type !== 'hidden' && vis(el));
     for (const [re, test] of KEYS) { if (!re.test(msg)) continue; const el = fs.find(test); if (el && typeof focusField === 'function') { focusField(el.dataset.f, String(msg).replace(/\s+/g, ' ').trim()); return; } }
   }
