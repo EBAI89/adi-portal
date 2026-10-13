@@ -112,7 +112,7 @@ th{background:var(--gh,var(--navy));color:#fff;text-align:left;padding:1.8mm 2.4
 td{padding:1.6mm 2.4mm;border-bottom:.5pt solid var(--line)}
 tbody tr:nth-child(even) td{background:rgba(243,246,251,.85)}
 table.grades td,table.grades th{text-align:center}table.grades td:last-child,table.grades th:last-child{text-align:left}
-table.fees td:not(:first-child),table.fees th:not(:first-child){text-align:right}
+table.fees td:not(:first-child),table.fees th:not(:first-child){text-align:right;white-space:nowrap}table.fees{font-size:9pt}table.fees:not(.small) td:first-child,table.fees:not(.small) th:first-child{width:40%}table.fees:not(.small) td:not(:first-child),table.fees:not(.small) th:not(:first-child){padding-left:1.4mm;padding-right:1.4mm}table.fees td{padding:1.1mm 2.2mm}p:has(+table),h3:has(+p+table){break-after:avoid}
 table.fees.small{width:auto;min-width:60%}table.fees.small td,table.fees.small th,table.fees.svc td,table.fees.svc th{text-align:left}
 .evalform{border:1pt solid var(--line);padding:4mm;margin-top:2mm}
 .blank{margin:0 0 3mm;font:10pt/1.5 "Liberation Sans",Arial,sans-serif}.blank .ln{display:inline-block;border-bottom:.8pt solid #333;width:105mm;height:4mm}.blank .ln.s{width:42mm}.freq{margin-left:4mm}
