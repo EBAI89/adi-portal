@@ -2334,6 +2334,36 @@ async function route(req, res) {
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
     res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ADI-calendar-2026-2027-' + lang.toUpperCase() + '.ics"', 'Cache-Control': 'public, max-age=900', 'X-Content-Type-Options': 'nosniff' }); return res.end(core.calIcs(ev, lang, new Date().toISOString()));
   }
+  // ADI Financial Report 2025/2026 (confidential). The page, its PDF edition and its figures are for the super administrator only; every download is entered in the audit log.
+  const FINID = 'finreport-2025-2026-en';
+  if (/^\/finance-(print|assets)\//.test(p) || /^\/api\/finreports(\/|$)/.test(p)) {
+    if (!u) return send(res, 401, { error: 'sign in' });
+    if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
+    const fas = /^\/finance-assets\/(adi-logo\.png|adi-seal\.png|finance-cover-en\.jpg)$/.exec(p);
+    if (fas && req.method === 'GET') {
+      const buf = sideFile(fas[1]); if (!buf) return send(res, 404, { error: 'missing' });
+      res.writeHead(200, { 'Content-Type': fas[1].endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf);
+    }
+    if (p === '/finance-print/en' && req.method === 'GET') {
+      const g = S.get('finreports', FINID); if (!g || !g.html) return send(res, 404, { error: 'not found' });
+      const pgq = url.searchParams.get('pg');
+      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
+      res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' })); return res.end(page);
+    }
+    if (p === '/api/finreports' && req.method === 'GET') {
+      const list = Object.values(S.all('finreports')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, figs: g.figs, updated: g.updated || '' }));
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(JSON.stringify({ reports: list }));
+    }
+    const fdl = /^\/api\/finreports\/(finreport-2025-2026-en)\/download$/.exec(p);
+    if (fdl && req.method === 'GET') {
+      if (limited('finrep:' + u.id, 30, 3600e3)) return send(res, 429, { error: 'Too many downloads' });
+      const g = S.get('finreports', fdl[1]), buf = g && await S.getBlob('finreport_' + g.id); if (!buf) return send(res, 404, { error: 'not found' });
+      await audit(u, 'financial report downloaded (' + g.edition + ')');
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': (url.searchParams.get('view') === '1' ? 'inline' : 'attachment') + '; filename="' + g.fname + '"', 'Content-Length': buf.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(buf);
+    }
+    return send(res, 404, { error: 'not found' });
+  }
   // Students' guide: its images and the printable page (the page is public; edit mode only for the super administrator)
   const gas = /^\/guide-assets\/(adi-logo\.png|adi-seal\.png|guide-cover-(?:en|fr)\.jpg)$/.exec(p);
   if (gas && req.method === 'GET') {
@@ -3091,6 +3121,21 @@ async function ensureMinCourses() {
       await S.putBlob('guide_' + g.id, pdf);
       await save('guides', g.id, { id: g.id, lang: g.lang, title: g.title, edition: '2025', fname: g.fname, pages: g.pages, size: pdf.length, pdfHash: ph, v: now() % 2e9, updated: new Date().toISOString() });
       console.log('Handbook stored: ' + g.id);
+    }
+    // ADI Financial Report 2025/2026 (English, confidential): kept in its own collection, which is never sent to browsers; only the super administrator's routes read it.
+    // The text (for the printable page) and the PDF edition shipped with the portal are stored together; a shipped update replaces both.
+    {
+      const FR = { id: 'finreport-2025-2026-en', lang: 'en', file: 'ADI-Financial-Report-2025-2026-EN.pdf', pages: 13, title: 'ADI Financial Report — 2025/2026 Academic Year', fname: 'ADI-Financial-Report-2025-2026.pdf' };
+      const pdf = sideFile(FR.file), txt = sideFile('finance-content-en.html');
+      if (pdf && txt && pdf.subarray(0, 5).toString('latin1') === '%PDF-') {
+        const fh = gcr.createHash('sha256').update(pdf).update(txt).update(sideFile('adi-guide.js') || '').digest('hex'), old = S.get('finreports', FR.id) || {};
+        if (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id))) {
+          await S.putBlob('finreport_' + FR.id, pdf);
+          await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
+            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4512386, surplus: 15614, owed: 1691000 }, v: now() % 2e9, updated: new Date().toISOString() });
+          console.log('Financial report stored: ' + FR.id);
+        }
+      } else console.warn('Financial report files missing');
     }
   }
 }
