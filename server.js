@@ -2347,11 +2347,11 @@ async function route(req, res) {
     if (p === '/finance-print/en' && req.method === 'GET') {
       const g = S.get('finreports', FINID); if (!g || !g.html) return send(res, 404, { error: 'not found' });
       const pgq = url.searchParams.get('pg');
-      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
+      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
       res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' })); return res.end(page);
     }
     if (p === '/api/finreports' && req.method === 'GET') {
-      const list = Object.values(S.all('finreports')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, figs: g.figs, updated: g.updated || '' }));
+      const list = Object.values(S.all('finreports')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, figs: g.figs, updated: g.updated || '', edited: !!g.edited, customPdf: !!g.customPdf, editedAt: g.editedAt || '', v: g.v }));
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(JSON.stringify({ reports: list }));
     }
     const fdl = /^\/api\/finreports\/(finreport-2025-2026-en)\/download$/.exec(p);
@@ -2361,6 +2361,48 @@ async function route(req, res) {
       await audit(u, 'financial report downloaded (' + g.edition + ')');
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': (url.searchParams.get('view') === '1' ? 'inline' : 'attachment') + '; filename="' + g.fname + '"', 'Content-Length': buf.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(buf);
+    }
+    const fsv = /^\/api\/finreports\/(finreport-2025-2026-en)\/(content|restore|pdf|history|version|figs)$/.exec(p);
+    if (fsv) {
+      const GM = sideMod('adi-guide.js'), gid = fsv[1], g = S.get('finreports', gid); if (!g) return send(res, 404, { error: 'not found' });
+      const hist = async () => { try { return JSON.parse((await S.getBlob('finhist_' + gid) || Buffer.from('[]')).toString('utf8')); } catch (e) { return []; } };
+      const keep = async () => { const h = await hist(); h.unshift({ at: now(), by: u.name, html: g.html, fmt: g.fmt }); await S.putBlob('finhist_' + gid, Buffer.from(JSON.stringify(h.slice(0, 8)))); return h; };
+      if (fsv[2] === 'history' && req.method === 'GET') return send(res, 200, { versions: (await hist()).map((h, i) => ({ i, at: h.at, by: h.by })) });
+      if (req.method === 'GET') return send(res, 405, { error: 'method' });
+      if (!sameOrigin(req)) return send(res, 403, { error: 'origin' });
+      if (!/application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'json required' });
+      if (limited('finedit:' + u.id, 60, 3600e3)) return send(res, 429, { error: 'Too many changes' });
+      const stamp = { editedAt: new Date().toISOString(), editedBy: u.name, v: now() % 2e9 };
+      if (fsv[2] === 'content' && req.method === 'PUT') {
+        const b = await body(req, 1.6e6), html = GM.sanitize(String(b.html || ''));
+        if (html.length < 200 || !/<section\b/.test(html)) return send(res, 400, { error: 'The report must keep at least one section.' });
+        await keep(); await save('finreports', gid, Object.assign({}, g, { html, fmt: GM.cleanFmt(b.fmt, 'en'), edited: true, customPdf: false }, stamp));
+        await audit(u, 'financial report edited'); return send(res, 200, { ok: true });
+      }
+      if (fsv[2] === 'version' && req.method === 'POST') {
+        const b = await body(req, 1e4), x = (await hist())[Number(b.i)]; if (!x) return send(res, 404, { error: 'not found' });
+        await keep(); await save('finreports', gid, Object.assign({}, g, { html: x.html, fmt: x.fmt, edited: true, customPdf: false }, stamp));
+        await audit(u, 'financial report earlier version restored'); return send(res, 200, { ok: true });
+      }
+      if (fsv[2] === 'restore' && req.method === 'POST') {
+        const txt = sideFile('finance-content-en.html'), pdf = sideFile('ADI-Financial-Report-2025-2026-EN.pdf'); if (!txt || !pdf) return send(res, 500, { error: 'missing' });
+        await keep(); await S.putBlob('finreport_' + gid, pdf);
+        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4512386, surplus: 15614, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '' }, { v: stamp.v }));
+        await audit(u, 'financial report restored to the standard edition'); return send(res, 200, { ok: true });
+      }
+      if (fsv[2] === 'pdf' && req.method === 'POST') {
+        const b = await body(req, 12e6), buf = Buffer.from(String(b.d || ''), 'base64');
+        if (!buf.length || buf.length > 8 * 1024 * 1024 || buf.subarray(0, 5).toString('latin1') !== '%PDF-') return send(res, 400, { error: 'Please send a PDF of at most 8 MB.' });
+        await S.putBlob('finreport_' + gid, buf); await save('finreports', gid, Object.assign({}, g, { customPdf: true, edited: true, size: buf.length }, stamp));
+        await audit(u, 'financial report PDF replaced'); return send(res, 200, { ok: true, size: buf.length });
+      }
+      if (fsv[2] === 'figs' && req.method === 'PUT') {
+        const b = await body(req, 2e3), f = {};
+        for (const k of ['revenue', 'expenditure', 'surplus', 'owed']) { const n = Number(b[k]); if (!Number.isInteger(n) || n < 0 || n > 1e12) return send(res, 400, { error: 'Enter whole numbers (0 or more) for every figure.' }); f[k] = n; }
+        await save('finreports', gid, Object.assign({}, g, { figs: f, edited: true }, stamp));
+        await audit(u, 'financial report key figures edited'); return send(res, 200, { ok: true });
+      }
+      return send(res, 405, { error: 'method' });
     }
     return send(res, 404, { error: 'not found' });
   }
@@ -3129,7 +3171,7 @@ async function ensureMinCourses() {
       const pdf = sideFile(FR.file), txt = sideFile('finance-content-en.html');
       if (pdf && txt && pdf.subarray(0, 5).toString('latin1') === '%PDF-') {
         const fh = gcr.createHash('sha256').update(pdf).update(txt).update(sideFile('adi-guide.js') || '').digest('hex'), old = S.get('finreports', FR.id) || {};
-        if (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id))) {
+        if (!old.edited && (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id)))) {
           await S.putBlob('finreport_' + FR.id, pdf);
           await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
             fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4512386, surplus: 15614, owed: 1691000 }, v: now() % 2e9, updated: new Date().toISOString() });
