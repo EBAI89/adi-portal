@@ -2886,6 +2886,31 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migHb25: true }));
     console.log('Handbook 2025 courses loaded: ' + n);
   }
+  if (!cur.migHb25b) {
+    // Handbook 2025–2026, departments of Banking and Finance, Management, Human Resource Management, Project Management, Transport and Logistics:
+    // every course the Handbook lists is catalogued under its own department and programme. Strictly additive (existing courses are never changed).
+    const { SETS2 } = __req('./adi-handbook.js'), byName = {};
+    Object.values(logic.core.SPEC).forEach(sp => { if (sp.level === 'BSC' || sp.level === 'MSC') byName[sp.level + '|' + sp.name] = sp; });
+    let n = 0;
+    for (const [level, name, rows] of SETS2) {
+      const sp = byName[level + '|' + name]; if (!sp) { console.warn('Handbook programme not in catalogue: ' + name); continue; }
+      for (const r of rows) {
+        const [year, sem, code, title, credits, st, l, t, p] = r, id = ('hb25-' + code + '-' + slug(sp.id)).slice(0, 90);
+        if (S.get('courses', id)) continue;
+        const cat = /Internship|Attachment/i.test(title) ? 'siwes' : /Project|Thesis|Long Essay/i.test(title) ? 'research' : (year === 1 ? 'fund' : 'prof');
+        await save('courses', id, { id, code, title, credits, level, specId: sp.id, year, sem, cat, status: st, compulsory: true, pre: '', lecturerId: '', src: 'adi', hb: '2025', prov: !/^(ACC201|ACC202|ACC301|ECO201|ECO202|MTH201|STA202|MGT201|MGT204|BFN402|[A-Z]{3}698)$/.test(code), hrs: { l, t, p } }); n++;
+      }
+    }
+    // a Master/Bachelor name override that repeats another programme's name (earlier editing slip) is discarded: the catalogue names apply
+    const stg = Object.assign({}, S.get('settings', 'main') || {}), ce = stg.catEdit;
+    if (ce && ce.specs) {
+      const norm = v => String(v || '').toLowerCase().replace(/[^a-z]/g, ''), seen = {}; let dup = false;
+      Object.keys(ce.specs).forEach(k => { const v = norm(ce.specs[k]); if (seen[v]) dup = true; seen[v] = 1; });
+      if (dup) { stg.catEdit = Object.assign({}, ce, { specs: {} }); console.log('Duplicate programme-name overrides cleared'); }
+    }
+    await save('settings', 'main', Object.assign(stg, { migHb25b: true }));
+    console.log('Handbook 2025 (departments) courses loaded: ' + n);
+  }
   if (!cur.migMinV6) {
     // MINESUP HND programmes added (Sector 3 vol. 4 and vol. 6, Sector 4 vol. 7). Strictly additive: only the new specialties' courses are created;
     // existing courses, Form B and the registration configuration are not read or changed.
