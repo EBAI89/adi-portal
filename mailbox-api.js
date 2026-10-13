@@ -425,6 +425,40 @@ module.exports = function makeMailbox(ctx) {
     return { admin: a.admin, people };
   }
 
+  // The super administrator opens an institutional address for any member of staff, from the person's name (first.last).
+  // The one-time password lets the person sign in once and choose their own password.
+  const STAFF_ROLES = { lecturer: ['lecturer', 'lecturer', 'Lecturer', 'Enseignant'], x_staff: ['staff', 'x_staff', 'Administrative / support staff', 'Personnel administratif / d\'appui'], admin: ['staff', 'admin', 'Administrator', 'Administrateur'] };
+  async function issueStaff(actor, b) {
+    if (!actor || actor.status !== 'active' || !R.isSuper(actor)) fail(403, 'Only the super administrator can open an address for a staff member.', 'forbidden');
+    const name = clip(b.name, 160).replace(/\s+/g, ' ');
+    if (foldName(name).split(' ').filter(w => w.length >= 2).length < 2) fail(400, 'Enter the full name (first name and surname).', 'name');
+    const kindRole = STAFF_ROLES[String(b.role || 'lecturer')]; if (!kindRole) fail(400, 'Choose the staff role.', 'role');
+    const personal = clip(b.personalEmail, 160).toLowerCase();
+    if (personal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personal)) fail(400, 'The personal email address is not valid.', 'email');
+    let local = clip(b.local, 64).toLowerCase();
+    if (local) { if (!localOk(local)) fail(400, 'The address may use letters, digits and single dots (3 to 64 characters).', 'local'); if (taken(local)) fail(409, 'This address is already in use.', 'taken'); }
+    else local = uniqueLocal(suggestLocal(name));
+    let user = b.userId ? S.get('users', String(b.userId)) : null;
+    if (b.userId && !user) fail(404, 'Account not found.', 'not_found');
+    if (!user && personal) user = Object.values(S.all('users')).find(u => u && (String(u.email || '').toLowerCase() === personal || String(u.altEmail || '').toLowerCase() === personal)) || null;
+    if (user && (user.role === 'student' || user.purpose === 'minesup')) fail(409, 'This account belongs to a student or a MINESUP applicant, not to a staff member.', 'not_staff');
+    if (user && byUser(user.id)) fail(409, 'This person already has an ADI address: ' + byUser(user.id).email, 'exists');
+    const otp = otpPlain(), role = kindRole[1];
+    if (!user) {
+      const id = uid('u');
+      user = { id, email: local + '@' + DOMAIN, altEmail: personal, name, phone: clip(b.phone, 40), role, status: 'active', lang: b.lang === 'fr' ? 'fr' : 'en', createdAt: now(), pw: await hashPw(otp), mustChange: true, createdBy: actor.id };
+      await save('users', id, user);
+    } else if (user.role === 'applicant') { user = Object.assign({}, user, { role }); await save('users', user.id, user); }
+    const { rec } = await persist({
+      local, kind: kindRole[0], role: user.role, name: user.name || name, userId: user.id, personalEmail: personal,
+      phone: clip(b.phone || user.phone || '', 40), title: clip(b.title, 120) || kindRole[2], titleFr: clip(b.title, 120) || kindRole[3],
+      ref: await nextRef(), issuedBy: actor.id, issuedByName: actor.name || 'Super administrator'
+    }, otp);
+    await audit(actor, 'mailbox issued ' + rec.email + ' staff (' + role + ')');
+    await tell(user.id, rec.email);
+    return Object.assign(pub(rec), { otp });
+  }
+
   function desk(u) {
     if (!u) fail(401, 'auth');
     const mine = byUser(u.id);
@@ -466,6 +500,7 @@ module.exports = function makeMailbox(ctx) {
       }
       if (p === '/api/mail/setup') { const r = await setup(u, b); const nu = S.get('users', u.id); return send(res, 200, r, nu ? { 'Set-Cookie': ctx.cookie(ctx.makeToken(nu), 7 * 86400) } : undefined), true; }
       if (p === '/api/mail/issue') return send(res, 200, { mailbox: await issueManual(u, b) }), true;
+      if (p === '/api/mail/issue-staff') { if (limited('mailstaff:' + (u && u.id), 30, 3600e3)) return send(res, 429, { error: 'Too many requests. Try again later.' }), true; return send(res, 200, { mailbox: await issueStaff(u, b) }), true; }
       if (p === '/api/mail/rename') return send(res, 200, { mailbox: await rename(u, b) }), true;
       if (p === '/api/mail/suspend') return send(res, 200, { mailbox: await setStatus(u, b.id, 'suspended') }), true;
       if (p === '/api/mail/restore') return send(res, 200, { mailbox: await setStatus(u, b.id, 'active') }), true;
