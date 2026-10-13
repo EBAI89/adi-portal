@@ -2986,6 +2986,77 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV8: true }));
     console.log('Module structure applied to the new specialties: ' + n);
   }
+  if (!cur.migMinV9) {
+    // MINESUP HND programmes (Sector 3 vol. 4 and 6, Sector 4 vol. 7), second pass. Strictly additive:
+    //  1. a sub-course (the arrowed line of the Ministry's document) that a specialty does not yet hold is created under its parent's code
+    //     (the parent itself is never a course); 2. the course content written under each sub-course, up to the next sub-course, is stored on the
+    //     sub-course as its outline. Existing courses keep their codes, titles, credits, semesters and registrations: Form B and course registration
+    //     are not touched.
+    const PR = __req('./adi-minesup-outlines.js'), H9 = __req('./adi-minesup-hours.js'), SPEC9 = logic.core.SPEC, nt = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const keyOf = id => String(id || '').split(':').pop();
+    const byCode = {};
+    PR.forEach(pg => pg.p.forEach(q => { (byCode[q[0]] = byCode[q[0]] || []).push({ pg, q }); }));
+    const byTitle = {};   // fallback when the Ministry's document and the portal write a code differently (e.g. HRM / MHR): same specialty and same title
+    PR.forEach(pg => pg.k.forEach(k => pg.p.forEach(q => { q[2].forEach(x => { byTitle[k + '|' + nt(x[0])] = byTitle[k + '|' + nt(x[0])] || { pg, q, s: x }; }); if (!q[2].length) byTitle[k + '|' + nt(q[1])] = byTitle[k + '|' + nt(q[1])] || { pg, q, s: null }; })));
+    const outlineFor = (r) => {
+      const list = byCode[String(r.code || '').toUpperCase()];
+      if (!list) { const f = byTitle[keyOf(r.specId) + '|' + nt(r.title)]; return f ? { text: f.s ? f.s[4] : f.q[3], vol: f.pg.v, hours: f.s ? f.s[2] : 0, flags: f.s ? f.s[3] : '' } : null; }
+      const hit = list.find(x => x.pg.k.includes(keyOf(r.specId))) || list[0], q = hit.q, subs = q[2];
+      const t = nt(r.title); let s = subs.find(x => nt(x[0]) === t) || subs.find(x => nt(x[0]) && t && (nt(x[0]).includes(t) || t.includes(nt(x[0]))));
+      if (!s && subs.length === 1) s = subs[0];
+      const text = s ? s[4] : (!subs.length && (nt(q[1]) === t || nt(q[1]).includes(t) || t.includes(nt(q[1]))) ? q[3] : '');
+      return text ? { text, vol: hit.pg.v, hours: s ? s[2] : 0, flags: s ? s[3] : '' } : null;
+    };
+    let made = 0, linked = 0;
+    for (const pg of PR) {
+      for (const key of pg.k) {
+        if (key === 'medical-laboratory-scientist-mls') continue;
+        const sp = Object.values(SPEC9).find(x => x.level === 'HND' && keyOf(x.id) === key); if (!sp) continue;
+        const have = Object.values(S.all('courses')).filter(c => c && c.specId === sp.id && c.level === 'HND');
+        for (const q of pg.p) {
+          const code = q[0], subs = q[2].length ? q[2].map(x => ({ title: x[0], credits: x[1] })) : (q[4] > 0 ? [{ title: q[1], credits: q[4] }] : []);
+          if (!subs.length || have.some(c => c.code === code) || /^\d/.test(code)) continue;
+          if (subs.some(x => have.some(c => nt(c.title) === nt(x.title)))) continue;
+          const dig = code.match(/(\d)(\d)\d$/), off = dig ? Number(dig[2]) : 1, year = Math.ceil(off / 2), sem = off % 2 === 0 ? 2 : 1;
+          for (const sc of subs) {
+            const title = String(sc.title).slice(0, 180), credits = Math.max(1, Number(sc.credits) || 1);
+            const id = ('ms9-' + code + '-' + slug(sp.id) + '-' + slug(title)).slice(0, 90); if (S.get('courses', id)) continue;
+            const cat = /internship|thesis|placement|stage/i.test(title) ? 'siwes' : (/mathemat|comput|statistic|english|french|bilingual|economics|law|civic/i.test(title) ? 'fund' : 'prof');
+            const doc = { id, code, title, credits, level: 'HND', specId: sp.id, year, sem, cat, status: 'C', compulsory: true, pre: '', src: 'minesup', module: String(q[1]).slice(0, 180), lecturerId: '' };
+            const hh = H9[code.toUpperCase()]; if (hh) doc.hrs = scaleHrs({ l: hh[0], t: hh[1], p: hh[2], s: hh[3] }, credits);
+            await save('courses', id, doc); have.push(doc); made++;
+          }
+        }
+      }
+    }
+    // A parent still held as one record (it appears on Form B only through its parts) is split into its sub-courses, which keep the parent's code.
+    // Only when the Ministry's sub-courses add up exactly to the credits held and agree with the parts already known to Form B.
+    let split = 0;
+    for (const c of Object.values(S.all('courses')).slice()) {
+      if (!c || c.level !== 'HND' || c.src !== 'minesup' || c.outline) continue;
+      const list = byCode[String(c.code || '').toUpperCase()]; if (!list) continue;
+      const hit = list.find(x => x.pg.k.includes(keyOf(c.specId))) || list[0], subs = hit.q[2];
+      if (subs.length < 2 || subs.reduce((a, x) => a + x[1], 0) !== Number(c.credits)) continue;
+      if (subs.some(x => nt(x[0]) === nt(c.title))) continue;
+      const KP = PARTS[String(c.code).toUpperCase()];
+      if (KP && KP.parts && !subs.every(x => KP.parts.some(y => nt(y[0]) === nt(x[0])))) continue;
+      const sibs = Object.values(S.all('courses')).filter(x => x && x.code === c.code && x.specId === c.specId && x.id !== c.id);
+      if (sibs.some(x => subs.some(y => nt(y[0]) === nt(x.title)))) continue;
+      for (let i = 0; i < subs.length; i++) {
+        const title = String(subs[i][0]).slice(0, 180), credits = subs[i][1], hrs = c.hrs ? scaleHrs(c.hrs, credits) : undefined;
+        const id = i === 0 ? c.id : ('ms-' + c.code + '-' + slug(c.specId) + '-' + slug(title)).slice(0, 90); if (i > 0 && S.get('courses', id)) continue;
+        const doc = Object.assign({}, c, { id, title, credits, module: hit.q[1] }); if (hrs) doc.hrs = hrs; delete doc._seq;
+        await save('courses', id, doc); split++;
+      }
+    }
+    for (const c of Object.values(S.all('courses')).slice()) {
+      if (!c || c.level !== 'HND' || c.src !== 'minesup' || c.outline) continue;
+      const o = outlineFor(c); if (!o) continue;
+      await save('courses', c.id, Object.assign({}, c, { outline: o.text, outlineSrc: 'MINESUP HND — ' + o.vol })); linked++;
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV9: true }));
+    console.log('MINESUP HND second pass: ' + made + ' sub-courses added, ' + split + ' parents split, ' + linked + ' course contents stored');
+  }
   // Students' guide: both editions live in the database (guides + blobs). The text is an editable document (the super administrator can change content and
   // formatting); the PDF shipped with the portal is stored as the downloadable edition until the text is edited. Shipped updates replace an edition only if it was never edited.
   {
