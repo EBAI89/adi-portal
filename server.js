@@ -2285,7 +2285,7 @@ async function ai(u, b) {
 
 /* ---------- static ---------- */
 const INDEX = path.join(__dirname, 'public', 'index.html');
-const SIGS_JSON = typeof __EMBED_SIGS !== 'undefined' ? __EMBED_SIGS : fs.readFileSync(path.join(__dirname, 'lib', 'signatures.json'), 'utf8');
+let SEAL_JSON = ''; const SIGS_JSON = typeof __EMBED_SIGS !== 'undefined' ? __EMBED_SIGS : fs.readFileSync(path.join(__dirname, 'lib', 'signatures.json'), 'utf8');
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)',
   'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self'; frame-src blob: https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'" };
 if (PROD) SEC['Strict-Transport-Security'] = 'max-age=31536000';
@@ -2642,6 +2642,10 @@ async function route(req, res) {
     if (x.id === u.id) return send(res, 400, { error: 'Use My profile to change your own password.' });
     const temp = tempPassword(); await save('users', x.id, Object.assign({}, x, { pw: await hashPw(temp), mustChange: true }));
     await audit(u, 'temporary password issued for ' + x.email); return send(res, 200, { ok: true, temp });
+  }
+  if (p === '/api/seal' && req.method === 'GET') {          // the round seal alone, for the public fee structure (no signatures)
+    try { SEAL_JSON = SEAL_JSON || JSON.stringify({ seal: JSON.parse(SIGS_JSON).seal || null }); } catch (e) { SEAL_JSON = '{"seal":null}'; }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }); return res.end(SEAL_JSON);
   }
   if (p === '/api/sig' && req.method === 'GET') {
     if (!u) return send(res, 401, { error: 'auth' });
