@@ -159,12 +159,19 @@ var css='@page{@top-left{content:"'+q(f.hl)+'";'+hf+'}@top-right{content:"'+q(f.
 var s=document.getElementById('gfmt');if(!s){s=document.createElement('style');s.id='gfmt';document.head.appendChild(s)}s.textContent=css};
 `;
 const strip = h => String(h).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+const KEEP = { ADI: 'ADI', ID: 'ID', IT: 'IT', HND: 'HND', BTS: 'BTS', GPA: 'GPA', BSC: 'BSc', MSC: 'MSc', DITEK: 'Ditek', AMERICAN: 'American', INSTITUTE: 'Institute', INSTITUT: 'Institut', SCHOOL: 'School', SCHOOLS: 'Schools', UNIT: 'Unit', 'ÉCOLE': 'École', 'ÉCOLES': 'Écoles' };
+// All-capital headings read as sentence case in the table of contents, keeping acronyms and the Institute's proper names intact.
+function niceCase(h) {
+  if (!h || /[a-zà-ÿ]/.test(h)) return h;
+  let first = true;
+  return h.replace(/[A-ZÀ-ÖØ-Þ0-9]+/g, w => { let o = KEEP[w] || (first ? w.charAt(0) + w.slice(1).toLowerCase() : w.toLowerCase()); first = false; return o; });
+}
 function tocEntries(html) {
   const out = [], re = /<section\b([^>]*)>([\s\S]*?)<\/section>/g; let m;
   while ((m = re.exec(html))) {
     if (/\bfront\b/.test(m[1])) continue;
     const id = (/\bid="([\w-]+)"/.exec(m[1]) || [])[1] || '', k = strip((/<div class="kick">([\s\S]*?)<\/div>/.exec(m[2]) || [])[1] || ''), h = strip((/<h1[^>]*>([\s\S]*?)<\/h1>/.exec(m[2]) || [])[1] || '');
-    out.push({ s: true, id, t: (k ? k.charAt(0) + k.slice(1).toLowerCase() + ' — ' : '') + h.charAt(0) + h.slice(1).toLowerCase() });
+    out.push({ s: true, id, t: (k ? k.charAt(0) + k.slice(1).toLowerCase() + ' — ' : '') + niceCase(h) });
     if (!/\bnosub\b/.test(m[1])) { const r2 = /<h2 class="[^"]*\btoc\b[^"]*"[^>]*>([\s\S]*?)<\/h2>/g; let q; while ((q = r2.exec(m[2]))) out.push({ s: false, id: '', t: strip(q[1]) }); }
   }
   return out;
