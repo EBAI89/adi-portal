@@ -144,3 +144,13 @@ body.sgopen{overflow:hidden}
 .sgfg label.chk{flex-direction:row;align-items:center;gap:8px;color:inherit}
 .sgfg input[type=color]{height:34px;padding:2px;width:100%}
 #sgf{flex:1;border:0;width:100%;background:#e9edf5}
+
+/* ---- warning bubble attached to the exact field that needs attention ---- */
+.fld-bad{position:relative}
+.ferr.fwarn{position:relative;display:block;width:fit-content;max-width:100%;margin:9px 0 4px;padding:8px 12px;background:#9B2335;color:#fff;border-radius:9px;font-size:.84rem;line-height:1.35;font-weight:600;box-shadow:0 8px 20px rgba(155,35,53,.3);z-index:6;animation:fwin .2s ease-out}
+.ferr.fwarn::before{content:"";position:absolute;left:16px;top:-6px;width:12px;height:12px;background:#9B2335;transform:rotate(45deg);border-radius:2px}
+.ferr.fwarn::after{content:"!";display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:8px;border-radius:50%;background:#fff;color:#9B2335;font-size:.72rem;font-weight:800;vertical-align:1px}
+.chk.fld-bad{flex-wrap:wrap}
+.chk.fld-bad .ferr.fwarn{flex-basis:100%;margin-left:0}
+@keyframes fwin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.ferr.fwarn{animation:none}}
