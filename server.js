@@ -2288,7 +2288,7 @@ async function ai(u, b) {
 const INDEX = path.join(__dirname, 'public', 'index.html');
 let SEAL_JSON = ''; const SIGS_JSON = typeof __EMBED_SIGS !== 'undefined' ? __EMBED_SIGS : fs.readFileSync(path.join(__dirname, 'lib', 'signatures.json'), 'utf8');
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self'; frame-src blob: https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'" };
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self'; frame-src 'self' blob: https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'" };
 if (PROD) SEC['Strict-Transport-Security'] = 'max-age=31536000';
 // If the super administrator configures the school's own Jitsi server, the portal may show its video room in a frame and use the camera there — that one address only.
 function secNow() {
@@ -2333,6 +2333,19 @@ async function route(req, res) {
   if (p === '/calendar.ics' && req.method === 'GET') {          // the public calendar: people can subscribe to it, and their phone calendar follows any change the university makes
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
     res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ADI-calendar-2026-2027-' + lang.toUpperCase() + '.ics"', 'Cache-Control': 'public, max-age=900', 'X-Content-Type-Options': 'nosniff' }); return res.end(core.calIcs(ev, lang, new Date().toISOString()));
+  }
+  // Students' guide: its images and the printable page (the page is public; edit mode only for the super administrator)
+  const gas = /^\/guide-assets\/(adi-logo\.png|adi-seal\.png|guide-cover-(?:en|fr)\.jpg)$/.exec(p);
+  if (gas && req.method === 'GET') {
+    const buf = sideFile(gas[1]); if (!buf) return send(res, 404, { error: 'missing' });
+    res.writeHead(200, { 'Content-Type': gas[1].endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf);
+  }
+  const gpv = /^\/guide-print\/(en|fr)$/.exec(p);
+  if (gpv && req.method === 'GET') {
+    const g = S.get('guides', 'students-guide-' + gpv[1]); if (!g || !g.html) return send(res, 404, { error: 'not found' });
+    const edit = url.searchParams.get('edit') === '1' && !!u && R.isSuper(u), pgq = url.searchParams.get('pg');
+    const page = sideMod('adi-guide.js').docHtml({ lang: gpv[1], html: g.html, fmt: g.fmt, edit, print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null });
+    res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })); return res.end(page);
   }
   if ((p === '/minesup.js' || p === '/minesup.css' || p === '/mailbox.js' || p === '/mailbox.css' || p === '/pager.js' || p === '/pager.css' || p === '/push.js' || p === '/sw.js') && req.method === 'GET') {
     const body = sideFile(p.slice(1));
@@ -2490,9 +2503,10 @@ async function route(req, res) {
     if (!kind) return send(res, 400, { error: 'type' }); if (((((S.get('settings', 'main') || {}).site || {}).photos) || []).length >= 40) return send(res, 400, { error: 'limit' });
     const pid = require('crypto').randomBytes(8).toString('hex'); await S.putBlob('site_' + pid, buf); await audit(u, 'site photo added ' + pid); return send(res, 200, { id: pid, v: now() % 2e9 });
   }
-  // Students' guide (public): the list of editions and the download of each one.
+  // Students' guide: public list, download, printable view; only the super administrator edits the text and formatting.
+  const GID = /^students-guide-(en|fr)$/;
   if (p === '/api/guides' && req.method === 'GET') {
-    const list = Object.values(S.all('guides')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, v: g.v })).sort((a, b) => a.lang < b.lang ? -1 : 1);
+    const list = Object.values(S.all('guides')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, v: g.v, edited: !!g.edited, customPdf: !!g.customPdf, editedAt: g.editedAt || '' })).sort((a, b) => a.lang < b.lang ? -1 : 1);
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }); return res.end(JSON.stringify({ guides: list }));
   }
   const gdl = /^\/api\/guides\/(students-guide-(?:en|fr))\/download$/.exec(p);
@@ -2500,6 +2514,41 @@ async function route(req, res) {
     const g = S.get('guides', gdl[1]), buf = g && await S.getBlob('guide_' + g.id); if (!buf) return send(res, 404, { error: 'not found' });
     res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': (url.searchParams.get('view') === '1' ? 'inline' : 'attachment') + '; filename="' + g.fname + '"', 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=300', 'X-Content-Type-Options': 'nosniff' });
     return res.end(buf);
+  }
+  const gsv = /^\/api\/guides\/(students-guide-(?:en|fr))\/(content|restore|pdf|history|version)$/.exec(p);
+  if (gsv) {
+    if (!u || !R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
+    const GM = sideMod('adi-guide.js'), gid = gsv[1], lang = GID.exec(gid)[1], g = S.get('guides', gid); if (!g) return send(res, 404, { error: 'not found' });
+    const hist = async () => { try { return JSON.parse((await S.getBlob('guidehist_' + gid) || Buffer.from('[]')).toString('utf8')); } catch (e) { return []; } };
+    if (gsv[2] === 'history' && req.method === 'GET') return send(res, 200, { versions: (await hist()).map((h, i) => ({ i, at: h.at, by: h.by })) });
+    if (limited('guide:' + u.id, 60, 3600e3)) return send(res, 429, { error: 'Too many changes' });
+    if (gsv[2] === 'content' && req.method === 'PUT') {
+      const b = await body(req, 1.6e6), html = GM.sanitize(String(b.html || ''));
+      if (html.length < 200 || !/<section\b/.test(html)) return send(res, 400, { error: 'The guide must keep at least one section.' });
+      const h = await hist(); h.unshift({ at: now(), by: u.name, html: g.html, fmt: g.fmt }); await S.putBlob('guidehist_' + gid, Buffer.from(JSON.stringify(h.slice(0, 8))));
+      await save('guides', gid, Object.assign({}, g, { html, fmt: GM.cleanFmt(b.fmt, lang), edited: true, customPdf: false, editedAt: new Date().toISOString(), editedBy: u.name, v: now() % 2e9 }));
+      await audit(u, 'students guide edited (' + lang + ')'); return send(res, 200, { ok: true });
+    }
+    if (gsv[2] === 'version' && req.method === 'POST') {
+      const b = await body(req, 1e4), h = await hist(), x = h[Number(b.i)]; if (!x) return send(res, 404, { error: 'not found' });
+      h.unshift({ at: now(), by: u.name, html: g.html, fmt: g.fmt }); await S.putBlob('guidehist_' + gid, Buffer.from(JSON.stringify(h.slice(0, 8))));
+      await save('guides', gid, Object.assign({}, g, { html: x.html, fmt: x.fmt, edited: true, customPdf: false, editedAt: new Date().toISOString(), editedBy: u.name, v: now() % 2e9 }));
+      await audit(u, 'students guide earlier version restored (' + lang + ')'); return send(res, 200, { ok: true });
+    }
+    if (gsv[2] === 'restore' && req.method === 'POST') {
+      const txt = sideFile('guide-content-' + lang + '.html'); if (!txt) return send(res, 500, { error: 'missing' });
+      const h = await hist(); h.unshift({ at: now(), by: u.name, html: g.html, fmt: g.fmt }); await S.putBlob('guidehist_' + gid, Buffer.from(JSON.stringify(h.slice(0, 8))));
+      const pdf = sideFile(lang === 'fr' ? 'ADI-Students-Guide-FR.pdf' : 'ADI-Students-Guide-EN.pdf'); if (pdf) await S.putBlob('guide_' + gid, pdf);
+      await save('guides', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: GM.defaultFmt(lang), edited: false, customPdf: false, size: pdf ? pdf.length : g.size, pdfHash: '', shipHash: '', v: now() % 2e9 }));
+      await audit(u, 'students guide restored to the standard edition (' + lang + ')'); return send(res, 200, { ok: true });
+    }
+    if (gsv[2] === 'pdf' && req.method === 'POST') {
+      const b = await body(req, 12e6), buf = Buffer.from(String(b.d || ''), 'base64');
+      if (!buf.length || buf.length > 8 * 1024 * 1024 || buf.subarray(0, 5).toString('latin1') !== '%PDF-') return send(res, 400, { error: 'Please send a PDF of at most 8 MB.' });
+      await S.putBlob('guide_' + gid, buf); await save('guides', gid, Object.assign({}, g, { customPdf: true, size: buf.length, v: now() % 2e9 }));
+      await audit(u, 'students guide PDF replaced (' + lang + ')'); return send(res, 200, { ok: true, size: buf.length });
+    }
+    return send(res, 405, { error: 'method' });
   }
   const simg = /^\/api\/site\/img\/([\w-]{1,40})$/.exec(p), sdel = /^\/api\/site\/pic\/([\w-]{1,40})$/.exec(p);
   if (simg && req.method === 'GET') {
@@ -2899,20 +2948,27 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV8: true }));
     console.log('Module structure applied to the new specialties: ' + n);
   }
-  // Students' guide: both editions live in the database (guides + blobs) and are refreshed whenever the PDF shipped with the portal changes.
+  // Students' guide: both editions live in the database (guides + blobs). The text is an editable document (the super administrator can change content and
+  // formatting); the PDF shipped with the portal is stored as the downloadable edition until the text is edited. Shipped updates replace an edition only if it was never edited.
   {
-    const gcr = require('crypto');
+    const gcr = require('crypto'), GM = sideMod('adi-guide.js');
     const GUIDES = [
-      { id: 'students-guide-en', lang: 'en', file: 'ADI-Students-Guide-EN.pdf', pages: 35, title: 'ADI Students Guide', fname: 'ADI-Students-Guide-2024-EN.pdf' },
-      { id: 'students-guide-fr', lang: 'fr', file: 'ADI-Students-Guide-FR.pdf', pages: 27, title: 'Guide de l’étudiant ADI', fname: 'ADI-Guide-de-l-etudiant-2024-FR.pdf' }
+      { id: 'students-guide-en', lang: 'en', file: 'ADI-Students-Guide-EN.pdf', pages: 34, title: 'ADI Students Guide', fname: 'ADI-Students-Guide-2024-EN.pdf' },
+      { id: 'students-guide-fr', lang: 'fr', file: 'ADI-Students-Guide-FR.pdf', pages: 35, title: 'Guide de l’étudiant ADI', fname: 'ADI-Guide-de-l-etudiant-2024-FR.pdf' }
     ];
     for (const g of GUIDES) {
-      const buf = sideFile(g.file); if (!buf || buf.subarray(0, 5).toString('latin1') !== '%PDF-') { console.warn('Students guide file missing: ' + g.file); continue; }
-      const hash = gcr.createHash('sha256').update(buf).digest('hex'), old = S.get('guides', g.id);
-      if (old && old.hash === hash && await S.getBlob('guide_' + g.id)) continue;
-      await S.putBlob('guide_' + g.id, buf);
-      await save('guides', g.id, { lang: g.lang, title: g.title, edition: '2024', fname: g.fname, pages: g.pages, size: buf.length, hash: hash, v: now() % 2e9, updated: new Date().toISOString() });
-      console.log('Students guide stored: ' + g.id + ' (' + buf.length + ' bytes)');
+      const old = S.get('guides', g.id) || {}, doc = Object.assign({}, old, { lang: g.lang, title: g.title, edition: '2024', fname: g.fname, pages: g.pages }); let changed = !old.id || old.pages !== g.pages;
+      const pdf = sideFile(g.file);
+      if (pdf && pdf.subarray(0, 5).toString('latin1') === '%PDF-') {
+        const ph = gcr.createHash('sha256').update(pdf).digest('hex');
+        if (!doc.customPdf && (doc.pdfHash !== ph || !(await S.getBlob('guide_' + g.id)))) { await S.putBlob('guide_' + g.id, pdf); doc.pdfHash = ph; doc.size = pdf.length; changed = true; }
+      } else console.warn('Students guide file missing: ' + g.file);
+      const txt = sideFile('guide-content-' + g.lang + '.html');
+      if (txt && !doc.edited) {
+        const sh = gcr.createHash('sha256').update(txt).update(sideFile('adi-guide.js') || '').digest('hex');
+        if (doc.shipHash !== sh || !doc.html) { doc.html = GM.sanitize(txt.toString('utf8')); doc.fmt = GM.defaultFmt(g.lang); doc.shipHash = sh; changed = true; }
+      }
+      if (changed) { doc.v = now() % 2e9; doc.updated = new Date().toISOString(); await save('guides', g.id, doc); console.log('Students guide stored: ' + g.id); }
     }
   }
 }
