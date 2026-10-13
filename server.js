@@ -2490,6 +2490,17 @@ async function route(req, res) {
     if (!kind) return send(res, 400, { error: 'type' }); if (((((S.get('settings', 'main') || {}).site || {}).photos) || []).length >= 40) return send(res, 400, { error: 'limit' });
     const pid = require('crypto').randomBytes(8).toString('hex'); await S.putBlob('site_' + pid, buf); await audit(u, 'site photo added ' + pid); return send(res, 200, { id: pid, v: now() % 2e9 });
   }
+  // Students' guide (public): the list of editions and the download of each one.
+  if (p === '/api/guides' && req.method === 'GET') {
+    const list = Object.values(S.all('guides')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, v: g.v })).sort((a, b) => a.lang < b.lang ? -1 : 1);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }); return res.end(JSON.stringify({ guides: list }));
+  }
+  const gdl = /^\/api\/guides\/(students-guide-(?:en|fr))\/download$/.exec(p);
+  if (gdl && req.method === 'GET') {
+    const g = S.get('guides', gdl[1]), buf = g && await S.getBlob('guide_' + g.id); if (!buf) return send(res, 404, { error: 'not found' });
+    res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': (url.searchParams.get('view') === '1' ? 'inline' : 'attachment') + '; filename="' + g.fname + '"', 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=300', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(buf);
+  }
   const simg = /^\/api\/site\/img\/([\w-]{1,40})$/.exec(p), sdel = /^\/api\/site\/pic\/([\w-]{1,40})$/.exec(p);
   if (simg && req.method === 'GET') {
     const buf = await S.getBlob('site_' + simg[1]); if (!buf) return send(res, 404, { error: 'not found' });
@@ -2887,6 +2898,22 @@ async function ensureMinCourses() {
     }
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV8: true }));
     console.log('Module structure applied to the new specialties: ' + n);
+  }
+  // Students' guide: both editions live in the database (guides + blobs) and are refreshed whenever the PDF shipped with the portal changes.
+  {
+    const gcr = require('crypto');
+    const GUIDES = [
+      { id: 'students-guide-en', lang: 'en', file: 'ADI-Students-Guide-EN.pdf', pages: 35, title: 'ADI Students Guide', fname: 'ADI-Students-Guide-2024-EN.pdf' },
+      { id: 'students-guide-fr', lang: 'fr', file: 'ADI-Students-Guide-FR.pdf', pages: 27, title: 'Guide de l’étudiant ADI', fname: 'ADI-Guide-de-l-etudiant-2024-FR.pdf' }
+    ];
+    for (const g of GUIDES) {
+      const buf = sideFile(g.file); if (!buf || buf.subarray(0, 5).toString('latin1') !== '%PDF-') { console.warn('Students guide file missing: ' + g.file); continue; }
+      const hash = gcr.createHash('sha256').update(buf).digest('hex'), old = S.get('guides', g.id);
+      if (old && old.hash === hash && await S.getBlob('guide_' + g.id)) continue;
+      await S.putBlob('guide_' + g.id, buf);
+      await save('guides', g.id, { lang: g.lang, title: g.title, edition: '2024', fname: g.fname, pages: g.pages, size: buf.length, hash: hash, v: now() % 2e9, updated: new Date().toISOString() });
+      console.log('Students guide stored: ' + g.id + ' (' + buf.length + ' bytes)');
+    }
   }
 }
 
