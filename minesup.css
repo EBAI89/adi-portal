@@ -159,3 +159,8 @@ body.sgopen{overflow:hidden}
 .side a.on,.side a[aria-current="page"]{background:linear-gradient(90deg,#1E4FD8,#2F6BFF);border-left:6px solid #FFC400;color:#fff;font-weight:700;box-shadow:0 3px 10px rgba(30,79,216,.38);position:relative}
 .side a.on::after{content:"";position:absolute;right:14px;top:50%;width:8px;height:8px;margin-top:-5px;border-right:2.5px solid #FFC400;border-bottom:2.5px solid #FFC400;transform:rotate(-45deg)}
 .side a.on:hover{background:linear-gradient(90deg,#1A44BD,#2860EE);color:#fff}
+
+/* Floating, centred title of the selected menu item */
+.pagebar{position:sticky;top:var(--hdr,62px);z-index:20;margin:-20px -20px 16px;padding:10px 16px;text-align:center;font-weight:800;font-size:1.02rem;letter-spacing:.2px;color:#fff;background:linear-gradient(90deg,#1E4FD8,#2F6BFF);border-bottom:3px solid #FFC400;box-shadow:0 4px 12px rgba(10,30,90,.25)}
+@media(max-width:860px){.pagebar{margin:-14px -14px 12px;font-size:.98rem}}
+@media print{.pagebar{display:none}}
