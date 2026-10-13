@@ -2506,8 +2506,21 @@ async function route(req, res) {
   // Students' guide: public list, download, printable view; only the super administrator edits the text and formatting.
   const GID = /^students-guide-(en|fr)$/;
   if (p === '/api/guides' && req.method === 'GET') {
-    const list = Object.values(S.all('guides')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, v: g.v, edited: !!g.edited, customPdf: !!g.customPdf, editedAt: g.editedAt || '' })).sort((a, b) => a.lang < b.lang ? -1 : 1);
+    const list = Object.values(S.all('guides')).filter(g => GID.test(g.id)).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, v: g.v, edited: !!g.edited, customPdf: !!g.customPdf, editedAt: g.editedAt || '' })).sort((a, b) => a.lang < b.lang ? -1 : 1);
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }); return res.end(JSON.stringify({ guides: list }));
+  }
+  // School of Social and Management Sciences Handbook 2025–2026 (English and French): for signed-in users.
+  if (p === '/api/handbooks' && req.method === 'GET') {
+    if (!u) return send(res, 401, { error: 'sign in' });
+    const list = Object.values(S.all('guides')).filter(g => /^handbook-(en|fr)$/.test(g.id)).map(g => ({ id: g.id, lang: g.lang, title: g.title, pages: g.pages, size: g.size })).sort((a, b) => a.lang < b.lang ? -1 : 1);
+    return send(res, 200, { handbooks: list });
+  }
+  const hdl = /^\/api\/handbooks\/(en|fr)\/download$/.exec(p);
+  if (hdl && req.method === 'GET') {
+    if (!u) return send(res, 401, { error: 'sign in' });
+    const g = S.get('guides', 'handbook-' + hdl[1]), buf = g && await S.getBlob('guide_' + g.id); if (!buf) return send(res, 404, { error: 'not found' });
+    res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': (url.searchParams.get('view') === '1' ? 'inline' : 'attachment') + '; filename="' + g.fname + '"', 'Content-Length': buf.length, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' });
+    return res.end(buf);
   }
   const gdl = /^\/api\/guides\/(students-guide-(?:en|fr))\/download$/.exec(p);
   if (gdl && req.method === 'GET') {
@@ -2994,6 +3007,19 @@ async function ensureMinCourses() {
         if (doc.shipHash !== sh || !doc.html) { doc.html = GM.sanitize(txt.toString('utf8')); doc.fmt = GM.defaultFmt(g.lang); doc.shipHash = sh; changed = true; }
       }
       if (changed) { doc.v = now() % 2e9; doc.updated = new Date().toISOString(); await save('guides', g.id, doc); console.log('Students guide stored: ' + g.id); }
+    }
+    const HBS = [
+      { id: 'handbook-en', lang: 'en', file: 'ADI-SSMS-Handbook-2025-EN.pdf', pages: 15, title: 'School of Social and Management Sciences — Academic Programme Handbook 2025–2026', fname: 'ADI-SSMS-Programme-Handbook-2025-EN.pdf' },
+      { id: 'handbook-fr', lang: 'fr', file: 'ADI-SSMS-Handbook-2025-FR.pdf', pages: 15, title: 'École des Sciences Sociales et de Gestion — Manuel académique des programmes 2025–2026', fname: 'ADI-EScSG-Manuel-des-programmes-2025-FR.pdf' }
+    ];
+    for (const g of HBS) {
+      const old = S.get('guides', g.id) || {}, pdf = sideFile(g.file);
+      if (!pdf || pdf.subarray(0, 5).toString('latin1') !== '%PDF-') { console.warn('Handbook file missing: ' + g.file); continue; }
+      const ph = gcr.createHash('sha256').update(pdf).digest('hex');
+      if (old.pdfHash === ph && await S.getBlob('guide_' + g.id)) continue;
+      await S.putBlob('guide_' + g.id, pdf);
+      await save('guides', g.id, { id: g.id, lang: g.lang, title: g.title, edition: '2025', fname: g.fname, pages: g.pages, size: pdf.length, pdfHash: ph, v: now() % 2e9, updated: new Date().toISOString() });
+      console.log('Handbook stored: ' + g.id);
     }
   }
 }
