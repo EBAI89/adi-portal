@@ -2953,7 +2953,7 @@ async function ensureMinCourses() {
   {
     const gcr = require('crypto'), GM = sideMod('adi-guide.js');
     const GUIDES = [
-      { id: 'students-guide-en', lang: 'en', file: 'ADI-Students-Guide-EN.pdf', pages: 34, title: 'ADI Students Guide', fname: 'ADI-Students-Guide-2024-EN.pdf' },
+      { id: 'students-guide-en', lang: 'en', file: 'ADI-Students-Guide-EN.pdf', pages: 34, title: 'ADI Students’ Guide', fname: 'ADI-Students-Guide-2024-EN.pdf' },
       { id: 'students-guide-fr', lang: 'fr', file: 'ADI-Students-Guide-FR.pdf', pages: 35, title: 'Guide de l’étudiant ADI', fname: 'ADI-Guide-de-l-etudiant-2024-FR.pdf' }
     ];
     for (const g of GUIDES) {

@@ -66,7 +66,7 @@ function sanitize(html) {
 }
 
 const FONTS = { serif: '"Liberation Serif","Times New Roman",Times,serif', sans: '"Liberation Sans",Arial,Helvetica,sans-serif' };
-const HEAD_DEF = { en: ['ADI Students Guide', '2024 edition'], fr: ['Guide de l’étudiant ADI', 'Édition 2024'] };
+const HEAD_DEF = { en: ['ADI Students’ Guide', '2024 edition'], fr: ['Guide de l’étudiant ADI', 'Édition 2024'] };
 function defaultFmt(lang) { const h = HEAD_DEF[lang] || HEAD_DEF.en; return { font: 'serif', size: 10.3, lh: 1.42, hc: '#0b2559', ac: '#c9a24b', hl: h[0], hr: h[1], seal: true, wm: true, wmo: 0.07, num: true, just: true }; }
 function cleanFmt(f, lang) {
   const d = defaultFmt(lang), o = Object.assign({}, d, f && typeof f === 'object' ? f : {});
@@ -154,8 +154,8 @@ window.applyFmt=function(f){var F={serif:'"Liberation Serif","Times New Roman",T
 var r=document.documentElement,q=function(s){return String(s||'').replace(/\\\\/g,'').replace(/"/g,'\\\\"').replace(/[\\r\\n]/g,' ')};
 r.style.setProperty('--gfont',F[f.font]||F.serif);r.style.setProperty('--gsize',f.size+'pt');r.style.setProperty('--glh',f.lh);r.style.setProperty('--gh',f.hc);r.style.setProperty('--gac',f.ac);r.style.setProperty('--wmo',f.wmo);r.style.setProperty('--gjust',f.just===false?'left':'justify');
 r.classList.toggle('nowm',f.wm===false);r.classList.toggle('noseal',f.seal===false);
-var hf='font:8.5pt "Liberation Sans",Arial;color:#5b6b8c;border-bottom:.6pt solid '+f.ac+';padding-bottom:2mm;vertical-align:bottom';
-var css='@page{@top-left{content:"'+q(f.hl)+'";'+hf+'}@top-right{content:"'+q(f.hr)+'";'+hf+'}'+(f.num===false?'':'@bottom-center{content:counter(page);font:9pt "Liberation Sans",Arial;color:'+f.hc+'}')+'}@page cover{@top-left{content:none;border:0}@top-right{content:none;border:0}@bottom-center{content:none}}@page plain{@top-left{content:none;border:0}@top-right{content:none;border:0}'+(f.num===false?'':'@bottom-center{content:counter(page);font:9pt "Liberation Sans",Arial;color:'+f.hc+'}')+'}';
+var fr=window.GLANG==='fr',pgw='Page',ofw=fr?'sur':'of';\nvar hf='font:8.5pt "Liberation Sans",Arial;color:#5b6b8c;border-bottom:.6pt solid '+f.ac+';padding-bottom:2mm;vertical-align:bottom';
+var css='@page{@top-left{content:"'+q(f.hl)+'";'+hf+'}@top-right{content:"'+q(f.hr)+'";'+hf+'}'+(f.num===false?'':'@bottom-center{content:"'+pgw+' " counter(page) " '+ofw+' " counter(pages);font:9pt "Liberation Sans",Arial;color:'+f.hc+'}')+'}@page cover{@top-left{content:none;border:0}@top-right{content:none;border:0}@bottom-center{content:none}}@page plain{@top-left{content:none;border:0}@top-right{content:none;border:0}'+(f.num===false?'':'@bottom-center{content:"'+pgw+' " counter(page) " '+ofw+' " counter(pages);font:9pt "Liberation Sans",Arial;color:'+f.hc+'}')+'}';
 var s=document.getElementById('gfmt');if(!s){s=document.createElement('style');s.id='gfmt';document.head.appendChild(s)}s.textContent=css};
 `;
 const strip = h => String(h).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
@@ -180,6 +180,6 @@ function docHtml(o) {
     + bar + '<img class="wm" src="' + base + 'adi-logo.png" alt=""><img class="seal" src="' + base + 'adi-seal.png" alt=""><div class="doc">'
     + '<div class="cover"><img class="cv" src="' + base + 'guide-cover-' + lang + '.jpg" alt=""><img class="cseal" src="' + base + 'adi-seal.png" alt=""></div>'
     + (o.edit ? '<div id="gfront" contenteditable="true" spellcheck="true">' + front + '</div>' + toc + '<div id="gbody" contenteditable="true" spellcheck="true">' + rest + '</div>' : front + toc + rest)
-    + '</div><script>window.GFMT=' + JSON.stringify(fmt).replace(/</g, '\\u003c') + ';applyFmt(' + JSON.stringify(fmt).replace(/</g, '\\u003c') + ');' + (o.print ? 'addEventListener("load",function(){setTimeout(function(){print()},900)});' : '') + '</script></body></html>';
+    + '</div><script>window.GLANG="' + (lang === 'fr' ? 'fr' : 'en') + '";window.GFMT=' + JSON.stringify(fmt).replace(/</g, '\\u003c') + ';applyFmt(' + JSON.stringify(fmt).replace(/</g, '\\u003c') + ');' + (o.print ? 'addEventListener("load",function(){setTimeout(function(){print()},900)});' : '') + '</script></body></html>';
 }
 module.exports = { sanitize, docHtml, cleanFmt, defaultFmt, tocEntries };
