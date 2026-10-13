@@ -806,17 +806,25 @@
 
   if (typeof render === 'function') render();
 
-  /* "Apply now" stays on screen on every public page, whichever page the visitor opens. */
+  /* "Apply now" stays on screen on every public page, whichever page the visitor opens, except where it would cover the controls of a form:
+     pages with a sticky action bar (.sabar, for example "Submit my application"), the sign-up, sign-in and application routes, and while the on-screen keyboard is open or a field is being edited. */
+  const FLOAT_QUIET = /^(signup|signin|login|forgot|reset|activate|careers\/(apply|partner))/;
+  const keyboardOpen = () => { try { const v = window.visualViewport; return !!(v && v.height < window.innerHeight * 0.78); } catch (e) { return false; } };
+  const typingNow = () => { const a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !/^(checkbox|radio|button|submit|file)$/.test(a.type || '')); };
   function applyFloat() {
     let el = document.getElementById('apply-float');
-    const r = location.hash.replace(/^#\/?/, '').split('/')[0];
-    const show = typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav');
+    const r = location.hash.replace(/^#\/?/, '');
+    const show = typeof me === 'function' && !me() && !!document.querySelector('header.top') && !document.querySelector('.appnav')
+      && !FLOAT_QUIET.test(r) && !document.querySelector('.sabar') && !keyboardOpen() && !typingNow();
     if (!show) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('a'); el.id = 'apply-float'; el.className = 'btn gold apply-float'; el.href = '#/signup'; document.body.appendChild(el); }
     el.textContent = (typeof LANG !== 'undefined' && LANG === 'fr') ? 'Postuler maintenant' : 'Apply now';
   }
   if (typeof render === 'function') { const prev = render; render = function () { const r = prev.apply(this, arguments); try { applyFloat(); } catch (e) {} return r; }; }
   window.addEventListener('hashchange', () => setTimeout(applyFloat, 60));
+  document.addEventListener('focusin', () => setTimeout(applyFloat, 60));
+  document.addEventListener('focusout', () => setTimeout(applyFloat, 180));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => setTimeout(applyFloat, 60));
   setTimeout(applyFloat, 400);
 
 
@@ -1079,7 +1087,7 @@
     msg = String(msg || '').replace(/\s+/g, ' ').trim(); if (!msg) return;
     msg = window.politeError ? window.politeError(msg) : msg;
     clear(); const b = ensure();
-    b.querySelector('.ef-k').textContent = fr() ? 'À corriger' : 'Please correct';
+    b.querySelector('.ef-k').textContent = fr() ? 'Correction requise' : 'Correction required';
     b.querySelector('.ef-m').textContent = msg;
     b.querySelector('.ef-go').textContent = fr() ? 'Voir' : 'Show';
     src = source || null; b.hidden = false;
