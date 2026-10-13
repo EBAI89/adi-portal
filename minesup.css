@@ -154,3 +154,8 @@ body.sgopen{overflow:hidden}
 .chk.fld-bad .ferr.fwarn{flex-basis:100%;margin-left:0}
 @keyframes fwin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.ferr.fwarn{animation:none}}
+
+/* Side menu: the current section is clearly highlighted when the menu is opened */
+.side a.on,.side a[aria-current="page"]{background:linear-gradient(90deg,rgba(201,162,39,.30),rgba(201,162,39,.10));border-left:5px solid var(--gold,#C9A227);color:var(--navy,#0B2A5B);font-weight:700;box-shadow:inset 0 0 0 1px rgba(201,162,39,.35);position:relative}
+.side a.on::after{content:"";position:absolute;right:14px;top:50%;width:8px;height:8px;margin-top:-5px;border-right:2.5px solid var(--gold,#C9A227);border-bottom:2.5px solid var(--gold,#C9A227);transform:rotate(-45deg)}
+.side a.on:hover{background:linear-gradient(90deg,rgba(201,162,39,.38),rgba(201,162,39,.16))}
