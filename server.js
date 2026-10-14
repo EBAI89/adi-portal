@@ -2111,6 +2111,17 @@ const ip = req => (String(req.headers['x-forwarded-for'] || '').split(',')[0].tr
 // A request is same-origin when the browser's Origin matches the Host it reached, or the portal's official public address (PUBLIC_URL), which is how the Cloudflare relay in front of the portal presents itself.
 function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { const u = new URL(o); if (u.host === req.headers.host) return true; const p = E.PUBLIC_URL ? new URL(E.PUBLIC_URL) : null; return !!p && p.origin === u.origin; } catch (e) { return false; } }
 
+// Tells the administrator at start-up which delivery channels are live and which credentials are still missing (messages are never blocked by this check).
+function channelCheck() {
+  const need = { email: { brevo: ['BREVO_API_KEY'], resend: ['RESEND_API_KEY'] }, sms: { africastalking: ['AT_USERNAME', 'AT_API_KEY'], twilio: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'] }, whatsapp: { twilio: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WA_FROM', 'TWILIO_WA_CONTENT_SID_PROOF'], meta: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID'] } };
+  for (const [ch, key] of [['email', 'EMAIL_PROVIDER'], ['sms', 'SMS_PROVIDER'], ['whatsapp', 'WHATSAPP_PROVIDER']]) {
+    const p = String(E[key] || 'log').toLowerCase();
+    if (p === 'log') { console.log('[channels] ' + ch + ': log only (nothing is delivered) — set ' + key + ' to switch on real delivery'); continue; }
+    const req = (need[ch] || {})[p]; if (!req) { console.warn('[channels] ' + ch + ': unknown provider "' + p + '" — nothing will be delivered'); continue; }
+    const miss = req.filter(k => !String(E[k] || '').trim());
+    console[miss.length ? 'warn' : 'log']('[channels] ' + ch + ': ' + p + (miss.length ? ' — NOT READY, missing ' + miss.join(', ') : ' — ready'));
+  }
+}
 /* ---------- writes with hooks ---------- */
 let PUSH = null;
 async function save(c, id, doc) { const fresh = c === 'notifs' && PUSH && !S.get(c, id); doc.id = id; doc._seq = ++SEQ; await S.put(c, id, doc); if (fresh && !doc.read && doc.userId) PUSH.notify(doc.userId, doc.title, doc.body).catch(e => console.error('[push]', e && e.message)); }
@@ -3279,7 +3290,7 @@ async function seed() {
   if (MB) await MB.seed();
   setInterval(() => momoPoll().catch(e => console.error(e)), 20000).unref();
   http.createServer((req, res) => route(req, res).catch(e => { console.error(e); if (!res.headersSent) send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too large' : e.code === 400 ? 'bad request' : 'server error' }); }))
-    .listen(PORT, '0.0.0.0', () => console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'})`));
+    .listen(PORT, '0.0.0.0', () => { console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'}, whatsapp: ${E.WHATSAPP_PROVIDER || 'log'})`); channelCheck(); });
 })();
 
 })(__req);

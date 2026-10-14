@@ -27,11 +27,32 @@ services:
         sync: false
       - key: INBOX_EMAIL
         value: e.bill@adiuniversity.com
+      # Real delivery channels (see NOTIFICATIONS-SETUP.md). The secret values are entered once in the Render Environment tab, never in the repository.
       - key: EMAIL_PROVIDER
-        value: log
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: ADI University <no-reply@adiuniversity.com>
       - key: SMS_PROVIDER
-        value: log
+        value: africastalking
+      - key: AT_USERNAME
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: AT_SENDER_ID
+        sync: false
       - key: WHATSAPP_PROVIDER
-        value: log
+        value: twilio
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WA_FROM
+        sync: false
+      - key: TWILIO_WA_CONTENT_SID_PROOF
+        sync: false
+      - key: PUBLIC_URL
+        value: https://adi-portal.onrender.com
       - key: MOMO_MODE
         value: "off"
