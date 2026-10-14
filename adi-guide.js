@@ -119,7 +119,9 @@ table.fees.small{width:auto;min-width:60%}table.fees.small td,table.fees.small t
 table.rate td.q{text-align:left;width:112mm}table.rate th{text-align:center}table.rate td{height:6mm;border:.6pt solid #888;text-align:center;background:#fff!important}table.rate th.q{text-align:left}.rn{display:inline-block;width:9mm;font-weight:700}
 .lines div{border-bottom:.8pt dotted #555;height:7mm}
 .pagebreak{break-after:page;height:0}
-.sigimg{display:block;max-height:17mm;max-width:46mm;margin:1mm auto;mix-blend-mode:multiply}
+.sigblk{display:block;position:relative;width:52mm;height:25mm;margin:0 auto}
+.sigblk .sigseal{position:absolute;left:0;top:1mm;width:23mm;opacity:.92;mix-blend-mode:multiply}
+.sigblk .sigimg{position:absolute;left:11mm;top:0;max-height:25mm;max-width:41mm;mix-blend-mode:multiply}
 .docnote{font:9.4pt/1.5 "Liberation Sans",Arial,sans-serif;color:#2b3a59;margin-top:8mm}
 .tocpg .ttl{font:700 17pt "Liberation Sans",Arial,sans-serif;color:var(--gh,var(--navy));margin:0 0 6mm;padding-bottom:3mm;border-bottom:1.2pt solid var(--gac,var(--gold))}
 .tl{display:flex;align-items:baseline;gap:2mm;font:9.4pt/1.38 "Liberation Sans",Arial,sans-serif;color:inherit;text-decoration:none}
@@ -183,7 +185,7 @@ function docHtml(o) {
   const ents = tocEntries(html);
   const toc = '<section class="tocpg' + (pg ? '' : ' nopg') + '"><div class="ttl">' + TOC_T[lang] + '</div>' + ents.map((e, i) => (e.id && !o.edit ? '<a class="tl s" href="#' + e.id + '">' : '<div class="tl ' + (e.s ? 's' : 'u') + '">') + '<span class="tt">' + esc(e.t) + '</span><span class="dots"></span><span class="pg">' + (pg && pg[i] ? esc(pg[i]) : '') + '</span>' + (e.id && !o.edit ? '</a>' : '</div>')).join('') + '</section>';
   // Automatic signatures: the tokens [[SIG:admission]], [[SIG:administrative]] and [[SIGNDATE]] in the text become the signatory's signature image and the date of signature (o.signDate). In edit mode the tokens stay visible so that saving keeps them.
-  const signed = h => o.edit ? h : String(h).replace(/\[\[SIG:(admission|administrative)\]\]/g, (m, k) => '<img class="sigimg" src="' + base + 'sig-' + k + '.png" alt="' + (k === 'admission' ? 'Signature of the Admission Director' : 'Signature of the Administrative Director') + '">').replace(/\[\[SIGNDATE\]\]/g, esc(o.signDate || ''));
+  const signed = h => o.edit ? h : String(h).replace(/\[\[SIG:(admission|administrative)\]\]/g, (m, k) => '<span class="sigblk"><img class="sigseal" src="' + base + 'adi-seal.png" alt="ADI round seal"><img class="sigimg" src="' + base + 'sig-' + k + '.png" alt="' + (k === 'admission' ? 'Signature and stamp of the Admission Director' : 'Signature of the Administrative Director') + '"></span>').replace(/\[\[SIGNDATE\]\]/g, esc(o.signDate || ''));
   const fm = /^\s*((?:<section\b[^>]*\bfront\b[^>]*>[\s\S]*?<\/section>\s*)*)([\s\S]*)$/.exec(html), front = fm ? fm[1] : '', rest = fm ? fm[2] : html;
   const bar = o.edit ? '' : '<div class="bar"><span>' + esc(fmt.hl) + ' — ' + esc(fmt.hr) + '</span>' + (o.print ? '<span>' + (lang === 'fr' ? 'Dans la fenêtre d’impression, choisissez « Enregistrer au format PDF ».' : 'In the print window, choose “Save as PDF”.') + '</span>' : '') + '<button onclick="window.print()">' + (lang === 'fr' ? 'Imprimer / PDF' : 'Print / PDF') + '</button><a class="g" href="#/' + (o.back || 'guide') + '" onclick="if(window.opener){window.close();return false}location.href=\'/#/' + (o.back || 'guide') + '\';return false">' + (lang === 'fr' ? 'Retour' : 'Back') + '</a></div>';
   return '<!doctype html><html lang="' + lang + '"' + (o.edit ? ' class="edit"' : '') + '><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(fmt.hl) + ' — ' + esc(fmt.hr) + '</title><style>' + CSS + '</style><script>' + JS + '</script></head><body>'
