@@ -2336,10 +2336,11 @@ async function route(req, res) {
   }
   // ADI Financial Report 2025/2026 (confidential). The page, its PDF edition and its figures are for the super administrator only; every download is entered in the audit log.
   const FINID = 'finreport-2025-2026-en';
+  const finSignDate = g => new Date(g.signedOn || g.updated || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Douala' });
   if (/^\/finance-(print|assets)\//.test(p) || /^\/api\/finreports(\/|$)/.test(p)) {
     if (!u) return send(res, 401, { error: 'sign in' });
     if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
-    const fas = /^\/finance-assets\/(adi-logo\.png|adi-seal\.png|finance-cover-en\.jpg)$/.exec(p);
+    const fas = /^\/finance-assets\/(adi-logo\.png|adi-seal\.png|finance-cover-en\.jpg|sig-admission\.png|sig-administrative\.png)$/.exec(p);
     if (fas && req.method === 'GET') {
       const buf = sideFile(fas[1]); if (!buf) return send(res, 404, { error: 'missing' });
       res.writeHead(200, { 'Content-Type': fas[1].endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf);
@@ -2347,7 +2348,7 @@ async function route(req, res) {
     if (p === '/finance-print/en' && req.method === 'GET') {
       const g = S.get('finreports', FINID); if (!g || !g.html) return send(res, 404, { error: 'not found' });
       const pgq = url.searchParams.get('pg');
-      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
+      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', signDate: finSignDate(g), print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
       res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' })); return res.end(page);
     }
     if (p === '/api/finreports' && req.method === 'GET') {
@@ -2372,7 +2373,7 @@ async function route(req, res) {
       if (!sameOrigin(req)) return send(res, 403, { error: 'origin' });
       if (!/application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'json required' });
       if (limited('finedit:' + u.id, 60, 3600e3)) return send(res, 429, { error: 'Too many changes' });
-      const stamp = { editedAt: new Date().toISOString(), editedBy: u.name, v: now() % 2e9 };
+      const stamp = { editedAt: new Date().toISOString(), editedBy: u.name, v: now() % 2e9 }; stamp.signedOn = stamp.editedAt;   // the signatures are applied automatically, dated on the day the report was last saved
       if (fsv[2] === 'content' && req.method === 'PUT') {
         const b = await body(req, 1.6e6), html = GM.sanitize(String(b.html || ''));
         if (html.length < 200 || !/<section\b/.test(html)) return send(res, 400, { error: 'The report must keep at least one section.' });
@@ -2387,7 +2388,7 @@ async function route(req, res) {
       if (fsv[2] === 'restore' && req.method === 'POST') {
         const txt = sideFile('finance-content-en.html'), pdf = sideFile('ADI-Financial-Report-2025-2026-EN.pdf'); if (!txt || !pdf) return send(res, 500, { error: 'missing' });
         await keep(); await S.putBlob('finreport_' + gid, pdf);
-        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '' }, { v: stamp.v }));
+        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '', signedOn: '2026-10-14T08:00:00.000Z' }, { v: stamp.v }));
         await audit(u, 'financial report restored to the standard edition'); return send(res, 200, { ok: true });
       }
       if (fsv[2] === 'pdf' && req.method === 'POST') {
@@ -3174,7 +3175,7 @@ async function ensureMinCourses() {
         if (!old.edited && (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id)))) {
           await S.putBlob('finreport_' + FR.id, pdf);
           await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
-            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, v: now() % 2e9, updated: new Date().toISOString() });
+            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
           console.log('Financial report stored: ' + FR.id);
         }
       } else console.warn('Financial report files missing');
