@@ -2387,7 +2387,7 @@ async function route(req, res) {
       if (fsv[2] === 'restore' && req.method === 'POST') {
         const txt = sideFile('finance-content-en.html'), pdf = sideFile('ADI-Financial-Report-2025-2026-EN.pdf'); if (!txt || !pdf) return send(res, 500, { error: 'missing' });
         await keep(); await S.putBlob('finreport_' + gid, pdf);
-        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4512386, surplus: 15614, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '' }, { v: stamp.v }));
+        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '' }, { v: stamp.v }));
         await audit(u, 'financial report restored to the standard edition'); return send(res, 200, { ok: true });
       }
       if (fsv[2] === 'pdf' && req.method === 'POST') {
@@ -3174,7 +3174,7 @@ async function ensureMinCourses() {
         if (!old.edited && (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id)))) {
           await S.putBlob('finreport_' + FR.id, pdf);
           await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
-            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4512386, surplus: 15614, owed: 1691000 }, v: now() % 2e9, updated: new Date().toISOString() });
+            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, v: now() % 2e9, updated: new Date().toISOString() });
           console.log('Financial report stored: ' + FR.id);
         }
       } else console.warn('Financial report files missing');
