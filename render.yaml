@@ -31,5 +31,7 @@ services:
         value: log
       - key: SMS_PROVIDER
         value: log
+      - key: WHATSAPP_PROVIDER
+        value: log
       - key: MOMO_MODE
         value: "off"

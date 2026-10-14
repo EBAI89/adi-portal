@@ -443,7 +443,7 @@ module.exports = { init, diagnose, why, enabled: () => mode() !== 'off' && (mode
 };
 __MODS["./lib/notify"] = function (module, exports, require) {
 'use strict';
-// Email (Resend or Brevo) and SMS (Twilio or Africa's Talking). Provider "log" prints instead of sending.
+// Email (Resend or Brevo), SMS (Twilio or Africa's Talking) and WhatsApp (Meta Cloud API or Twilio). Provider "log" prints instead of sending.
 const E = process.env;
 const log = (...a) => console.log('[notify]', ...a);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -488,7 +488,34 @@ async function sendSMS({ to, text }) {
     } else log('SMS to', num, '|', msg);
   } catch (e) { console.error('[notify] sms failed:', e.message); }
 }
-module.exports = { sendEmail, sendSMS, e164 };
+// WhatsApp: WHATSAPP_PROVIDER = log | meta | twilio. WhatsApp only lets a business start a conversation with an approved template, so a message
+// that comes with a template (tpl = { key, vars }) is sent as that template; anything else goes as plain text (delivered only inside the 24-hour reply window).
+//   meta:   WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_TEMPLATE_<KEY> (template name, e.g. WHATSAPP_TEMPLATE_PROOF=payment_proof_required), WHATSAPP_LANG (template language code, default en)
+//   twilio: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WA_FROM (e.g. +14155238886), TWILIO_WA_CONTENT_SID_<KEY> (approved Content template SID)
+const waClean = v => String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, 200);
+async function sendWhatsApp({ to, text, tpl }) {
+  const p = (E.WHATSAPP_PROVIDER || 'log').toLowerCase(); const num = e164(to); if (!num) return;
+  const msg = String(text || '').slice(0, 1000), key = tpl && tpl.key ? String(tpl.key).toUpperCase() : '', vars = ((tpl && tpl.vars) || []).map(waClean);
+  try {
+    if (p === 'meta') {
+      if (!E.WHATSAPP_TOKEN || !E.WHATSAPP_PHONE_ID) throw new Error('WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are required');
+      const name = key && (E['WHATSAPP_TEMPLATE_' + key] || (key === 'PROOF' ? 'payment_proof_required' : ''));
+      const payload = name
+        ? { messaging_product: 'whatsapp', to: num.slice(1), type: 'template', template: { name, language: { code: E.WHATSAPP_LANG || 'en' }, components: [{ type: 'body', parameters: vars.map(v => ({ type: 'text', text: v || '-' })) }] } }
+        : { messaging_product: 'whatsapp', to: num.slice(1), type: 'text', text: { body: msg } };
+      const r = await fetch('https://graph.facebook.com/' + (E.WHATSAPP_API_VERSION || 'v21.0') + '/' + E.WHATSAPP_PHONE_ID + '/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + E.WHATSAPP_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('meta ' + r.status + ' ' + (await r.text()).slice(0, 240));
+    } else if (p === 'twilio') {
+      if (!E.TWILIO_ACCOUNT_SID || !E.TWILIO_AUTH_TOKEN || !E.TWILIO_WA_FROM) throw new Error('TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WA_FROM are required');
+      const auth = Buffer.from(E.TWILIO_ACCOUNT_SID + ':' + E.TWILIO_AUTH_TOKEN).toString('base64'), sid = key && E['TWILIO_WA_CONTENT_SID_' + key];
+      const form = new URLSearchParams({ To: 'whatsapp:' + num, From: 'whatsapp:' + e164(E.TWILIO_WA_FROM) });
+      if (sid) { form.set('ContentSid', sid); form.set('ContentVariables', JSON.stringify(Object.fromEntries(vars.map((v, i) => [String(i + 1), v || '-'])))); } else form.set('Body', msg);
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${E.TWILIO_ACCOUNT_SID}/Messages.json`, { method: 'POST', headers: { Authorization: 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form });
+      if (!r.ok) throw new Error('twilio ' + r.status + ' ' + (await r.text()).slice(0, 240));
+    } else log('WhatsApp to', num, '|', key ? '[template ' + key + ' ' + JSON.stringify(vars) + '] ' : '', msg);
+  } catch (e) { console.error('[notify] whatsapp failed:', e.message); }
+}
+module.exports = { sendEmail, sendSMS, sendWhatsApp, e164 };
 
 };
 __MODS["./lib/importer"] = function (module, exports, require) {
@@ -2027,7 +2054,7 @@ module.exports = { b64u, sha256, cbor, parseAuthData, coseToJwk, verifyRegistrat
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), { promisify } = require('util');
 const scrypt = promisify(crypto.scrypt);
 const E = process.env;
-const makeChat = require('./lib/chat'), makeVis = require('./lib/analytics'), makeHr = require('./lib/careers'), makeCls = require('./lib/classroom'), makeLib = require('./lib/library'), makeRates = require('./lib/rates'), makeAtt = require('./lib/attapi'), importer = require('./lib/importer'), openStore = require('./lib/store'), logic = require('./lib/logic'), makeRules = require('./lib/rules'), momo = require('./lib/momo'), { sendEmail, sendSMS } = require('./lib/notify');
+const makeChat = require('./lib/chat'), makeVis = require('./lib/analytics'), makeHr = require('./lib/careers'), makeCls = require('./lib/classroom'), makeLib = require('./lib/library'), makeRates = require('./lib/rates'), makeAtt = require('./lib/attapi'), importer = require('./lib/importer'), openStore = require('./lib/store'), logic = require('./lib/logic'), makeRules = require('./lib/rules'), momo = require('./lib/momo'), { sendEmail, sendSMS, sendWhatsApp } = require('./lib/notify');
 
 const PORT = Number(E.PORT || 3000), PROD = E.NODE_ENV === 'production';
 const SECRET = E.SESSION_SECRET || (PROD ? null : 'dev-secret-change-me');
@@ -2095,6 +2122,7 @@ async function notifyUser(userId, title, body, o = {}) {
   await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false });
   if (u.email) sendEmail({ to: u.email, subject: title, text: body });
   if (o.sms && u.phone) sendSMS({ to: u.phone, text: o.smsText || ('ADI: ' + title + ' - ' + body) });
+  if (o.wa && u.phone) sendWhatsApp({ to: u.phone, text: o.waText || ('ADI University — ' + title + '\n\n' + body), tpl: o.waTpl });
 }
 const usersWith = perm => Object.values(S.all('users')).filter(u => u.status === 'active' && (u.role === 'super_admin' || (perm !== '__super' && (logic.perms(S)[u.role] || []).includes(perm))));
 async function nextReceipt(ay) { const n = Number(S.meta.rcpt || Object.values(S.all('payments')).filter(p => p.receiptNo).length) + 1; await S.setMeta('rcpt', n); return 'ADI/RCPT/' + String(ay || logic.AY()).replace('/', '-') + '/' + String(n).padStart(5, '0'); }
@@ -2161,7 +2189,7 @@ async function applyWrite(u, c, id, o, n) {
       const what = String(o.label || 'Payment').slice(0, 40) + ' — ' + xaf(o.amount) + ' (ID ' + o.ref + ')';
       const en = 'cannot be validated because no screenshot of the MoMo payment has been uploaded. Please open Fees & Payments, choose "Upload proof" and attach a clear screenshot (JPG, PNG or PDF) showing the transaction ID, amount, date and recipient number.';
       const fr = 'ne peut pas être validé car aucune capture du paiement MoMo n’a été téléversée. Ouvrez Frais & Paiements, choisissez « Téléverser la preuve » et joignez une capture nette (JPG, PNG ou PDF) indiquant l’identifiant, le montant, la date et le numéro du bénéficiaire.';
-      await notifyUser(o.userId, bi('Payment cannot be validated — proof required', 'Paiement non validable — preuve requise'), what + ' ' + en + ' / ' + what + ' ' + fr + (note ? ' — ' + note : ''), { sms: true, smsText: 'ADI: payment ' + o.ref + ' cannot be validated - MoMo screenshot not uploaded. Portal > Fees & Payments > Upload proof. / paiement ' + o.ref + ' non validable - capture MoMo absente. Portail > Frais & Paiements > Téléverser la preuve.' });
+      await notifyUser(o.userId, bi('Payment cannot be validated — proof required', 'Paiement non validable — preuve requise'), what + ' ' + en + ' / ' + what + ' ' + fr + (note ? ' — ' + note : ''), { sms: true, wa: true, waTpl: { key: 'proof', vars: [String(o.label || 'Payment').slice(0, 40) + ' — ' + xaf(o.amount), o.ref] }, waText: 'ADI University\n\n' + what + ' ' + en + '\n\n' + what + ' ' + fr, smsText: 'ADI: payment ' + o.ref + ' cannot be validated - MoMo screenshot not uploaded. Portal > Fees & Payments > Upload proof. / paiement ' + o.ref + ' non validable - capture MoMo absente. Portail > Frais & Paiements > Téléverser la preuve.' });
       return;
     }
     if (n.status === 'invalidated') {
