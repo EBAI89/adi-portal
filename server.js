@@ -3168,7 +3168,7 @@ async function ensureMinCourses() {
     // ADI Financial Report 2025/2026 (English, confidential): kept in its own collection, which is never sent to browsers; only the super administrator's routes read it.
     // The text (for the printable page) and the PDF edition shipped with the portal are stored together; a shipped update replaces both.
     {
-      const FR = { id: 'finreport-2025-2026-en', lang: 'en', file: 'ADI-Financial-Report-2025-2026-EN.pdf', pages: 13, title: 'ADI Financial Report — 2025/2026 Academic Year', fname: 'ADI-Financial-Report-2025-2026.pdf' };
+      const FR = { id: 'finreport-2025-2026-en', lang: 'en', file: 'ADI-Financial-Report-2025-2026-EN.pdf', pages: 14, title: 'ADI Financial Report — 2025/2026 Academic Year', fname: 'ADI-Financial-Report-2025-2026.pdf' };
       const pdf = sideFile(FR.file), txt = sideFile('finance-content-en.html');
       if (pdf && txt && pdf.subarray(0, 5).toString('latin1') === '%PDF-') {
         const fh = gcr.createHash('sha256').update(pdf).update(txt).update(sideFile('adi-guide.js') || '').digest('hex'), old = S.get('finreports', FR.id) || {};
