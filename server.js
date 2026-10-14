@@ -2343,12 +2343,12 @@ async function route(req, res) {
     const fas = /^\/finance-assets\/(adi-logo\.png|adi-seal\.png|finance-cover-en\.jpg|sig-admission\.png|sig-administrative\.png)$/.exec(p);
     if (fas && req.method === 'GET') {
       const buf = sideFile(fas[1]); if (!buf) return send(res, 404, { error: 'missing' });
-      res.writeHead(200, { 'Content-Type': fas[1].endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf);
+      res.writeHead(200, { 'Content-Type': fas[1].endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf);
     }
     if (p === '/finance-print/en' && req.method === 'GET') {
       const g = S.get('finreports', FINID); if (!g || !g.html) return send(res, 404, { error: 'not found' });
       const pgq = url.searchParams.get('pg');
-      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', signDate: finSignDate(g), print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
+      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', signDate: finSignDate(g), assetV: String((sideFile('finance-cover-en.jpg') || '').length), print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
       res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' })); return res.end(page);
     }
     if (p === '/api/finreports' && req.method === 'GET') {
