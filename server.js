@@ -271,6 +271,7 @@ module.exports = function makeRules(store, logic) {
         if (create) return n.userId === u.id && (has(u, 'fees_pay') || (n.kind === 'service' && ['applicant', 'student'].includes(u.role)) || (u.purpose === 'minesup' && u.msMatric && n.kind !== 'service' && n.matric === u.msMatric)) && n.status === 'pending' ? true : 'forbidden';
         if (u.role === 'super_admin' && u.status === 'active' && n.status === 'invalidated' && o.status === 'confirmed') return true;   // only the super administrator may reverse a confirmed payment
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
+        if (has(u, 'verify_payments') && o.status === 'pending' && n.status === 'pending' && only(o, n, ['proofReq'])) return true;   // "no screenshot uploaded" notice to the payer: status stays pending, nothing else may change
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
       case 'tt': return has(u, 'manage_timetable') || 'forbidden';
@@ -2093,7 +2094,7 @@ async function notifyUser(userId, title, body, o = {}) {
   const u = S.get('users', userId); if (!u) return;
   await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false });
   if (u.email) sendEmail({ to: u.email, subject: title, text: body });
-  if (o.sms && u.phone) sendSMS({ to: u.phone, text: 'ADI: ' + title + ' - ' + body });
+  if (o.sms && u.phone) sendSMS({ to: u.phone, text: o.smsText || ('ADI: ' + title + ' - ' + body) });
 }
 const usersWith = perm => Object.values(S.all('users')).filter(u => u.status === 'active' && (u.role === 'super_admin' || (perm !== '__super' && (logic.perms(S)[u.role] || []).includes(perm))));
 async function nextReceipt(ay) { const n = Number(S.meta.rcpt || Object.values(S.all('payments')).filter(p => p.receiptNo).length) + 1; await S.setMeta('rcpt', n); return 'ADI/RCPT/' + String(ay || logic.AY()).replace('/', '-') + '/' + String(n).padStart(5, '0'); }
@@ -2148,6 +2149,19 @@ async function applyWrite(u, c, id, o, n) {
       n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
+      return;
+    }
+    if (n.status === 'pending' && n.proofReq && o.status === 'pending') {                // verifier: the payment cannot be validated because no MoMo screenshot was uploaded
+      if (o.method === 'momo_api' || o.momoRef) throw ['this payment was made through the portal and needs no screenshot'];
+      if (Object.values(S.all('files')).some(f => f && f.ctx === 'pay:' + id)) throw ['a screenshot has already been uploaded for this payment'];
+      if (o.proofReq && !o.proofReq.receivedAt && now() - o.proofReq.at < 3600e3) throw ['the payer was already notified less than an hour ago'];
+      const note = String(n.proofReq.note || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 120);
+      const flagged = Object.assign({}, o, { proofReq: { at: now(), by: u.name, note, count: ((o.proofReq && o.proofReq.count) || 0) + 1 } }); await save(c, id, flagged);
+      await audit(u, 'payment proof requested ' + o.ref);
+      const what = String(o.label || 'Payment').slice(0, 40) + ' — ' + xaf(o.amount) + ' (ID ' + o.ref + ')';
+      const en = 'cannot be validated because no screenshot of the MoMo payment has been uploaded. Please open Fees & Payments, choose "Upload proof" and attach a clear screenshot (JPG, PNG or PDF) showing the transaction ID, amount, date and recipient number.';
+      const fr = 'ne peut pas être validé car aucune capture du paiement MoMo n’a été téléversée. Ouvrez Frais & Paiements, choisissez « Téléverser la preuve » et joignez une capture nette (JPG, PNG ou PDF) indiquant l’identifiant, le montant, la date et le numéro du bénéficiaire.';
+      await notifyUser(o.userId, bi('Payment cannot be validated — proof required', 'Paiement non validable — preuve requise'), what + ' ' + en + ' / ' + what + ' ' + fr + (note ? ' — ' + note : ''), { sms: true, smsText: 'ADI: payment ' + o.ref + ' cannot be validated - MoMo screenshot not uploaded. Portal > Fees & Payments > Upload proof. / paiement ' + o.ref + ' non validable - capture MoMo absente. Portail > Frais & Paiements > Téléverser la preuve.' });
       return;
     }
     if (n.status === 'invalidated') {
@@ -2217,7 +2231,14 @@ async function applyWrite(u, c, id, o, n) {
   }
   if (c === 'tickets' && o && n.reply && n.reply !== o.reply) { n = Object.assign({}, o, { reply: String(n.reply).slice(0, 4000), status: 'answered', repliedAt: now(), repliedBy: u.name }); await save(c, id, n); sendEmail({ to: o.email, subject: 'Re: ' + o.subject, text: n.reply, replyTo: INBOX() }); return; }
   if (c === 'audit') n = { at: now(), user: u.name + ' (' + u.role + ')', action: String(n.action || '').slice(0, 200) };
-  if (c === 'files' && !o) { const blob = await S.getBlob(id); if (!blob) throw ['upload missing']; n = Object.assign({}, n, { size: blob.length, at: now() }); }
+  if (c === 'files' && !o) {
+    const blob = await S.getBlob(id); if (!blob) throw ['upload missing']; n = Object.assign({}, n, { size: blob.length, at: now() });
+    const pm = /^pay:(.+)$/.exec(String(n.ctx || '')), pp = pm && S.get('payments', pm[1]);
+    if (pp && pp.status === 'pending' && pp.proofReq && !pp.proofReq.receivedAt && pp.userId === n.owner) {                 // the proof requested from the payer has arrived
+      await save('payments', pp.id, Object.assign({}, pp, { proofReq: Object.assign({}, pp.proofReq, { receivedAt: now() }) }));
+      for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment proof received', 'Preuve de paiement reçue'), pp.payerName + ' — ' + xaf(pp.amount) + ' (' + pp.ref + ')');
+    }
+  }
   if (c === 'files' && n === null) await S.delBlob(id).catch(() => {});
   if (c === 'courses' && n && (n.level === 'HND' || n.level === 'BTS')) {
     const stOf = x => ({ C: 1, R: 1, E: 1 }[x.status] ? x.status : (x.compulsory === false ? 'E' : 'C'));
