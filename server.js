@@ -2388,7 +2388,7 @@ async function route(req, res) {
       if (fsv[2] === 'restore' && req.method === 'POST') {
         const txt = sideFile('finance-content-en.html'), pdf = sideFile('ADI-Financial-Report-2025-2026-EN.pdf'); if (!txt || !pdf) return send(res, 500, { error: 'missing' });
         await keep(); await S.putBlob('finreport_' + gid, pdf);
-        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '', signedOn: '2026-10-14T08:00:00.000Z' }, { v: stamp.v }));
+        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '', signedOn: '2026-10-14T08:00:00.000Z' }, { v: stamp.v }));
         await audit(u, 'financial report restored to the standard edition'); return send(res, 200, { ok: true });
       }
       if (fsv[2] === 'pdf' && req.method === 'POST') {
@@ -2399,7 +2399,7 @@ async function route(req, res) {
       }
       if (fsv[2] === 'figs' && req.method === 'PUT') {
         const b = await body(req, 2e3), f = {};
-        for (const k of ['revenue', 'expenditure', 'surplus', 'owed']) { const n = Number(b[k]); if (!Number.isInteger(n) || n < 0 || n > 1e12) return send(res, 400, { error: 'Enter whole numbers (0 or more) for every figure.' }); f[k] = n; }
+        for (const k of ['revenue', 'expenditure', 'surplus', 'owed']) { const n = Number(b[k]); if (!Number.isInteger(n) || n < (k === 'surplus' ? -1e12 : 0) || n > 1e12) return send(res, 400, { error: 'Enter whole numbers for every figure (only the surplus may be negative, for a deficit).' }); f[k] = n; }
         await save('finreports', gid, Object.assign({}, g, { figs: f, edited: true }, stamp));
         await audit(u, 'financial report key figures edited'); return send(res, 200, { ok: true });
       }
@@ -3175,24 +3175,17 @@ async function ensureMinCourses() {
         if (!old.edited && (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id)))) {
           await S.putBlob('finreport_' + FR.id, pdf);
           await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
-            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, sigV: 2, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
+            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, sigV: 3, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
           console.log('Financial report stored: ' + FR.id);
         }
-        // A report the super administrator has already edited is never replaced by a shipped update; the authorisation block (automatic signatures, place and date) and the addressee page are added to it once, and the earlier text is kept in its history.
-        else if (old.edited && old.html && !(old.sigV >= 2)) {
-          const sh = GM.sanitize(txt.toString('utf8')), H = '<h2 class="toc">7.2. Authorisation</h2>', sa = sh.indexOf(H), se = sh.indexOf('<p class="docnote">Classification', sa), block = sa >= 0 && se > sa ? sh.slice(sa, se) : '';
-          let html = old.html;
-          if (block) {
-            const i = html.indexOf(H);
-            if (i >= 0) { let j = html.indexOf('<p class="docnote">Classification', i); if (j < 0) j = html.indexOf('</section>', i); if (j > i) html = html.slice(0, i) + block + html.slice(j); }
-            else { const k = html.lastIndexOf('</section>'); if (k >= 0) html = html.slice(0, k) + block + html.slice(k); }
-          }
-          const fm = /^<section class="front[\s\S]*?<\/section>\s*/.exec(sh);
-          if (fm && !/<section[^>]*\bfront\b/.test(html)) html = fm[0] + html;
+        // A report the super administrator has already edited is not replaced by a routine update. Once (sigV 3), the confirmed reconciliation corrections, the signature block and the addressee page
+        // reach it as well: the corrected text replaces the edited text, and the edited text stays in the history (Versions, PDF and restore).
+        else if (old.edited && old.html && !(old.sigV >= 3)) {
           let h = []; try { h = JSON.parse((await S.getBlob('finhist_' + FR.id) || Buffer.from('[]')).toString('utf8')); } catch (e) { h = []; }
-          h.unshift({ at: now(), by: 'portal update 2.38', html: old.html, fmt: old.fmt }); await S.putBlob('finhist_' + FR.id, Buffer.from(JSON.stringify(h.slice(0, 8))));
-          await save('finreports', FR.id, Object.assign({}, old, { html, sigV: 2, signedOn: old.signedOn || old.editedAt || old.updated, v: now() % 2e9 }));
-          console.log('Financial report: authorisation block added to the edited text');
+          h.unshift({ at: now(), by: 'portal update (corrections confirmed)', html: old.html, fmt: old.fmt }); await S.putBlob('finhist_' + FR.id, Buffer.from(JSON.stringify(h.slice(0, 8))));
+          if (!old.customPdf) await S.putBlob('finreport_' + FR.id, pdf);
+          await save('finreports', FR.id, Object.assign({}, old, { html: GM.sanitize(txt.toString('utf8')), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, sigV: 3, signedOn: '2026-10-14T08:00:00.000Z', size: old.customPdf ? old.size : pdf.length, v: now() % 2e9 }));
+          console.log('Financial report: corrections applied to the edited text');
         }
       } else console.warn('Financial report files missing');
     }
