@@ -3175,8 +3175,24 @@ async function ensureMinCourses() {
         if (!old.edited && (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id)))) {
           await S.putBlob('finreport_' + FR.id, pdf);
           await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
-            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
+            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4509686, surplus: 18314, owed: 1691000 }, sigV: 1, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
           console.log('Financial report stored: ' + FR.id);
+        }
+        // A report the super administrator has already edited is never replaced by a shipped update; the authorisation block (automatic signatures, place and date) and the addressee page are added to it once, and the earlier text is kept in its history.
+        else if (old.edited && old.html && !old.sigV) {
+          const sh = GM.sanitize(txt.toString('utf8')), H = '<h2 class="toc">7.2. Authorisation</h2>', sa = sh.indexOf(H), se = sh.indexOf('<p class="docnote">Classification', sa), block = sa >= 0 && se > sa ? sh.slice(sa, se) : '';
+          let html = old.html;
+          if (block && !html.includes('[[SIG:admission]]')) {
+            const i = html.indexOf(H);
+            if (i >= 0) { let j = html.indexOf('<p class="docnote">Classification', i); if (j < 0) j = html.indexOf('</section>', i); if (j > i) html = html.slice(0, i) + block + html.slice(j); }
+            else { const k = html.lastIndexOf('</section>'); if (k >= 0) html = html.slice(0, k) + block + html.slice(k); }
+          }
+          const fm = /^<section class="front[\s\S]*?<\/section>\s*/.exec(sh);
+          if (fm && !/<section[^>]*\bfront\b/.test(html)) html = fm[0] + html;
+          let h = []; try { h = JSON.parse((await S.getBlob('finhist_' + FR.id) || Buffer.from('[]')).toString('utf8')); } catch (e) { h = []; }
+          h.unshift({ at: now(), by: 'portal update 2.38', html: old.html, fmt: old.fmt }); await S.putBlob('finhist_' + FR.id, Buffer.from(JSON.stringify(h.slice(0, 8))));
+          await save('finreports', FR.id, Object.assign({}, old, { html, sigV: 1, signedOn: old.signedOn || old.editedAt || old.updated, v: now() % 2e9 }));
+          console.log('Financial report: authorisation block added to the edited text');
         }
       } else console.warn('Financial report files missing');
     }
