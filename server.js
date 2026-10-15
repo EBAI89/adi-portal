@@ -3274,7 +3274,7 @@ async function seed() {
   { const s0 = S.get('settings', 'main'); if (s0 && s0.perms && !s0.migReg) { const pm = JSON.parse(JSON.stringify(s0.perms)); if (Array.isArray(pm.admin) && !pm.admin.includes('manage_registration')) pm.admin.push('manage_registration'); await save('settings', 'main', Object.assign({}, s0, { perms: pm, migReg: true })); } }
   VIS = makeVis({ S, now, R, limited, send, body, logic, ip, audit }); await VIS.init(save); process.once('SIGTERM', () => { VIS.flush().catch(() => {}).finally(() => process.exit(0)); });
   HR = makeHr({ S, save, audit, now, uid, R, E, limited, usersWith, notifyUser, send, body, bi, logic, remove, sniff: (b, n) => LIB.sniff(b, n), mail, ip }); await HR.init();
-  MB = sideMod('mailbox-api.js')({ S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD, sendEmail, emailOn, cookie, makeToken });
+  MB = sideMod('mailbox-api.js')({ S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD, sendEmail, emailOn, cookie, makeToken, ip });
   try { PUSH = sideMod('push-api.js')({ S, now, send, body, limited, E }); await PUSH.init(); } catch (e) { PUSH = null; console.error('[push] disabled: ' + e.message); }
   global.__adiMailHire = (actor, doc) => MB.issueFromHire(actor, doc);
   global.__adiMailOf = d => { const m = MB.byHr ? MB.byHr(d.id) : null; if (!m) return null; const w = MB.withOtp ? MB.withOtp(m, { id: d.userId }) : null; return { email: m.email, status: m.status, otp: w && w.otp || '' }; };
