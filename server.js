@@ -2128,10 +2128,17 @@ async function save(c, id, doc) { const fresh = c === 'notifs' && PUSH && !S.get
 async function remove(c, id) { await S.del(c, id); TOMB.push({ c, id, seq: ++SEQ }); if (TOMB.length > 5000) TOMB_FLOOR = TOMB.splice(0, 1000).pop().seq; }
 const vkey = u => crypto.createHash('sha1').update(JSON.stringify([u ? [u.id, u.role, u.status] : null, (S.get('settings', 'main') || {}).perms || null, logic.resFee(S)])).digest('hex').slice(0, 12);
 async function audit(u, action) { await save('audit', uid('a'), { at: now(), user: u ? u.name + ' (' + u.role + ')' : 'system', action: String(action).slice(0, 200) }); }
+// Where a person's e-mail notices go: the sign-in address plus any personal address on file (an @adiuniversity.com sign-in address may have no external inbox).
+function noticeEmails(u) {
+  const mb = Object.values(S.all('mailbox') || {}).find(m => m && m.userId === u.id);
+  const ok = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  const list = [u.email, u.contactEmail, mb && mb.personalEmail].map(e => String(e || '').trim().toLowerCase()).filter(ok);
+  return [...new Set(list)];
+}
 async function notifyUser(userId, title, body, o = {}) {
   const u = S.get('users', userId); if (!u) return;
   await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false });
-  if (u.email) sendEmail({ to: u.email, subject: title, text: body });
+  for (const to of noticeEmails(u)) sendEmail({ to, subject: title, text: body });
   if (o.sms && u.phone) sendSMS({ to: u.phone, text: o.smsText || ('ADI: ' + title + ' - ' + body) });
   if (o.wa && u.phone) sendWhatsApp({ to: u.phone, text: o.waText || ('ADI University — ' + title + '\n\n' + body), tpl: o.waTpl });
 }
@@ -2832,7 +2839,8 @@ async function route(req, res) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: 'Invalid email address.' });
     if (taken(email)) return send(res, 409, { error: 'An account with this email already exists.' });
     const temp = tempPassword(), id = uid('u');
-    await save('users', id, { email, name, phone: String(b.phone || '').slice(0, 30), role, status: 'active', lang: 'en', createdAt: now(), pw: await hashPw(temp), mustChange: true, createdBy: u.id });
+    const contact = String(b.contactEmail || '').trim().toLowerCase(), contactOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact) && contact !== email;
+    await save('users', id, Object.assign({ email, name, phone: String(b.phone || '').slice(0, 30), role, status: 'active', lang: 'en', createdAt: now(), pw: await hashPw(temp), mustChange: true, createdBy: u.id }, contactOk ? { contactEmail: contact } : {}));
     await audit(u, 'account created ' + email + ' (' + role + ')'); return send(res, 200, { ok: true, id, email, temp });
   }
   if (p === '/api/admin/users/delete' && req.method === 'POST') {
