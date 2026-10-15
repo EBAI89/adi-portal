@@ -271,6 +271,7 @@ module.exports = function makeRules(store, logic) {
         if (create) return n.userId === u.id && (has(u, 'fees_pay') || (n.kind === 'service' && ['applicant', 'student'].includes(u.role)) || (u.purpose === 'minesup' && u.msMatric && n.kind !== 'service' && n.matric === u.msMatric)) && n.status === 'pending' ? true : 'forbidden';
         if (u.role === 'super_admin' && u.status === 'active' && n.status === 'invalidated' && o.status === 'confirmed') return true;   // only the super administrator may reverse a confirmed payment
         if (has(u, 'verify_payments') && ['confirmed', 'rejected'].includes(n.status) && o.status === 'pending') return true;
+        if (has(u, 'verify_payments') && o.status === 'pending' && n.status === 'pending' && only(o, n, ['proofReq'])) return true;   // "no screenshot uploaded" notice to the payer: status stays pending, nothing else may change
         return 'forbidden';
       case 'courses': return has(u, 'manage_courses') || 'forbidden';
       case 'tt': return has(u, 'manage_timetable') || 'forbidden';
@@ -442,7 +443,7 @@ module.exports = { init, diagnose, why, enabled: () => mode() !== 'off' && (mode
 };
 __MODS["./lib/notify"] = function (module, exports, require) {
 'use strict';
-// Email (Resend or Brevo) and SMS (Twilio or Africa's Talking). Provider "log" prints instead of sending.
+// Email (Resend or Brevo), SMS (Twilio or Africa's Talking) and WhatsApp (Meta Cloud API or Twilio). Provider "log" prints instead of sending.
 const E = process.env;
 const log = (...a) => console.log('[notify]', ...a);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -487,7 +488,34 @@ async function sendSMS({ to, text }) {
     } else log('SMS to', num, '|', msg);
   } catch (e) { console.error('[notify] sms failed:', e.message); }
 }
-module.exports = { sendEmail, sendSMS, e164 };
+// WhatsApp: WHATSAPP_PROVIDER = log | meta | twilio. WhatsApp only lets a business start a conversation with an approved template, so a message
+// that comes with a template (tpl = { key, vars }) is sent as that template; anything else goes as plain text (delivered only inside the 24-hour reply window).
+//   meta:   WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_TEMPLATE_<KEY> (template name, e.g. WHATSAPP_TEMPLATE_PROOF=payment_proof_required), WHATSAPP_LANG (template language code, default en)
+//   twilio: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WA_FROM (e.g. +14155238886), TWILIO_WA_CONTENT_SID_<KEY> (approved Content template SID)
+const waClean = v => String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, 200);
+async function sendWhatsApp({ to, text, tpl }) {
+  const p = (E.WHATSAPP_PROVIDER || 'log').toLowerCase(); const num = e164(to); if (!num) return;
+  const msg = String(text || '').slice(0, 1000), key = tpl && tpl.key ? String(tpl.key).toUpperCase() : '', vars = ((tpl && tpl.vars) || []).map(waClean);
+  try {
+    if (p === 'meta') {
+      if (!E.WHATSAPP_TOKEN || !E.WHATSAPP_PHONE_ID) throw new Error('WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are required');
+      const name = key && (E['WHATSAPP_TEMPLATE_' + key] || (key === 'PROOF' ? 'payment_proof_required' : ''));
+      const payload = name
+        ? { messaging_product: 'whatsapp', to: num.slice(1), type: 'template', template: { name, language: { code: E.WHATSAPP_LANG || 'en' }, components: [{ type: 'body', parameters: vars.map(v => ({ type: 'text', text: v || '-' })) }] } }
+        : { messaging_product: 'whatsapp', to: num.slice(1), type: 'text', text: { body: msg } };
+      const r = await fetch('https://graph.facebook.com/' + (E.WHATSAPP_API_VERSION || 'v21.0') + '/' + E.WHATSAPP_PHONE_ID + '/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + E.WHATSAPP_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!r.ok) throw new Error('meta ' + r.status + ' ' + (await r.text()).slice(0, 240));
+    } else if (p === 'twilio') {
+      if (!E.TWILIO_ACCOUNT_SID || !E.TWILIO_AUTH_TOKEN || !E.TWILIO_WA_FROM) throw new Error('TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WA_FROM are required');
+      const auth = Buffer.from(E.TWILIO_ACCOUNT_SID + ':' + E.TWILIO_AUTH_TOKEN).toString('base64'), sid = key && E['TWILIO_WA_CONTENT_SID_' + key];
+      const form = new URLSearchParams({ To: 'whatsapp:' + num, From: 'whatsapp:' + e164(E.TWILIO_WA_FROM) });
+      if (sid) { form.set('ContentSid', sid); form.set('ContentVariables', JSON.stringify(Object.fromEntries(vars.map((v, i) => [String(i + 1), v || '-'])))); } else form.set('Body', msg);
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${E.TWILIO_ACCOUNT_SID}/Messages.json`, { method: 'POST', headers: { Authorization: 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form });
+      if (!r.ok) throw new Error('twilio ' + r.status + ' ' + (await r.text()).slice(0, 240));
+    } else log('WhatsApp to', num, '|', key ? '[template ' + key + ' ' + JSON.stringify(vars) + '] ' : '', msg);
+  } catch (e) { console.error('[notify] whatsapp failed:', e.message); }
+}
+module.exports = { sendEmail, sendSMS, sendWhatsApp, e164 };
 
 };
 __MODS["./lib/importer"] = function (module, exports, require) {
@@ -2026,7 +2054,7 @@ module.exports = { b64u, sha256, cbor, parseAuthData, coseToJwk, verifyRegistrat
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), { promisify } = require('util');
 const scrypt = promisify(crypto.scrypt);
 const E = process.env;
-const makeChat = require('./lib/chat'), makeVis = require('./lib/analytics'), makeHr = require('./lib/careers'), makeCls = require('./lib/classroom'), makeLib = require('./lib/library'), makeRates = require('./lib/rates'), makeAtt = require('./lib/attapi'), importer = require('./lib/importer'), openStore = require('./lib/store'), logic = require('./lib/logic'), makeRules = require('./lib/rules'), momo = require('./lib/momo'), { sendEmail, sendSMS } = require('./lib/notify');
+const makeChat = require('./lib/chat'), makeVis = require('./lib/analytics'), makeHr = require('./lib/careers'), makeCls = require('./lib/classroom'), makeLib = require('./lib/library'), makeRates = require('./lib/rates'), makeAtt = require('./lib/attapi'), importer = require('./lib/importer'), openStore = require('./lib/store'), logic = require('./lib/logic'), makeRules = require('./lib/rules'), momo = require('./lib/momo'), { sendEmail, sendSMS, sendWhatsApp } = require('./lib/notify');
 
 const PORT = Number(E.PORT || 3000), PROD = E.NODE_ENV === 'production';
 const SECRET = E.SESSION_SECRET || (PROD ? null : 'dev-secret-change-me');
@@ -2083,6 +2111,17 @@ const ip = req => (String(req.headers['x-forwarded-for'] || '').split(',')[0].tr
 // A request is same-origin when the browser's Origin matches the Host it reached, or the portal's official public address (PUBLIC_URL), which is how the Cloudflare relay in front of the portal presents itself.
 function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { const u = new URL(o); if (u.host === req.headers.host) return true; const p = E.PUBLIC_URL ? new URL(E.PUBLIC_URL) : null; return !!p && p.origin === u.origin; } catch (e) { return false; } }
 
+// Tells the administrator at start-up which delivery channels are live and which credentials are still missing (messages are never blocked by this check).
+function channelCheck() {
+  const need = { email: { brevo: ['BREVO_API_KEY'], resend: ['RESEND_API_KEY'] }, sms: { africastalking: ['AT_USERNAME', 'AT_API_KEY'], twilio: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'] }, whatsapp: { twilio: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WA_FROM', 'TWILIO_WA_CONTENT_SID_PROOF'], meta: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID'] } };
+  for (const [ch, key] of [['email', 'EMAIL_PROVIDER'], ['sms', 'SMS_PROVIDER'], ['whatsapp', 'WHATSAPP_PROVIDER']]) {
+    const p = String(E[key] || 'log').toLowerCase();
+    if (p === 'log') { console.log('[channels] ' + ch + ': log only (nothing is delivered) — set ' + key + ' to switch on real delivery'); continue; }
+    const req = (need[ch] || {})[p]; if (!req) { console.warn('[channels] ' + ch + ': unknown provider "' + p + '" — nothing will be delivered'); continue; }
+    const miss = req.filter(k => !String(E[k] || '').trim());
+    console[miss.length ? 'warn' : 'log']('[channels] ' + ch + ': ' + p + (miss.length ? ' — NOT READY, missing ' + miss.join(', ') : ' — ready'));
+  }
+}
 /* ---------- writes with hooks ---------- */
 let PUSH = null;
 async function save(c, id, doc) { const fresh = c === 'notifs' && PUSH && !S.get(c, id); doc.id = id; doc._seq = ++SEQ; await S.put(c, id, doc); if (fresh && !doc.read && doc.userId) PUSH.notify(doc.userId, doc.title, doc.body).catch(e => console.error('[push]', e && e.message)); }
@@ -2093,7 +2132,8 @@ async function notifyUser(userId, title, body, o = {}) {
   const u = S.get('users', userId); if (!u) return;
   await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false });
   if (u.email) sendEmail({ to: u.email, subject: title, text: body });
-  if (o.sms && u.phone) sendSMS({ to: u.phone, text: 'ADI: ' + title + ' - ' + body });
+  if (o.sms && u.phone) sendSMS({ to: u.phone, text: o.smsText || ('ADI: ' + title + ' - ' + body) });
+  if (o.wa && u.phone) sendWhatsApp({ to: u.phone, text: o.waText || ('ADI University — ' + title + '\n\n' + body), tpl: o.waTpl });
 }
 const usersWith = perm => Object.values(S.all('users')).filter(u => u.status === 'active' && (u.role === 'super_admin' || (perm !== '__super' && (logic.perms(S)[u.role] || []).includes(perm))));
 async function nextReceipt(ay) { const n = Number(S.meta.rcpt || Object.values(S.all('payments')).filter(p => p.receiptNo).length) + 1; await S.setMeta('rcpt', n); return 'ADI/RCPT/' + String(ay || logic.AY()).replace('/', '-') + '/' + String(n).padStart(5, '0'); }
@@ -2148,6 +2188,19 @@ async function applyWrite(u, c, id, o, n) {
       n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
+      return;
+    }
+    if (n.status === 'pending' && n.proofReq && o.status === 'pending') {                // verifier: the payment cannot be validated because no MoMo screenshot was uploaded
+      if (o.method === 'momo_api' || o.momoRef) throw ['this payment was made through the portal and needs no screenshot'];
+      if (Object.values(S.all('files')).some(f => f && f.ctx === 'pay:' + id)) throw ['a screenshot has already been uploaded for this payment'];
+      if (o.proofReq && !o.proofReq.receivedAt && now() - o.proofReq.at < 3600e3) throw ['the payer was already notified less than an hour ago'];
+      const note = String(n.proofReq.note || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 120);
+      const flagged = Object.assign({}, o, { proofReq: { at: now(), by: u.name, note, count: ((o.proofReq && o.proofReq.count) || 0) + 1 } }); await save(c, id, flagged);
+      await audit(u, 'payment proof requested ' + o.ref);
+      const what = String(o.label || 'Payment').slice(0, 40) + ' — ' + xaf(o.amount) + ' (ID ' + o.ref + ')';
+      const en = 'cannot be validated because no screenshot of the MoMo payment has been uploaded. Please open Fees & Payments, choose "Upload proof" and attach a clear screenshot (JPG, PNG or PDF) showing the transaction ID, amount, date and recipient number.';
+      const fr = 'ne peut pas être validé car aucune capture du paiement MoMo n’a été téléversée. Ouvrez Frais & Paiements, choisissez « Téléverser la preuve » et joignez une capture nette (JPG, PNG ou PDF) indiquant l’identifiant, le montant, la date et le numéro du bénéficiaire.';
+      await notifyUser(o.userId, bi('Payment cannot be validated — proof required', 'Paiement non validable — preuve requise'), what + ' ' + en + ' / ' + what + ' ' + fr + (note ? ' — ' + note : ''), { sms: true, wa: true, waTpl: { key: 'proof', vars: [String(o.label || 'Payment').slice(0, 40) + ' — ' + xaf(o.amount), o.ref] }, waText: 'ADI University\n\n' + what + ' ' + en + '\n\n' + what + ' ' + fr, smsText: 'ADI: payment ' + o.ref + ' cannot be validated - MoMo screenshot not uploaded. Portal > Fees & Payments > Upload proof. / paiement ' + o.ref + ' non validable - capture MoMo absente. Portail > Frais & Paiements > Téléverser la preuve.' });
       return;
     }
     if (n.status === 'invalidated') {
@@ -2217,7 +2270,14 @@ async function applyWrite(u, c, id, o, n) {
   }
   if (c === 'tickets' && o && n.reply && n.reply !== o.reply) { n = Object.assign({}, o, { reply: String(n.reply).slice(0, 4000), status: 'answered', repliedAt: now(), repliedBy: u.name }); await save(c, id, n); sendEmail({ to: o.email, subject: 'Re: ' + o.subject, text: n.reply, replyTo: INBOX() }); return; }
   if (c === 'audit') n = { at: now(), user: u.name + ' (' + u.role + ')', action: String(n.action || '').slice(0, 200) };
-  if (c === 'files' && !o) { const blob = await S.getBlob(id); if (!blob) throw ['upload missing']; n = Object.assign({}, n, { size: blob.length, at: now() }); }
+  if (c === 'files' && !o) {
+    const blob = await S.getBlob(id); if (!blob) throw ['upload missing']; n = Object.assign({}, n, { size: blob.length, at: now() });
+    const pm = /^pay:(.+)$/.exec(String(n.ctx || '')), pp = pm && S.get('payments', pm[1]);
+    if (pp && pp.status === 'pending' && pp.proofReq && !pp.proofReq.receivedAt && pp.userId === n.owner) {                 // the proof requested from the payer has arrived
+      await save('payments', pp.id, Object.assign({}, pp, { proofReq: Object.assign({}, pp.proofReq, { receivedAt: now() }) }));
+      for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment proof received', 'Preuve de paiement reçue'), pp.payerName + ' — ' + xaf(pp.amount) + ' (' + pp.ref + ')');
+    }
+  }
   if (c === 'files' && n === null) await S.delBlob(id).catch(() => {});
   if (c === 'courses' && n && (n.level === 'HND' || n.level === 'BTS')) {
     const stOf = x => ({ C: 1, R: 1, E: 1 }[x.status] ? x.status : (x.compulsory === false ? 'E' : 'C'));
@@ -3230,7 +3290,7 @@ async function seed() {
   if (MB) await MB.seed();
   setInterval(() => momoPoll().catch(e => console.error(e)), 20000).unref();
   http.createServer((req, res) => route(req, res).catch(e => { console.error(e); if (!res.headersSent) send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too large' : e.code === 400 ? 'bad request' : 'server error' }); }))
-    .listen(PORT, '0.0.0.0', () => console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'})`));
+    .listen(PORT, '0.0.0.0', () => { console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'}, whatsapp: ${E.WHATSAPP_PROVIDER || 'log'})`); channelCheck(); });
 })();
 
 })(__req);
