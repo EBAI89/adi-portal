@@ -41,7 +41,7 @@ function localOk(local) {
 }
 
 module.exports = function makeMailbox(ctx) {
-  const { S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD, sendEmail, emailOn } = ctx;
+  const { S, save, audit, now, uid, R, E, limited, notifyUser, send, body, bi, hashPw, checkPw, PROD, sendEmail, emailOn, ip } = ctx;
   const SECRET = E.SESSION_SECRET || 'dev-secret-change-me';
 
   function fail(status, msg, code) { const e = new Error(msg || code || 'error'); e.status = status; e.code = code || msg; throw e; }
@@ -480,6 +480,21 @@ module.exports = function makeMailbox(ctx) {
     };
   }
 
+
+  // A person who lost the screen shown at sign-up can find the ADI address again, and the one-time password while the mailbox is not yet activated.
+  // Two details given at registration must match (personal email and phone); attempts are rate-limited, and every lookup is written to the audit log.
+  async function recover(req, b) {
+    const email = clip(b.email, 160).toLowerCase(), last9 = x => String(x || '').replace(/\D/g, '').slice(-9), phone = last9(b.phone);
+    if (!/^\S+@\S+\.\S+$/.test(email) || phone.length < 8) fail(400, 'Enter the personal email address and the phone number you used when you registered.', 'input');
+    if (limited('mrec:' + (ip ? ip(req) : 'x'), 10, 3600e3) || limited('mrec:' + email, 6, 3600e3)) fail(429, 'Too many attempts. Try again in an hour.', 'rate');
+    const m = all().filter(x => x && x.status !== 'revoked' && String(x.personalEmail || '').toLowerCase() === email && last9(x.phone) === phone).sort((a, c) => (c.issuedAt || 0) - (a.issuedAt || 0))[0];
+    if (!m) { await audit(null, 'adi email recovery: no match for ' + email); fail(404, 'No ADI account matches these details. Check the email and phone number you used at registration, or contact the registry.', 'not_found'); }
+    const waiting = m.status === 'pending_setup', otp = waiting ? unseal(m.otpSeal) : '';
+    await audit(null, 'adi email recovered ' + m.email + (waiting ? ' (one-time password shown)' : ''));
+    if (otp && emailOn && emailOn()) { try { await sendEmail({ to: email, subject: bi('Your ADI email address and one-time password', 'Votre adresse ADI et votre mot de passe à usage unique'), text: 'ADI email address / Adresse ADI: ' + m.email + '\nOne-time password / Mot de passe à usage unique: ' + otp + '\n\nIf you did not ask for this, tell the ADI registry. / Si vous n’êtes pas à l’origine de cette demande, informez le secrétariat ADI.' }); } catch (e) {} }
+    return { ok: true, adiEmail: m.email, otp: otp || '', waiting, name: m.name || '' };
+  }
+
   async function handle(req, res, u, p) {
     if (!p.startsWith('/api/mail')) return false;
     try {
@@ -487,6 +502,7 @@ module.exports = function makeMailbox(ctx) {
       if (p === '/api/mail/migrate' && req.method === 'GET') return send(res, 200, migState(u)), true;
       if (req.method !== 'POST') return send(res, 405, { error: 'method' }), true;
       const b = await body(req, 20000);
+      if (p === '/api/mail/recover') return send(res, 200, await recover(req, b)), true;
       if (p === '/api/mail/migrate/start' || p === '/api/mail/migrate/confirm') {
         if (!u) return send(res, 401, { error: 'auth' }), true;
         if (limited('migrate:' + u.id, 8, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' }), true;
