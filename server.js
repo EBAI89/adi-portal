@@ -79,7 +79,7 @@ __MODS["./lib/logic"] = function (module, exports, require) {
 // so amounts and grades are validated with exactly the same logic the users see.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const src = __EMBED_CORE +
-  '\n;globalThis.__core = { S, newMatric, payItems, feeBook, calcRes, AY, ayStart, SPEC, LEVELS, PERMS, DEF_PERMS, cfg, siteSanitize, siteContrast, SITE_DEF, clsTM, libTxtML, CLS_REF_SOURCES, CLS_MODELS, ASSOC_KEYS, ASSOC_DEF, assocCfg, UND_DEF, UND_KEYS, undCfg, undGet, CREDIT_DEF, regCreditRule, hasMinistry, regOffered, regwinCfg, regWinCalc, semesterCredits, regIso, CHAT_PAGE, chatChunks, chatPick, chatAuto, chatLang, chatCfg, chatTok, CHAT_SUG, CHAT_WA, INST, CAL_BASE, calCfg, calEvents, calWhen, calDay, calState, calUpcoming, calDaysTo, calIcs, CAL_ISO, pgCfg, PH_BANDS, PH_PHOTOS, PH_ARTS, visPath, visTz, visLang, visCfg, hrVacancy, hrApplication, hrPartner, hrCfg, hrOrcid, hrEmail, hrPhone, HR_CATS, HR_ACADEMIC, HR_STAGES, HR_PSTAGES, ISO_COUNTRIES, clsT, clsBuildPptx, clsCfg, clsMaterial, clsAssignment, clsPlan, clsSession, clsQuestion, CLS_THEMES, CLS_PROVIDERS, libSanitize, libCall, libCite, libLinkSanitize, libCfgSanitize, libVideoParse, libIsbn, libIssn, LIB_DDC, LIB_TYPES, LIB_AUTH, LIB_ACCESS, LIB_RIGHTS, LIB_LINKS_DEFAULT, LIB_LINK_CATS, setLang: v => { LANG = v; } };';
+  '\n;globalThis.__core = { BTS_HND, S, newMatric, payItems, feeBook, calcRes, AY, ayStart, SPEC, LEVELS, PERMS, DEF_PERMS, cfg, siteSanitize, siteContrast, SITE_DEF, clsTM, libTxtML, CLS_REF_SOURCES, CLS_MODELS, ASSOC_KEYS, ASSOC_DEF, assocCfg, UND_DEF, UND_KEYS, undCfg, undGet, CREDIT_DEF, regCreditRule, hasMinistry, regOffered, regwinCfg, regWinCalc, semesterCredits, regIso, CHAT_PAGE, chatChunks, chatPick, chatAuto, chatLang, chatCfg, chatTok, CHAT_SUG, CHAT_WA, INST, CAL_BASE, calCfg, calEvents, calWhen, calDay, calState, calUpcoming, calDaysTo, calIcs, CAL_ISO, pgCfg, PH_BANDS, PH_PHOTOS, PH_ARTS, visPath, visTz, visLang, visCfg, hrVacancy, hrApplication, hrPartner, hrCfg, hrOrcid, hrEmail, hrPhone, HR_CATS, HR_ACADEMIC, HR_STAGES, HR_PSTAGES, ISO_COUNTRIES, clsT, clsBuildPptx, clsCfg, clsMaterial, clsAssignment, clsPlan, clsSession, clsQuestion, CLS_THEMES, CLS_PROVIDERS, libSanitize, libCall, libCite, libLinkSanitize, libCfgSanitize, libVideoParse, libIsbn, libIssn, LIB_DDC, LIB_TYPES, LIB_AUTH, LIB_ACCESS, LIB_RIGHTS, LIB_LINKS_DEFAULT, LIB_LINK_CATS, setLang: v => { LANG = v; } };';
 const ctx = { console, Date, Math, JSON, Object, Array, Number, String, RegExp, Set, Map, Promise, Intl, TextEncoder, structuredClone, URL, URLSearchParams,
   navigator: { language: 'en' }, localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} }, crypto: require('crypto').webcrypto, setTimeout, clearTimeout };
 ctx.window = ctx; vm.createContext(ctx); vm.runInContext(src, ctx, { filename: 'client-core.js' });
@@ -3198,6 +3198,24 @@ async function ensureMinCourses() {
     }
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migMinV9: true }));
     console.log('MINESUP HND second pass: ' + made + ' sub-courses added, ' + split + ' parents split, ' + linked + ' course contents stored');
+  }
+  if (!cur.migBts1) {
+    // BTS programmes: the Ministry's HND programme of each counterpart specialty (the pairs of BTS_HND) is catalogued under the BTS specialty as well, so that the
+    // BTS course catalogue is complete. Strictly additive (existing courses are never changed). Registration shows a student one copy of each course (regOffered).
+    const hnd = {}, bts = {};
+    Object.values(logic.core.SPEC).forEach(sp => { if (sp.level === 'HND') (hnd[sp.name] = hnd[sp.name] || new Set()).add(sp.id); if (sp.level === 'BTS') bts[sp.name] = sp; });
+    const all = Object.values(S.all('courses')).filter(c => c.level === 'HND' && c.src === 'minesup'); let n = 0;
+    for (const [fr, en] of logic.core.BTS_HND) {
+      const b = bts[fr], hs = hnd[en]; if (!b || !hs) { console.warn('BTS programme without HND counterpart: ' + fr); continue; }
+      for (const c of all) {
+        if (!hs.has(c.specId)) continue;
+        const id = ('bts-' + c.id).slice(0, 90); if (S.get('courses', id)) continue;
+        const rest = Object.assign({}, c); delete rest._seq;
+        await save('courses', id, Object.assign(rest, { id, level: 'BTS', specId: b.id, lecturerId: '', btsFrom: c.id })); n++;
+      }
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migBts1: true }));
+    console.log('BTS courses catalogued: ' + n);
   }
   // Students' guide: both editions live in the database (guides + blobs). The text is an editable document (the super administrator can change content and
   // formatting); the PDF shipped with the portal is stored as the downloadable edition until the text is edited. Shipped updates replace an edition only if it was never edited.
