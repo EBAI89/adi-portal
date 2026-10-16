@@ -2375,6 +2375,7 @@ const OUTBOX = []; const mail = async m => { if (E.NODE_ENV === 'test') OUTBOX.p
 let PPTX_CACHE = null; const pptxLib = () => PPTX_CACHE || (PPTX_CACHE = typeof __EMBED_PPTX !== 'undefined' ? __EMBED_PPTX : fs.readFileSync(path.join(__dirname, 'vendor', 'pptxgen.bundle.js'), 'utf8'));
 
 /* ---------- router ---------- */
+const FINLANG = { en: { id: 'finreport-2025-2026-en', loc: 'en-GB', txt: 'finance-content-en.html', pdf: 'ADI-Financial-Report-2025-2026-EN.pdf', cover: 'finance-cover-en.jpg', hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }, fr: { id: 'finreport-2025-2026-fr', loc: 'fr-FR', txt: 'finance-content-fr.html', pdf: 'ADI-Financial-Report-2025-2026-FR.pdf', cover: 'finance-cover-fr.jpg', hl: 'Rapport financier ADI', hr: 'Année académique 2025/2026' } };
 function sideFile(name) {
   const fp = path.join(__dirname, name);
   try { if (fs.existsSync(fp)) return fs.readFileSync(fp); } catch (e) {}
@@ -2402,37 +2403,37 @@ async function route(req, res) {
     res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ADI-calendar-2026-2027-' + lang.toUpperCase() + '.ics"', 'Cache-Control': 'public, max-age=900', 'X-Content-Type-Options': 'nosniff' }); return res.end(core.calIcs(ev, lang, new Date().toISOString()));
   }
   // ADI Financial Report 2025/2026 (confidential). The page, its PDF edition and its figures are for the super administrator only; every download is entered in the audit log.
-  const FINID = 'finreport-2025-2026-en';
-  const finSignDate = g => new Date(g.signedOn || g.updated || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Douala' });
+  const finSignDate = g => new Date(g.signedOn || g.updated || Date.now()).toLocaleDateString((FINLANG[g.lang] || FINLANG.en).loc, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Douala' });
   if (/^\/finance-(print|assets)\//.test(p) || /^\/api\/finreports(\/|$)/.test(p)) {
     if (!u) return send(res, 401, { error: 'sign in' });
     if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
-    const fas = /^\/finance-assets\/(adi-logo\.png|adi-seal\.png|finance-cover-en\.jpg|sig-admission\.png|sig-administrative\.png)$/.exec(p);
+    const fas = /^\/finance-assets\/(adi-logo\.png|adi-seal\.png|finance-cover-en\.jpg|finance-cover-fr\.jpg|sig-admission\.png|sig-administrative\.png)$/.exec(p);
     if (fas && req.method === 'GET') {
       const buf = sideFile(fas[1]); if (!buf) return send(res, 404, { error: 'missing' });
       res.writeHead(200, { 'Content-Type': fas[1].endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf);
     }
-    if (p === '/finance-print/en' && req.method === 'GET') {
-      const g = S.get('finreports', FINID); if (!g || !g.html) return send(res, 404, { error: 'not found' });
+    const fpr = /^\/finance-print\/(en|fr)$/.exec(p);
+    if (fpr && req.method === 'GET') {
+      const FL = FINLANG[fpr[1]], g = S.get('finreports', FL.id); if (!g || !g.html) return send(res, 404, { error: 'not found' });
       const pgq = url.searchParams.get('pg');
-      const page = sideMod('adi-guide.js').docHtml({ lang: 'en', html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', signDate: finSignDate(g), assetV: String((sideFile('finance-cover-en.jpg') || '').length), print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: 'finance-cover-en.jpg', noCoverSeal: true, back: 'finreport' });
+      const page = sideMod('adi-guide.js').docHtml({ lang: fpr[1], html: g.html, fmt: g.fmt, edit: url.searchParams.get('edit') === '1', signDate: finSignDate(g), assetV: String((sideFile(FL.cover) || '').length), print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null, base: '/finance-assets/', cover: FL.cover, noCoverSeal: true, back: 'finreport' });
       res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' })); return res.end(page);
     }
     if (p === '/api/finreports' && req.method === 'GET') {
       const list = Object.values(S.all('finreports')).map(g => ({ id: g.id, lang: g.lang, title: g.title, edition: g.edition, pages: g.pages, size: g.size, figs: g.figs, updated: g.updated || '', edited: !!g.edited, customPdf: !!g.customPdf, editedAt: g.editedAt || '', v: g.v }));
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(JSON.stringify({ reports: list }));
     }
-    const fdl = /^\/api\/finreports\/(finreport-2025-2026-en)\/download$/.exec(p);
+    const fdl = /^\/api\/finreports\/(finreport-2025-2026-(?:en|fr))\/download$/.exec(p);
     if (fdl && req.method === 'GET') {
       if (limited('finrep:' + u.id, 30, 3600e3)) return send(res, 429, { error: 'Too many downloads' });
       const g = S.get('finreports', fdl[1]), buf = g && await S.getBlob('finreport_' + g.id); if (!buf) return send(res, 404, { error: 'not found' });
-      await audit(u, 'financial report downloaded (' + g.edition + ')');
+      await audit(u, 'financial report downloaded (' + g.edition + ', ' + g.lang.toUpperCase() + ')');
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': (url.searchParams.get('view') === '1' ? 'inline' : 'attachment') + '; filename="' + g.fname + '"', 'Content-Length': buf.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
       return res.end(buf);
     }
-    const fsv = /^\/api\/finreports\/(finreport-2025-2026-en)\/(content|restore|pdf|history|version|figs)$/.exec(p);
+    const fsv = /^\/api\/finreports\/(finreport-2025-2026-(?:en|fr))\/(content|restore|pdf|history|version|figs)$/.exec(p);
     if (fsv) {
-      const GM = sideMod('adi-guide.js'), gid = fsv[1], g = S.get('finreports', gid); if (!g) return send(res, 404, { error: 'not found' });
+      const GM = sideMod('adi-guide.js'), gid = fsv[1], FL = FINLANG[gid.slice(-2)], g = S.get('finreports', gid); if (!g) return send(res, 404, { error: 'not found' });
       const hist = async () => { try { return JSON.parse((await S.getBlob('finhist_' + gid) || Buffer.from('[]')).toString('utf8')); } catch (e) { return []; } };
       const keep = async () => { const h = await hist(); h.unshift({ at: now(), by: u.name, html: g.html, fmt: g.fmt }); await S.putBlob('finhist_' + gid, Buffer.from(JSON.stringify(h.slice(0, 8)))); return h; };
       if (fsv[2] === 'history' && req.method === 'GET') return send(res, 200, { versions: (await hist()).map((h, i) => ({ i, at: h.at, by: h.by })) });
@@ -2444,8 +2445,8 @@ async function route(req, res) {
       if (fsv[2] === 'content' && req.method === 'PUT') {
         const b = await body(req, 1.6e6), html = GM.sanitize(String(b.html || ''));
         if (html.length < 200 || !/<section\b/.test(html)) return send(res, 400, { error: 'The report must keep at least one section.' });
-        await keep(); await save('finreports', gid, Object.assign({}, g, { html, fmt: GM.cleanFmt(b.fmt, 'en'), edited: true, customPdf: false }, stamp));
-        await audit(u, 'financial report edited'); return send(res, 200, { ok: true });
+        await keep(); await save('finreports', gid, Object.assign({}, g, { html, fmt: GM.cleanFmt(b.fmt, FL === FINLANG.fr ? 'fr' : 'en'), edited: true, customPdf: false }, stamp));
+        await audit(u, 'financial report edited (' + gid.slice(-2).toUpperCase() + ')'); return send(res, 200, { ok: true });
       }
       if (fsv[2] === 'version' && req.method === 'POST') {
         const b = await body(req, 1e4), x = (await hist())[Number(b.i)]; if (!x) return send(res, 404, { error: 'not found' });
@@ -2453,9 +2454,9 @@ async function route(req, res) {
         await audit(u, 'financial report earlier version restored'); return send(res, 200, { ok: true });
       }
       if (fsv[2] === 'restore' && req.method === 'POST') {
-        const txt = sideFile('finance-content-en.html'), pdf = sideFile('ADI-Financial-Report-2025-2026-EN.pdf'); if (!txt || !pdf) return send(res, 500, { error: 'missing' });
+        const txt = sideFile(FL.txt), pdf = sideFile(FL.pdf); if (!txt || !pdf) return send(res, 500, { error: 'missing' });
         await keep(); await S.putBlob('finreport_' + gid, pdf);
-        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '', signedOn: '2026-10-14T08:00:00.000Z' }, { v: stamp.v }));
+        await save('finreports', gid, Object.assign({}, g, { html: GM.sanitize(txt.toString('utf8')), fmt: Object.assign(GM.defaultFmt(gid.slice(-2)), { hl: FL.hl, hr: FL.hr }), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, edited: false, customPdf: false, size: pdf.length, hash: '', signedOn: '2026-10-14T08:00:00.000Z' }, { v: stamp.v }));
         await audit(u, 'financial report restored to the standard edition'); return send(res, 200, { ok: true });
       }
       if (fsv[2] === 'pdf' && req.method === 'POST') {
@@ -3236,14 +3237,15 @@ async function ensureMinCourses() {
     // ADI Financial Report 2025/2026 (English, confidential): kept in its own collection, which is never sent to browsers; only the super administrator's routes read it.
     // The text (for the printable page) and the PDF edition shipped with the portal are stored together; a shipped update replaces both.
     {
-      const FR = { id: 'finreport-2025-2026-en', lang: 'en', file: 'ADI-Financial-Report-2025-2026-EN.pdf', pages: 14, title: 'ADI Financial Report — 2025/2026 Academic Year', fname: 'ADI-Financial-Report-2025-2026.pdf' };
-      const pdf = sideFile(FR.file), txt = sideFile('finance-content-en.html');
+      for (const lg of ['en', 'fr']) {
+      const FR = { id: 'finreport-2025-2026-' + lg, lang: lg, file: FINLANG[lg].pdf, pages: 14, title: lg === 'fr' ? 'Rapport financier ADI — Année académique 2025/2026' : 'ADI Financial Report — 2025/2026 Academic Year', fname: lg === 'fr' ? 'ADI-Rapport-financier-2025-2026.pdf' : 'ADI-Financial-Report-2025-2026.pdf' };
+      const pdf = sideFile(FR.file), txt = sideFile(FINLANG[lg].txt);
       if (pdf && txt && pdf.subarray(0, 5).toString('latin1') === '%PDF-') {
         const fh = gcr.createHash('sha256').update(pdf).update(txt).update(sideFile('adi-guide.js') || '').digest('hex'), old = S.get('finreports', FR.id) || {};
         if (!old.edited && (old.hash !== fh || !(await S.getBlob('finreport_' + FR.id)))) {
           await S.putBlob('finreport_' + FR.id, pdf);
           await save('finreports', FR.id, { id: FR.id, lang: FR.lang, title: FR.title, edition: '2025/2026', fname: FR.fname, pages: FR.pages, size: pdf.length, hash: fh, html: GM.sanitize(txt.toString('utf8')),
-            fmt: Object.assign(GM.defaultFmt('en'), { hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, sigV: 3, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
+            fmt: Object.assign(GM.defaultFmt(lg), { hl: FINLANG[lg].hl, hr: FINLANG[lg].hr }), figs: { revenue: 4528000, expenditure: 4528886, surplus: -886, owed: 1691000 }, sigV: 3, signedOn: '2026-10-14T08:00:00.000Z', v: now() % 2e9, updated: new Date().toISOString() });
           console.log('Financial report stored: ' + FR.id);
         }
         // A report the super administrator has already edited is not replaced by a routine update. Once (sigV 3), the confirmed reconciliation corrections, the signature block and the addressee page
@@ -3256,6 +3258,7 @@ async function ensureMinCourses() {
           console.log('Financial report: corrections applied to the edited text');
         }
       } else console.warn('Financial report files missing');
+      }
     }
   }
 }
