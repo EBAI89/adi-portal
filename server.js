@@ -2376,6 +2376,7 @@ let PPTX_CACHE = null; const pptxLib = () => PPTX_CACHE || (PPTX_CACHE = typeof 
 
 /* ---------- router ---------- */
 const FINLANG = { en: { id: 'finreport-2025-2026-en', loc: 'en-GB', txt: 'finance-content-en.html', pdf: 'ADI-Financial-Report-2025-2026-EN.pdf', cover: 'finance-cover-en.jpg', hl: 'ADI Financial Report', hr: '2025/2026 Academic Year' }, fr: { id: 'finreport-2025-2026-fr', loc: 'fr-FR', txt: 'finance-content-fr.html', pdf: 'ADI-Financial-Report-2025-2026-FR.pdf', cover: 'finance-cover-fr.jpg', hl: 'Rapport financier ADI', hr: 'Année académique 2025/2026' } };
+let PORTAL_VER = ''; try { PORTAL_VER = String(JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version || ''); } catch (e) {}
 function sideFile(name) {
   const fp = path.join(__dirname, name);
   try { if (fs.existsSync(fp)) return fs.readFileSync(fp); } catch (e) {}
@@ -2716,7 +2717,7 @@ async function route(req, res) {
   if (p === '/api/rates' && req.method === 'GET') return send(res, 200, await RATES.get(), { 'Cache-Control': 'public, max-age=900' });
   if (p === '/api/health') {
     const demo = !PROD && S.meta.msDemo === true;
-    return send(res, 200, { ok: true, minesup: true, me: u ? u.id : null, momo: momo.enabled() ? momo.mode() : null, momoTest: E.MOMO_SHOW_TEST === 'true', ai: !!E.ANTHROPIC_API_KEY, store: S.kind, demo, demoAccounts: demo ? [
+    return send(res, 200, { ok: true, ver: PORTAL_VER, minesup: true, me: u ? u.id : null, momo: momo.enabled() ? momo.mode() : null, momoTest: E.MOMO_SHOW_TEST === 'true', ai: !!E.ANTHROPIC_API_KEY, store: S.kind, demo, demoAccounts: demo ? [
       { role: 'HND student — tuition confirmed', roleFr: 'Étudiant HND — scolarité confirmée', email: 'hnd.student@adiuniversity.com', password: 'Student@2026' },
       { role: 'HND student — tuition still due', roleFr: 'Étudiant HND — scolarité impayée', email: 'fees.due@adiuniversity.com', password: 'Student@2026' },
       { role: 'Registry — confirm fees and approve', roleFr: 'Scolarité — confirmer les frais et approuver', email: 'registry@adiuniversity.com', password: 'Registry@2026' },
