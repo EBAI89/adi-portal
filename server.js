@@ -94,6 +94,16 @@ const RES_FEE_DEF = 1000;
 const resFee = store => { const v = (store.get('settings', 'main') || {}).resultsFee; return v == null || v === '' ? RES_FEE_DEF : Math.max(0, Number(v) || 0); };
 const resKind = (ay, sem) => 'res_' + String(ay).replace('/', '-') + '_' + Number(sem);
 const PLATFORM_FEE = 500, SERVICE_FEE = 2000;
+// Why a payment can be rejected, and the part of a payment already received when the amount was incomplete (the payer then owes only the balance).
+const REJ_CODES = ['not_received', 'incomplete', 'wrong_ref', 'wrong_payee', 'other'];
+const REJ_TXT = { not_received: ['the payment was not received on the ADI MoMo number', 'le paiement n’a pas été reçu sur le numéro MoMo de l’ADI'], incomplete: ['the amount received is incomplete', 'le montant reçu est incomplet'], wrong_ref: ['the transaction ID could not be found or does not match', 'l’identifiant de transaction est introuvable ou ne correspond pas'], wrong_payee: ['the payment was sent to a wrong number', 'le paiement a été envoyé à un mauvais numéro'], other: ['the payment was not accepted', 'le paiement n’a pas été accepté'] };
+// Amounts received earlier (payments rejected as "incomplete") that no waiting or confirmed payment has used yet.
+function creditAvail(store, userId, kind, ay) {
+  const all = Object.values(store.all('payments')).filter(Boolean), used = new Set();
+  all.forEach(p => { if (p.status !== 'rejected' && Array.isArray(p.creditIds)) p.creditIds.forEach(i => used.add(i)); });
+  const list = all.filter(p => p.userId === userId && p.kind === kind && p.ay === ay && p.status === 'rejected' && p.reasonCode === 'incomplete' && Number(p.received) > 0 && !used.has(p.id));
+  return { sum: list.reduce((a, p) => a + Number(p.received), 0), ids: list.map(p => p.id) };
+}
 const platformOk = (store, st) => !!st && Object.values(store.all('payments')).some(p => p && p.matric === st.matric && p.kind === 'platform' && p.ay === core.AY() && p.status === 'confirmed');
 const serviceOk = (store, userId) => Object.values(store.all('payments')).some(p => p && p.userId === userId && p.kind === 'service' && p.status === 'confirmed');
 // The fee a student must settle next, in the same order the page shows it: platform charge, registration, then any instalment that is open or overdue. null = nothing due.
@@ -144,7 +154,7 @@ function checkFormB(store, st, n, old) {
   if (total < rule.min && avail >= rule.min) return { error: 'below the minimum of ' + rule.min + ' credits' };
   return { credits: total, courses: chosen.map(c => c.id), sem, year: yr };
 }
-module.exports = { PLATFORM_FEE, SERVICE_FEE, platformOk, serviceOk, feesDue, core, priceFor, offered, isOffered, cStatus, fbKey, regOk, windowOpen, checkFormB, resultsUnlocked, resFee, resKind, trCfg, perms, calcRes: (a, b) => core.calcRes(a, b), AY: () => { return core.AY(); }, load, TR_DEF };
+module.exports = { REJ_CODES, REJ_TXT, creditAvail, PLATFORM_FEE, SERVICE_FEE, platformOk, serviceOk, feesDue, core, priceFor, offered, isOffered, cStatus, fbKey, regOk, windowOpen, checkFormB, resultsUnlocked, resFee, resKind, trCfg, perms, calcRes: (a, b) => core.calcRes(a, b), AY: () => { return core.AY(); }, load, TR_DEF };
 
 };
 __MODS["./lib/rules"] = function (module, exports, require) {
@@ -2175,12 +2185,14 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'payments') {
     if (!o && n.kind === 'service') {                                                     // 2,000 XAF service fee: applicants and students, no student record needed
       if (!['applicant', 'student'].includes(u.role)) throw ['not allowed'];
-      if (Number(n.amount) !== logic.SERVICE_FEE) throw ['amount must be ' + logic.SERVICE_FEE];
+      const cr0 = logic.creditAvail(S, u.id, 'service', logic.AY()), due0 = logic.SERVICE_FEE - cr0.sum;
+      if (Number(n.amount) !== due0) throw ['amount must be ' + due0];
       if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['service fee already paid or waiting for confirmation'];
       const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       const st0 = R.myStudent(u);
-      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: 'Service fee', amount: logic.SERVICE_FEE, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      if (cr0.sum) { n.credited = cr0.sum; n.creditIds = cr0.ids; }
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
       return;
@@ -2189,10 +2201,12 @@ async function applyWrite(u, c, id, o, n) {
       const st = R.myStudent(u) || (u.purpose === 'minesup' && u.msMatric ? S.get('students', u.msMatric) : null); if (!st || st.matric !== n.matric) throw ['student'];
       if (n.kind === 'tuition_balance' && Object.values(S.all('payments')).some(p => p && p.matric === st.matric && p.kind === 'tuition_balance' && p.status === 'pending')) throw ['A balance payment is already awaiting verification'];
       const price = logic.priceFor(S, st, n.kind); if (!price) throw ['unknown fee item'];
-      if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== Number(price.amount)) throw ['amount must be ' + price.amount];
+      const cr1 = price.custom ? { sum: 0, ids: [] } : logic.creditAvail(S, u.id, n.kind, logic.AY()), due1 = Number(price.amount) - cr1.sum;
+      if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== due1) throw ['amount must be ' + due1];
       const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
-      n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200) + (cr1.sum ? ' (balance)' : ''), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      if (cr1.sum) { n.credited = cr1.sum; n.creditIds = cr1.ids; }
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
       return;
@@ -2219,8 +2233,24 @@ async function applyWrite(u, c, id, o, n) {
       await notifyUser(o.userId, bi('Payment invalidated', 'Paiement invalidé'), (o.label || '') + ' — ' + why, { sms: true }); return;
     }
     if (n.status === 'confirmed') { await confirmPayment(o, u.name); await audit(u, 'payment confirmed ' + o.ref); return; }
-    n = Object.assign({}, o, { status: 'rejected', note: String(n.note || '').slice(0, 300), confirmedBy: u.name, rejectedAt: now() }); await save(c, id, n);
-    await notifyUser(o.userId, bi('Payment rejected', 'Paiement rejeté'), o.label + ' — ' + (n.note || ''), { sms: true }); return;
+    {   // rejection: a reason is always given, and for an incomplete amount the part received is recorded so the payer only owes the balance
+      const code = logic.REJ_CODES.includes(n.reasonCode) ? n.reasonCode : 'other', msg = String(n.note || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 300);
+      if (code === 'other' && msg.length < 3) throw ['reason'];
+      let received = 0, left = 0;
+      if (code === 'incomplete') {
+        received = Math.round(Number(n.received) || 0);
+        const others = logic.creditAvail(S, o.userId, o.kind, o.ay).sum;                       // credit already available from earlier rejections (this payment's own credit is released by this rejection)
+        if (!(received > 0 && received + others < Number(o.amount))) throw ['amount received must be more than 0 and less than ' + (Number(o.amount) - others)];
+        left = Number(o.amount) + Number(o.credited || 0) - others - Number(o.credited || 0) - received;
+      }
+      n = Object.assign({}, o, { status: 'rejected', reasonCode: code, note: msg, received: received || undefined, confirmedBy: u.name, rejectedAt: now() }); await save(c, id, n);
+      await audit(u, 'payment rejected ' + o.ref + ' — ' + code + (received ? ' (received ' + received + ')' : '') + (msg ? ' — ' + msg : ''));
+      const t = logic.REJ_TXT[code], what = (o.label || 'Payment') + ' — ' + xaf(o.amount) + ' (ID ' + o.ref + ')';
+      const en = what + ' was not accepted: ' + (code === 'other' ? msg : t[0] + (msg ? ' — ' + msg : '')) + '. ' + (code === 'incomplete' ? 'Amount received: ' + xaf(received) + '. Please pay the balance of ' + xaf(left) + ' in the portal.' : 'Please pay again in the portal with the correct transaction ID.');
+      const fr = what + ' n’a pas été accepté : ' + (code === 'other' ? msg : t[1] + (msg ? ' — ' + msg : '')) + '. ' + (code === 'incomplete' ? 'Montant reçu : ' + xaf(received) + '. Veuillez régler le solde de ' + xaf(left) + ' dans le portail.' : 'Veuillez payer à nouveau dans le portail avec le bon identifiant de transaction.');
+      await notifyUser(o.userId, bi('Payment rejected', 'Paiement rejeté'), en + ' / ' + fr, { sms: true, smsText: 'ADI: ' + en.slice(0, 150) + ' / ' + fr.slice(0, 150) });
+      return;
+    }
   }
   if (c === 'results') { const r = logic.calcRes(n.ca, n.exam); if (!(n.ca >= 0 && n.ca <= 30 && n.exam >= 0 && n.exam <= 70)) throw ['marks out of range']; n = Object.assign({}, n, r); }
   if ((c === 'events' || c === 'testi') && n !== null) { // clean and validate everything staff submit for the public website
