@@ -2188,7 +2188,7 @@ async function applyWrite(u, c, id, o, n) {
       const cr0 = logic.creditAvail(S, u.id, 'service', logic.AY()), due0 = logic.SERVICE_FEE - cr0.sum;
       if (Number(n.amount) !== due0) throw ['amount must be ' + due0];
       if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['service fee already paid or waiting for confirmation'];
-      const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
+      const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       const st0 = R.myStudent(u);
       n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
@@ -2203,7 +2203,7 @@ async function applyWrite(u, c, id, o, n) {
       const price = logic.priceFor(S, st, n.kind); if (!price) throw ['unknown fee item'];
       const cr1 = price.custom ? { sum: 0, ids: [] } : logic.creditAvail(S, u.id, n.kind, logic.AY()), due1 = Number(price.amount) - cr1.sum;
       if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== due1) throw ['amount must be ' + due1];
-      const ref = String(n.ref || '').trim(); if (ref.length < 6) throw ['transaction id'];
+      const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200) + (cr1.sum ? ' (balance)' : ''), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
       if (cr1.sum) { n.credited = cr1.sum; n.creditIds = cr1.ids; }

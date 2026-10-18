@@ -307,7 +307,7 @@
       else if (pay) {
         h += `<h4>${LBL('Pay now: ', 'Payer maintenant : ')}${esc(pay.kind === 'platform' ? LBL('Platform charge', 'Frais de plateforme') : pay.kind === 'tuition_balance' ? LBL('Outstanding tuition balance', 'Solde de scolarité restant') : pay.label)} — ${money(pay.amount)}</h4>
         <p>${LBL('Send exactly this amount by Mobile Money to ', 'Envoyez exactement ce montant par Mobile Money au ')}<b class="ms-momo">${esc(momo)}</b>${LBL('. Then enter the transaction ID from the confirmation message.', '. Puis saisissez l\'identifiant de transaction du message de confirmation.')}</p>
-        ${inp('msp.ref', LBL('MoMo transaction ID', 'Identifiant de transaction MoMo'), { ph: 'e.g. 1234567890' })}${inp('msp.phone', LBL('Phone number used to pay', 'Numéro utilisé pour payer'), { ph: '6XXXXXXXX', type: 'tel' })}
+        ${inp('msp.ref', LBL('MoMo transaction ID', 'Identifiant de transaction MoMo'), { ph: '11 digits, e.g. 12345678901' })}${inp('msp.phone', LBL('Phone number used to pay', 'Numéro utilisé pour payer'), { ph: '6XXXXXXXX', type: 'tel' })}
         <p><button class="btn gold" data-a="mspay">${LBL('Submit payment for verification', 'Soumettre le paiement pour vérification')}</button></p>`;
       }
     }
@@ -317,7 +317,7 @@
     const c = clearFor(me()) || {}, f = c.fee || {}, pay = f.pay, w = FORMS.msp || {};
     if (!pay || !c.student) return;
     const ref = String(w.ref || '').trim(), phone = String(w.phone || '').trim();
-    if (ref.length < 6) return focusField('msp.ref', LBL('Enter the MoMo transaction ID (at least 6 characters).', 'Saisissez l\'identifiant de transaction MoMo (6 caractères minimum).'));
+    if (!/^\d{11}$/.test(ref)) return focusField('msp.ref', LBL('The MoMo transaction ID must be exactly 11 digits (numbers only).', 'L\'identifiant de transaction MoMo doit comporter exactement 11 chiffres (uniquement des chiffres).'));
     if (phone.length < 8) return focusField('msp.phone', LBL('Enter the phone number you paid from.', 'Saisissez le numéro utilisé pour payer.'));
     if (el) el.disabled = true;
     try {
