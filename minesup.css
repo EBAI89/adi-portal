@@ -206,3 +206,13 @@ body.sgopen{overflow:hidden}
 .apphero.ah-warn{background:#fff8e8;border-color:#f0dca8;border-left-color:#C9A227}.apphero.ah-warn .ah-i{background:#C9A227;color:#0B2559}
 .apphero.ah-bad{background:#fdf1f2;border-color:#efc3c9;border-left-color:#9B2335}.apphero.ah-bad .ah-i{background:#9B2335}
 @media (max-width:480px){.apphero{padding:14px}.apphero .ah-i{width:36px;height:36px;font-size:1.1rem}}
+
+/* two-step verification */
+.mfa-rec{font:700 1rem/1.9 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:#f5f7fc;border:1px dashed #0B2559;border-radius:10px;padding:12px 16px;white-space:pre;overflow:auto}
+.mfa-key{font:700 1.15rem/1.6 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;word-break:break-all;color:#0B2559;margin:6px 0}
+.linkbtn{background:none;border:0;color:#1B3FA0;text-decoration:underline;cursor:pointer;padding:0;font:inherit}
+
+/* two-step verification */
+.mfa-rec{font:700 1rem/1.9 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:#f5f7fc;border:1px dashed #0B2559;border-radius:10px;padding:12px 16px;white-space:pre;overflow:auto}
+.mfa-key{font:700 1.15rem/1.6 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;word-break:break-all;color:#0B2559;margin:6px 0}
+.linkbtn{background:none;border:0;color:#1B3FA0;text-decoration:underline;cursor:pointer;padding:0;font:inherit}
