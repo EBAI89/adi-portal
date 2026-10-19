@@ -1070,13 +1070,17 @@
   const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   function ensure() {
     if (bar && bar.isConnected) return bar;
-    bar = document.createElement('div'); bar.id = 'err-float'; bar.setAttribute('role', 'alert'); bar.hidden = true;
+    bar = document.createElement('div'); bar.id = 'err-float'; bar.setAttribute('role', 'alert'); bar.setAttribute('aria-live', 'assertive');
     bar.innerHTML = '<span class="ef-k"></span><span class="ef-m"></span><button type="button" class="ef-go"></button><button type="button" class="ef-x" aria-label="Close">×</button>';
     bar.querySelector('.ef-x').onclick = () => clear();
     bar.querySelector('.ef-go').onclick = () => { if (src && src.isConnected) { try { src.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { src.scrollIntoView(); } } };
     document.body.appendChild(bar); return bar;
   }
-  function clear() { clearTimeout(hideT); if (io) { io.disconnect(); io = null; } src = null; if (bar) bar.hidden = true; }
+  function inView(e) { if (!e || !e.isConnected) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top >= 64 && r.bottom <= (window.innerHeight || document.documentElement.clientHeight); }
+  function sync() { raf = 0; if (!bar || !src) return; bar.classList.toggle('on', !inView(src)); }
+  let raf = 0; const queue = () => { if (!raf) raf = requestAnimationFrame(sync); };
+  window.addEventListener('scroll', queue, { passive: true, capture: true }); window.addEventListener('resize', queue, { passive: true });
+  function clear() { clearTimeout(hideT); src = null; if (bar) bar.classList.remove('on'); }
   function present(msg, source, ttl) {
     msg = String(msg || '').replace(/\s+/g, ' ').trim(); if (!msg) return;
     msg = window.politeError ? window.politeError(msg) : msg;
@@ -1084,12 +1088,9 @@
     b.querySelector('.ef-k').textContent = fr() ? 'Correction requise' : 'Correction required';
     b.querySelector('.ef-m').textContent = msg;
     b.querySelector('.ef-go').textContent = fr() ? 'Voir' : 'Show';
-    src = source || null; b.hidden = false;
+    src = source || null;
     b.querySelector('.ef-go').style.display = src ? '' : 'none';
-    if (src && 'IntersectionObserver' in window) {
-      io = new IntersectionObserver(es => { const e = es[es.length - 1]; if (bar) bar.hidden = !!(e && e.isIntersecting && e.intersectionRatio > 0.9); }, { threshold: [0, .5, .95, 1], rootMargin: '-70px 0px 0px 0px' });
-      io.observe(src);
-    }
+    if (src) setTimeout(sync, 450); else b.classList.add('on');
     if (ttl) hideT = setTimeout(clear, ttl);
   }
   /* error wording: a formal, courteous request ("Please enter ...", "Veuillez saisir ...") instead of a bare command */
