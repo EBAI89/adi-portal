@@ -294,7 +294,7 @@
   }
   const money = n => (typeof xaf === 'function' ? xaf(n) : Number(n).toLocaleString('en') + ' XAF');
   function feePanel(c) {
-    const f = c.fee || {}, st = c.student || {}, pay = f.pay, momo = (typeof cfg === 'function' ? cfg().momo : '') || '';
+    const f = c.fee || {}, st = c.student || {}, pay = f.pay, momo = (typeof momoNum === 'function' ? momoNum(pay && pay.kind) : (typeof cfg === 'function' ? cfg().momo : '')) || '', momoWho = (typeof momoNameOf === 'function' ? momoNameOf(pay && pay.kind) : '');
     const done = f.balance <= 0;
     let h = `<div class="card gap ms-pop"><h3>${LBL('Step 3 — Tuition status', 'Étape 3 — Situation de scolarité')}</h3>
       <p><b>${esc(st.name || '')}</b> · ADI ${esc(st.adi || st.matric || '')} · MINESUP ${esc(c.msNo || '')}</p>
@@ -306,7 +306,7 @@
       if (pay && pay.pending) h += `<div class="note">${LBL('Your payment of ', 'Votre paiement de ')}<b>${money(pay.amount)}</b>${LBL(' is waiting for verification by the accountant. You will be notified here as soon as it is confirmed.', ' attend la vérification du comptable. Vous serez notifié ici dès sa confirmation.')}</div><p><button class="btn" data-a="msrecheck">${LBL('Check again', 'Vérifier à nouveau')}</button></p>`;
       else if (pay) {
         h += `<h4>${LBL('Pay now: ', 'Payer maintenant : ')}${esc(pay.kind === 'platform' ? LBL('Platform charge', 'Frais de plateforme') : pay.kind === 'tuition_balance' ? LBL('Outstanding tuition balance', 'Solde de scolarité restant') : pay.label)} — ${money(pay.amount)}</h4>
-        <p>${LBL('Send exactly this amount by Mobile Money to ', 'Envoyez exactement ce montant par Mobile Money au ')}<b class="ms-momo">${esc(momo)}</b>${LBL('. Then enter the transaction ID from the confirmation message.', '. Puis saisissez l\'identifiant de transaction du message de confirmation.')}</p>
+        <p>${LBL('Send exactly this amount by Mobile Money to ', 'Envoyez exactement ce montant par Mobile Money au ')}<b class="ms-momo">${esc(momo)}</b>${momoWho ? ' (' + esc(momoWho) + ')' : ''}${LBL('. Then enter the transaction ID from the confirmation message.', '. Puis saisissez l\'identifiant de transaction du message de confirmation.')}</p>
         ${inp('msp.ref', LBL('MoMo transaction ID', 'Identifiant de transaction MoMo'), { ph: '11 digits, e.g. 12345678901' })}${inp('msp.phone', LBL('Phone number used to pay', 'Numéro utilisé pour payer'), { ph: '6XXXXXXXX', type: 'tel' })}
         <p><button class="btn gold" data-a="mspay">${LBL('Submit payment for verification', 'Soumettre le paiement pour vérification')}</button></p>`;
       }
@@ -322,7 +322,7 @@
     if (el) el.disabled = true;
     try {
       const id = uid('pay');
-      await api('/api/doc/payments/' + id, { method: 'PUT', body: { id, userId: me().id, matric: c.student.matric, kind: pay.kind, label: pay.label, amount: pay.amount, ref, payerPhone: phone, status: 'pending', momoTo: (typeof cfg === 'function' ? cfg().momo : '') } });
+      await api('/api/doc/payments/' + id, { method: 'PUT', body: { id, userId: me().id, matric: c.student.matric, kind: pay.kind, label: pay.label, amount: pay.amount, ref, payerPhone: phone, status: 'pending', momoTo: (typeof momoNum === 'function' ? momoNum(pay.kind) : (typeof cfg === 'function' ? cfg().momo : '')) } });
       FORMS.msp = {}; toast(LBL('Payment sent. The accountant will verify it and notify you.', 'Paiement envoyé. Le comptable le vérifiera et vous notifiera.')); if (typeof apiSync === 'function') await apiSync(); CLEAR = null; render();
     } catch (e) { if (el) el.disabled = false; const m = e.message || LBL('Could not send the payment', 'Envoi impossible'); focusField('msp.ref', m); toast(m, 1); }
   };
