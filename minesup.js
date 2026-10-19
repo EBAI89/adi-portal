@@ -308,6 +308,7 @@
         h += `<h4>${LBL('Pay now: ', 'Payer maintenant : ')}${esc(pay.kind === 'platform' ? LBL('Platform charge', 'Frais de plateforme') : pay.kind === 'tuition_balance' ? LBL('Outstanding tuition balance', 'Solde de scolarité restant') : pay.label)} — ${money(pay.amount)}</h4>
         <p>${LBL('Send exactly this amount by Mobile Money to ', 'Envoyez exactement ce montant par Mobile Money au ')}<b class="ms-momo">${esc(momo)}</b>${momoWho ? ' (' + esc(momoWho) + ')' : ''}${LBL('. Then enter the transaction ID from the confirmation message.', '. Puis saisissez l\'identifiant de transaction du message de confirmation.')}</p>
         ${inp('msp.ref', LBL('MoMo transaction ID', 'Identifiant de transaction MoMo'), { ph: '11 digits, e.g. 12345678901' })}${inp('msp.phone', LBL('Phone number used to pay', 'Numéro utilisé pour payer'), { ph: '6XXXXXXXX', type: 'tel' })}
+        ${typeof proofBlock === 'function' ? proofBlock((FORMS.msp = FORMS.msp || {}, FORMS.msp.pid = FORMS.msp.pid || uid('pay')), 'msp.proofOk') : ''}
         <p><button class="btn gold" data-a="mspay">${LBL('Submit payment for verification', 'Soumettre le paiement pour vérification')}</button></p>`;
       }
     }
@@ -319,10 +320,11 @@
     const ref = String(w.ref || '').trim(), phone = String(w.phone || '').trim();
     if (!/^\d{11}$/.test(ref)) return focusField('msp.ref', LBL('The MoMo transaction ID must be exactly 11 digits (numbers only).', 'L\'identifiant de transaction MoMo doit comporter exactement 11 chiffres (uniquement des chiffres).'));
     if (phone.length < 8) return focusField('msp.phone', LBL('Enter the phone number you paid from.', 'Saisissez le numéro utilisé pour payer.'));
+    { const pm = typeof proofGap === 'function' ? proofGap((FORMS.msp || {}).pid, (FORMS.msp || {}).proofOk) : ''; if (pm) return focusField('msp.ref', pm); }
     if (el) el.disabled = true;
     try {
-      const id = uid('pay');
-      await api('/api/doc/payments/' + id, { method: 'PUT', body: { id, userId: me().id, matric: c.student.matric, kind: pay.kind, label: pay.label, amount: pay.amount, ref, payerPhone: phone, status: 'pending', momoTo: (typeof momoNum === 'function' ? momoNum(pay.kind) : (typeof cfg === 'function' ? cfg().momo : '')) } });
+      const id = (FORMS.msp || {}).pid || uid('pay');
+      await api('/api/doc/payments/' + id, { method: 'PUT', body: { id, proofConfirmed: true, userId: me().id, matric: c.student.matric, kind: pay.kind, label: pay.label, amount: pay.amount, ref, payerPhone: phone, status: 'pending', momoTo: (typeof momoNum === 'function' ? momoNum(pay.kind) : (typeof cfg === 'function' ? cfg().momo : '')) } });
       FORMS.msp = {}; toast(LBL('Payment sent. The accountant will verify it and notify you.', 'Paiement envoyé. Le comptable le vérifiera et vous notifiera.')); if (typeof apiSync === 'function') await apiSync(); CLEAR = null; render();
     } catch (e) { if (el) el.disabled = false; const m = e.message || LBL('Could not send the payment', 'Envoi impossible'); focusField('msp.ref', m); toast(m, 1); }
   };
