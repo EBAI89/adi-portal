@@ -105,6 +105,9 @@ function creditAvail(store, userId, kind, ay) {
   return { sum: list.reduce((a, p) => a + Number(p.received), 0), ids: list.map(p => p.id) };
 }
 const platformOk = (store, st) => !!st && Object.values(store.all('payments')).some(p => p && p.matric === st.matric && p.kind === 'platform' && p.ay === core.AY() && p.status === 'confirmed');
+// Registration and tuition fees (full tuition, instalments, balances) are paid to the cooperative MoMo account; every other payment goes to the ADI MoMo number.
+const feeToCoop = k => k === 'registration' || k === 'tuition_full' || k === 'tuition_balance' || /^inst\d+$/.test(String(k || ''));
+const momoTo = (store, kind) => { const s = store.get('settings', 'main') || {}, I = core.INST || {}; return feeToCoop(kind) ? (s.momoFees || I.momoFees) : (s.momo || I.momo); };
 const serviceOk = (store, userId) => Object.values(store.all('payments')).some(p => p && p.userId === userId && p.kind === 'service' && p.status === 'confirmed');
 // The fee a student must settle next, in the same order the page shows it: platform charge, registration, then any instalment that is open or overdue. null = nothing due.
 function feesDue(store, st) {
@@ -154,7 +157,7 @@ function checkFormB(store, st, n, old) {
   if (total < rule.min && avail >= rule.min) return { error: 'below the minimum of ' + rule.min + ' credits' };
   return { credits: total, courses: chosen.map(c => c.id), sem, year: yr };
 }
-module.exports = { REJ_CODES, REJ_TXT, creditAvail, PLATFORM_FEE, SERVICE_FEE, platformOk, serviceOk, feesDue, core, priceFor, offered, isOffered, cStatus, fbKey, regOk, windowOpen, checkFormB, resultsUnlocked, resFee, resKind, trCfg, perms, calcRes: (a, b) => core.calcRes(a, b), AY: () => { return core.AY(); }, load, TR_DEF };
+module.exports = { feeToCoop, momoTo, REJ_CODES, REJ_TXT, creditAvail, PLATFORM_FEE, SERVICE_FEE, platformOk, serviceOk, feesDue, core, priceFor, offered, isOffered, cStatus, fbKey, regOk, windowOpen, checkFormB, resultsUnlocked, resFee, resKind, trCfg, perms, calcRes: (a, b) => core.calcRes(a, b), AY: () => { return core.AY(); }, load, TR_DEF };
 
 };
 __MODS["./lib/rules"] = function (module, exports, require) {
@@ -2191,7 +2194,7 @@ async function applyWrite(u, c, id, o, n) {
       const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       const st0 = R.myStudent(u);
-      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: logic.momoTo(S, 'service'), method: 'manual' };
       if (cr0.sum) { n.credited = cr0.sum; n.creditIds = cr0.ids; }
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
@@ -2205,7 +2208,7 @@ async function applyWrite(u, c, id, o, n) {
       if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== due1) throw ['amount must be ' + due1];
       const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
-      n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200) + (cr1.sum ? ' (balance)' : ''), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200) + (cr1.sum ? ' (balance)' : ''), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: logic.momoTo(S, n.kind), method: 'manual' };
       if (cr1.sum) { n.credited = cr1.sum; n.creditIds = cr1.ids; }
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
