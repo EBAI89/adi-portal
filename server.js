@@ -2168,6 +2168,8 @@ async function confirmPayment(p, by, extra = {}) {
 }
 
 // Applies a client write after rules pass: sanitises, enforces amounts, fires side effects.
+// A manual MoMo payment is accepted only with its screenshot (uploaded by the payer) and the payer's confirmation that it shows the transaction ID.
+const proofOk = (id, u, n) => n.proofConfirmed === true && Object.values(S.all('files')).some(f => f && f.ctx === 'pay:' + id && f.owner === u.id);
 async function applyWrite(u, c, id, o, n) {
   if (c === 'settings' && n && u && u.role !== 'super_admin') n = Object.assign({}, JSON.parse(JSON.stringify(o || {})), { cls: n.cls });
   if (c === 'liblinks' && n) { const cl = logic.core.libLinkSanitize(n); if (!cl) throw ['invalid link: check the name, the https address and at least one category']; n = Object.assign({}, JSON.parse(JSON.stringify(cl)), { id }); }
@@ -2192,6 +2194,7 @@ async function applyWrite(u, c, id, o, n) {
       if (Number(n.amount) !== due0) throw ['amount must be ' + due0];
       if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['service fee already paid or waiting for confirmation'];
       const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
+      if (!proofOk(id, u, n)) throw ['proof of payment is required: upload a screenshot of the MoMo confirmation that shows this transaction ID, and confirm it'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       const st0 = R.myStudent(u);
       n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: logic.momoTo(S, 'service'), method: 'manual' };
@@ -2207,6 +2210,7 @@ async function applyWrite(u, c, id, o, n) {
       const cr1 = price.custom ? { sum: 0, ids: [] } : logic.creditAvail(S, u.id, n.kind, logic.AY()), due1 = Number(price.amount) - cr1.sum;
       if (price.custom) { if (!(n.amount > 0 && n.amount <= 5e6)) throw ['amount']; } else if (Number(n.amount) !== due1) throw ['amount must be ' + due1];
       const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
+      if (!proofOk(id, u, n)) throw ['proof of payment is required: upload a screenshot of the MoMo confirmation that shows this transaction ID, and confirm it'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       n = { userId: u.id, matric: st.matric, payerName: st.name, kind: n.kind, label: String(n.label || price.label).slice(0, 200) + (cr1.sum ? ' (balance)' : ''), amount: Number(n.amount), ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: logic.momoTo(S, n.kind), method: 'manual' };
       if (cr1.sum) { n.credited = cr1.sum; n.creditIds = cr1.ids; }
