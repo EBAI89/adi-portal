@@ -2871,6 +2871,26 @@ async function route(req, res) {
     const n = Object.assign({}, x, { pw: await hashPw(b.password), mustChange: false }); await save('users', x.id, n); await S.setMeta(key, null);
     await audit(n, 'password reset by email link'); pwChangedMail(n); return send(res, 200, { ok: true });
   }
+  if (p === '/api/admin/service-waiver' && req.method === 'POST') {          // super administrator pre-grants a cleared student the MINESUP service-fee exemption (or revokes it)
+    if (!u || u.role !== 'super_admin') return send(res, 403, { error: 'forbidden' });
+    const b = await body(req, 4000), x = S.get('users', String(b.userId || '')); if (!x) return send(res, 404, { error: 'User not found.' });
+    const st = x.purpose === 'minesup' && x.msMatric ? S.get('students', x.msMatric) : Object.values(S.all('students')).find(q => q && q.userId === x.id);
+    const mine = Object.entries(S.all('payments')).filter(([, q]) => q && q.userId === x.id && q.kind === 'service');
+    if (b.grant === false) {
+      const w = mine.find(([, q]) => q.method === 'waiver' && q.status === 'confirmed'); if (!w) return send(res, 400, { error: 'No active exemption for this person.' });
+      await save('payments', w[0], Object.assign({}, w[1], { status: 'invalidated', invalidatedAt: now(), invalidatedBy: u.name })); await audit(u, 'service-fee exemption revoked for ' + x.name);
+      return send(res, 200, { ok: true });
+    }
+    if (!st) return send(res, 400, { error: 'This account has no student record, so its fees cannot be checked.' });
+    if (logic.feesDue(S, st)) return send(res, 400, { error: 'This student has not completed the fees yet.' });
+    if (mine.some(([, q]) => q.status === 'confirmed')) return send(res, 400, { error: 'The service fee is already settled or waived.' });
+    if (mine.some(([, q]) => q.status === 'pending')) return send(res, 400, { error: 'A service-fee payment is waiting for approval: approve it on the Payments page instead.' });
+    const id = uid('pay'), note = String(b.note || '').trim().slice(0, 200);
+    await save('payments', id, { userId: x.id, matric: st.matric, payerName: x.name, kind: 'service', label: 'Service fee — exempted by the Super Administrator', amount: 0, ref: 'WAIVER-' + id.slice(-8), status: 'confirmed', method: 'waiver', waived: true, note, at: now(), confirmedAt: now(), confirmedBy: u.name, ay: logic.AY() });
+    await audit(u, 'service-fee exemption granted to ' + x.name + ' (' + st.matric + ')');
+    await notifyUser(x.id, bi('MINESUP access granted', 'Accès MINESUP accordé'), bi('The Super Administrator has exempted you from the 2,000 XAF service fee. You may now apply for your MINESUP transcript.', 'Le Super Administrateur vous a dispensé(e) des frais de service de 2 000 XAF. Vous pouvez désormais demander votre relevé MINESUP.'));
+    return send(res, 200, { ok: true });
+  }
   if (p === '/api/admin/users/create' && req.method === 'POST') {
     if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
     const b = await body(req, 4000), name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 120), role = String(b.role || 'student');
