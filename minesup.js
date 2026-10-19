@@ -874,7 +874,7 @@
 
   /* ===== Guidance text under every field that needs typing ===== */
   const HINTS = [
-    [/^su\.name$/, ['Type your full name exactly as it appears on your national identity card or certificate.', 'Saisissez votre nom complet tel qu\'il figure sur votre carte d\'identité ou votre diplôme.']],
+    [/^su\.name$/, ['Type your full name exactly as it appears on your birth certificate or national identity card. International students: use your passport. This name becomes your official academic record, so accuracy matters.', 'Saisissez votre nom complet exactement comme sur votre acte de naissance ou votre carte nationale d\'identité. Étudiants internationaux : utilisez votre passeport. Ce nom figurera dans votre dossier académique officiel : veillez à son exactitude.']],
     [/^su\.email$|contactEmail|^sa\.email$/, ['Type a personal email address that you check often. Messages from ADI, including your sign-in details, are sent here.', 'Saisissez une adresse e-mail personnelle que vous consultez souvent. Les messages de l\'ADI, y compris vos identifiants, y sont envoyés.']],
     [/^su\.phone$|phone|tel$/, ['Type your telephone number with the area code, for example 6XXXXXXXX or +237 6XXXXXXXX. It is used for payment notices.', 'Saisissez votre numéro de téléphone avec l\'indicatif, par exemple 6XXXXXXXX ou +237 6XXXXXXXX. Il sert aux avis de paiement.']],
     [/^su\.password$|^act\.pw$/, ['Choose a strong password of at least 8 characters, mixing letters and digits. Do not share it.', 'Choisissez un mot de passe robuste d\'au moins 8 caractères, mêlant lettres et chiffres. Ne le communiquez pas.']],
@@ -887,7 +887,7 @@
     [/^msc\.matric$/, ['Type your ADI matricule, or choose your name in the list above to fill it for you.', 'Saisissez votre matricule ADI, ou choisissez votre nom dans la liste ci-dessus pour le renseigner.']],
     [/^msc\.msNo$/, ['Type the MINESUP matricule printed on your HND/BTS registration form, for example 26SWE0762.', 'Saisissez le matricule MINESUP imprimé sur votre fiche d\'inscription HND/BTS, par exemple 26SWE0762.']],
     [/^msp\.ref$|\.ref$|txn|trans/, ['Type the transaction ID from the Mobile Money confirmation message (at least 6 characters).', 'Saisissez l\'identifiant de transaction du message de confirmation Mobile Money (6 caractères minimum).']],
-    [/^sa\.name$/, ['Type the full name of the person, as on their identity document.', 'Saisissez le nom complet de la personne, tel qu\'il figure sur sa pièce d\'identité.']],
+    [/^sa\.name$/, ['Type the full name of the person exactly as on their birth certificate or national identity card (passport for international students).', 'Saisissez le nom complet de la personne exactement comme sur son acte de naissance ou sa carte nationale d\'identité (passeport pour les étudiants internationaux).']],
     [/^sa\.q$|^sa\.dq$|search|\.q$/, ['Type part of a name, email, matricule or reference to filter the list.', 'Saisissez une partie d\'un nom, d\'un e-mail, d\'un matricule ou d\'une référence pour filtrer la liste.']],
     [/dob|birth.*date|date/, ['Choose or type the date in the format day / month / year.', 'Choisissez ou saisissez la date au format jour / mois / année.']],
     [/pob|place/, ['Type the town and country as written on your birth certificate.', 'Saisissez la ville et le pays tels qu\'ils figurent sur votre acte de naissance.']],
