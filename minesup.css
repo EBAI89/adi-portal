@@ -194,3 +194,15 @@ body.sgopen{overflow:hidden}
 #err-float .ef-x{flex:none;border:0;background:transparent;color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;padding:0 4px}
 @media (max-width:480px){#err-float{flex-wrap:wrap}#err-float .ef-m{flex-basis:100%;order:3}}
 @media (prefers-reduced-motion:reduce){#err-float{transition:none}}
+
+/* application status panel (My application) */
+.apphero{display:flex;gap:14px;align-items:flex-start;margin:0 0 18px;padding:16px 18px;border-radius:14px;border:1px solid #d9deea;border-left:6px solid #0B2559;background:#f5f7fc;color:#0B1B3F}
+.apphero .ah-i{flex:none;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;background:#0B2559;color:#fff}
+.apphero h3{margin:0 0 6px;font-size:1.1rem;line-height:1.3;color:inherit}
+.apphero p{margin:0 0 6px;line-height:1.5}
+.apphero .ah-rm{padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.7);font-style:italic}
+.apphero .ah-act{margin-top:10px;gap:8px;flex-wrap:wrap}
+.apphero.ah-ok{background:#eefaf2;border-color:#bfe4cc;border-left-color:#1E7B46}.apphero.ah-ok .ah-i{background:#1E7B46}
+.apphero.ah-warn{background:#fff8e8;border-color:#f0dca8;border-left-color:#C9A227}.apphero.ah-warn .ah-i{background:#C9A227;color:#0B2559}
+.apphero.ah-bad{background:#fdf1f2;border-color:#efc3c9;border-left-color:#9B2335}.apphero.ah-bad .ah-i{background:#9B2335}
+@media (max-width:480px){.apphero{padding:14px}.apphero .ah-i{width:36px;height:36px;font-size:1.1rem}}
