@@ -127,10 +127,10 @@
         const ok = st && levelOk(st) && tuitionOk(st);
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${ok ? LBL('Your tuition is confirmed. You may complete the official bilingual application.', 'Votre scolarité est confirmée. Vous pouvez remplir la demande officielle bilingue.') : LBL('An ADI student account is required. The form opens only after Finance confirms that tuition is fully paid.', 'Un compte étudiant ADI est requis. Le formulaire s\'ouvre seulement après confirmation du paiement intégral de la scolarité.')}</p><div class="row">${cta()}</div></div>`;
       } else if (isOwn(u)) {
-        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 2,000 XAF service fee, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
+        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Please pay the 2,000 XAF service fee, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
       } else if (can('manage_students') || u.role === 'super_admin') {
         const n = Object.values(S.msapp || {}).filter(a => a && a.status === 'submitted').length;
-        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--crimson)"><p class="ms-kicker">MINESUP</p><h3>${LBL('Applications to review', 'Demandes à examiner')}</h3><div class="kpi">${n}</div><p class="muted small">${LBL('Check eligibility, then approve or reject. Download carries the ADI round seal on every page.', 'Vérifiez l\'éligibilité, puis approuvez ou rejetez. Le téléchargement porte le sceau rond ADI sur chaque page.')}</p><a class="btn" href="#/minesup-admin">${LBL('Open the desk', 'Ouvrir le bureau')}</a></div>`;
+        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--crimson)"><p class="ms-kicker">MINESUP</p><h3>${LBL('Applications to review', 'Demandes à examiner')}</h3><div class="kpi">${n}</div><p class="muted small">${LBL('Please check eligibility, then approve or reject. Download carries the ADI round seal on every page.', 'Vérifiez l\'éligibilité, puis approuvez ou rejetez. Le téléchargement porte le sceau rond ADI sur chaque page.')}</p><a class="btn" href="#/minesup-admin">${LBL('Open the desk', 'Ouvrir le bureau')}</a></div>`;
       }
       return h;
     };
@@ -143,7 +143,7 @@
       let gate = '';
       try {
         if (st && tuitionOk(st)) sessionStorage.removeItem(feeGateKey);
-        else if (sessionStorage.getItem(feeGateKey) === '1') gate = `<div class="note bad ms-pop"><b>${LBL('MINESUP form locked', 'Formulaire MINESUP verrouillé')}</b><br>${LBL('Pay the full tuition. The form opens only after the officer in charge confirms the payment.', 'Payez la totalité de la scolarité. Le formulaire s\'ouvre seulement après confirmation par le responsable.')}</div>`;
+        else if (sessionStorage.getItem(feeGateKey) === '1') gate = `<div class="note bad ms-pop"><b>${LBL('MINESUP form locked', 'Formulaire MINESUP verrouillé')}</b><br>${LBL('Please pay the full tuition. The form opens only after the officer in charge confirms the payment.', 'Payez la totalité de la scolarité. Le formulaire s\'ouvre seulement après confirmation par le responsable.')}</div>`;
       } catch (e) {}
       return gate + baseF();
     };
@@ -182,7 +182,7 @@
   }
   ACT.sacreate = async el => {
     const f = FORMS.sa || {}, name = String(f.name || '').trim();
-    if (name.length < 3) return focusField('sa.name', LBL('Enter the full name.', 'Saisissez le nom complet.'));
+    if (name.length < 3) return focusField('sa.name', LBL('Enter the full name.', 'Veuillez saisir le nom complet.'));
     if (el) el.disabled = true;
     try { const r = await api('/api/admin/users/create', { body: { name, role: f.role || 'student', phone: f.phone || '', email: f.email || '', adiEmail: !!f.adi } }); FORMS.sa = { role: f.role, adi: f.adi, q: f.q, dq: f.dq, made: r }; if (typeof apiSync === 'function') await apiSync(); render(); }
     catch (e) { if (el) el.disabled = false; toast(e.message || 'Error', 1); }
@@ -319,7 +319,7 @@
     if (!pay || !c.student) return;
     const ref = String(w.ref || '').trim(), phone = String(w.phone || '').trim();
     if (!/^\d{11}$/.test(ref)) return focusField('msp.ref', LBL('The MoMo transaction ID must be exactly 11 digits (numbers only).', 'L\'identifiant de transaction MoMo doit comporter exactement 11 chiffres (uniquement des chiffres).'));
-    if (phone.length < 8) return focusField('msp.phone', LBL('Enter the phone number you paid from.', 'Saisissez le numéro utilisé pour payer.'));
+    if (phone.length < 8) return focusField('msp.phone', LBL('Please enter the phone number you paid from.', 'Veuillez saisir le numéro utilisé pour payer.'));
     { const pm = typeof proofGap === 'function' ? proofGap((FORMS.msp || {}).pid, (FORMS.msp || {}).proofOk) : ''; if (pm) return focusField('msp.ref', pm); }
     if (el) el.disabled = true;
     try {
@@ -332,14 +332,14 @@
   ACT.msclear = async el => {
     const f = FORMS.msc || {}, own = isOwn(me()), c = clearFor(me()) || {};
     const m = String(f.matric || '').trim(), no = String(f.msNo || '').trim();
-    if (!no) return focusField('msc.msNo', LBL('Enter the unique HND/BTS matricule from your MINESUP registration form.', 'Indiquez le matricule unique HND/BTS de votre fiche d\'inscription MINESUP.'));
+    if (!no) return focusField('msc.msNo', LBL('Please enter the unique HND/BTS matricule from your MINESUP registration form.', 'Indiquez le matricule unique HND/BTS de votre fiche d\'inscription MINESUP.'));
     if (el) el.disabled = true;
     try {
       const d = await api('/api/minesup/clearance', { body: { matric: m, msNo: no } });
       CLEAR = Object.assign({ _for: me().id }, d); FORMS.msc = { matric: '', msNo: '' }; render();
     } catch (e) {
       if (el) el.disabled = false;
-      const msg = e.code === 'service_fee' ? LBL('Pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
+      const msg = e.code === 'service_fee' ? LBL('Please pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
       focusField('msc.msNo', msg); toast(msg, 1);
     }
   };
@@ -394,7 +394,7 @@
         ${f.delivery === 'school' ? `<div class="grid g2">${inp('ms.destName', both('Institution name', 'Nom de l\'établissement'))}${inp('ms.destAddr', both('Institution address', 'Adresse de l\'établissement'))}</div>` : ''}
       </section>
       <section class="ms-sec" id="ms-docs"><h3><span class="ms-num">E</span> ${both('Documents attached', 'Pièces jointes')}</h3>
-        <p class="small muted">${LBL('Choose the document type, then upload a PDF or a clear photo (JPG, PNG). Two passport photographs may be one scan.', 'Choisissez le type de pièce, puis envoyez un PDF ou une photo nette (JPG, PNG). Les deux photos d\'identité peuvent être sur un seul scan.')}</p>
+        <p class="small muted">${LBL('Please choose the document type, then upload a PDF or a clear photo (JPG, PNG). Two passport photographs may be one scan.', 'Choisissez le type de pièce, puis envoyez un PDF ou une photo nette (JPG, PNG). Les deux photos d\'identité peuvent être sur un seul scan.')}</p>
         ${fileBox('ms:' + f.id, { edit: true, types: true })}
         ${chk('ms.photos2', both('I attach two passport photographs', 'Je joins deux photos d\'identité'))}
       </section>
@@ -425,25 +425,25 @@
     BAD = '';
     const p = payload(st), id = FORMS.ms.id;
     const bad = (field, en, fr) => { BAD = field; return LBL(en, fr); };
-    if (!p.types.diploma && !p.types.transcript && !p.types.duplicate && !p.types.copy) return bad('ms.tTranscript', 'Choose at least one document.', 'Cochez au moins un document.');
-    const personal = [['certName', 'Enter the full name as on the certificate.', 'Indiquez le nom tel qu\'il figure sur le diplôme.'], ['dob', 'Enter the date of birth.', 'Indiquez la date de naissance.'], ['pob', 'Enter the place of birth.', 'Indiquez le lieu de naissance.'], ['sex', 'Choose the sex.', 'Choisissez le sexe.'], ['nationality', 'Enter the nationality.', 'Indiquez la nationalité.'], ['nid', 'Enter the national ID number.', 'Indiquez le numéro de la CNI.'], ['phone', 'Enter a telephone number.', 'Indiquez un numéro de téléphone.'], ['email', 'Enter an email address.', 'Indiquez une adresse électronique.'], ['postal', 'Enter the postal address.', 'Indiquez l\'adresse postale.']];
+    if (!p.types.diploma && !p.types.transcript && !p.types.duplicate && !p.types.copy) return bad('ms.tTranscript', 'Please choose at least one document.', 'Veuillez cocher au moins un document.');
+    const personal = [['certName', 'Please enter the full name as on the certificate.', 'Indiquez le nom tel qu\'il figure sur le diplôme.'], ['dob', 'Enter the date of birth.', 'Veuillez indiquer la date de naissance.'], ['pob', 'Please enter the place of birth.', 'Veuillez indiquer le lieu de naissance.'], ['sex', 'Choose the sex.', 'Choisissez le sexe.'], ['nationality', 'Enter the nationality.', 'Indiquez la nationalité.'], ['nid', 'Please enter the national ID number.', 'Veuillez indiquer le numéro de la CNI.'], ['phone', 'Please enter a telephone number.', 'Veuillez indiquer un numéro de téléphone.'], ['email', 'Enter an email address.', 'Veuillez indiquer une adresse électronique.'], ['postal', 'Please enter the postal address.', 'Indiquez l\'adresse postale.']];
     for (const x of personal) if (!p[x[0]]) return bad('ms.' + x[0], x[1], x[2]);
     if (!/^\S+@\S+\.\S+$/.test(p.email)) return bad('ms.email', 'That email address is not valid.', 'Cette adresse électronique n\'est pas valable.');
-    if (!/^\d{4}$/.test(p.gradYear)) return bad('ms.gradYear', 'Enter the four-digit year of graduation.', 'Indiquez l\'année d\'obtention sur quatre chiffres.');
-    if (!p.session) return bad('ms.session', 'Enter the examination session.', 'Indiquez la session d\'examen.');
-    if (!p.resultDate) return bad('ms.resultDate', 'Enter the date the results were published.', 'Indiquez la date de publication des résultats.');
+    if (!/^\d{4}$/.test(p.gradYear)) return bad('ms.gradYear', 'Please enter the four-digit year of graduation.', 'Indiquez l\'année d\'obtention sur quatre chiffres.');
+    if (!p.session) return bad('ms.session', 'Please enter the examination session.', 'Indiquez la session d\'examen.');
+    if (!p.resultDate) return bad('ms.resultDate', 'Please enter the date the results were published.', 'Veuillez indiquer la date de publication des résultats.');
     if (p.reason === 'other' && !(p.reasonOther || '').trim()) return bad('ms.reasonOther', 'Specify the other reason.', 'Précisez le motif.');
-    if (p.delivery === 'school' && !(p.destName || '').trim()) return bad('ms.destName', 'Enter the institution name.', 'Indiquez le nom de l\'établissement.');
-    if (p.delivery === 'school' && !(p.destAddr || '').trim()) return bad('ms.destAddr', 'Enter the institution address.', 'Indiquez l\'adresse de l\'établissement.');
-    if (!p.photos2) return bad('ms.photos2', 'Confirm the two passport photographs.', 'Confirmez les deux photos d\'identité.');
+    if (p.delivery === 'school' && !(p.destName || '').trim()) return bad('ms.destName', 'Please enter the institution name.', 'Indiquez le nom de l\'établissement.');
+    if (p.delivery === 'school' && !(p.destAddr || '').trim()) return bad('ms.destAddr', 'Please enter the institution address.', 'Indiquez l\'adresse de l\'établissement.');
+    if (!p.photos2) return bad('ms.photos2', 'Please confirm the two passport photographs.', 'Confirmez les deux photos d\'identité.');
     const docs = [['id', 'the national ID'], ['birth', 'the birth certificate'], ['results', 'the result slip or success attestation'], ['receipt', 'the fee receipt'], ['photo', 'a passport photograph']];
     const miss = docs.filter(d => !hasD(id, d[0]));
     if (miss.length) { BAD = '#ms-docs'; return LBL('Upload ' + miss.map(d => d[1]).join(', ') + '. Set the correct document type on each file.', 'Envoyez la CNI, l\'acte de naissance, le relevé, le reçu des frais et une photo d\'identité, avec le bon type pour chaque fichier.'); }
-    if (p.reason === 'lost' && !hasD(id, 'police')) { BAD = '#ms-docs'; return LBL('Upload the police loss declaration.', 'Envoyez la déclaration de perte.'); }
-    if (p.delivery === 'rep' && !hasD(id, 'auth')) { BAD = '#ms-docs'; return LBL('Upload the authorisation letter.', 'Envoyez la lettre d\'autorisation.'); }
-    if (!p.declDate) return bad('ms.declDate', 'Enter the declaration date.', 'Indiquez la date de la déclaration.');
-    if (!p.place) return bad('ms.place', 'Enter the place of declaration.', 'Indiquez le lieu de la déclaration.');
-    if (!p.signName) return bad('ms.signName', 'Type your full name as your signature.', 'Saisissez votre nom complet comme signature.');
+    if (p.reason === 'lost' && !hasD(id, 'police')) { BAD = '#ms-docs'; return LBL('Please upload the police loss declaration.', 'Envoyez la déclaration de perte.'); }
+    if (p.delivery === 'rep' && !hasD(id, 'auth')) { BAD = '#ms-docs'; return LBL('Please upload the authorisation letter.', 'Envoyez la lettre d\'autorisation.'); }
+    if (!p.declDate) return bad('ms.declDate', 'Please enter the declaration date.', 'Veuillez indiquer la date de la déclaration.');
+    if (!p.place) return bad('ms.place', 'Please enter the place of declaration.', 'Veuillez indiquer le lieu de la déclaration.');
+    if (!p.signName) return bad('ms.signName', 'Please type your full name as your signature.', 'Veuillez saisir votre nom complet comme signature.');
     if (!p.agree) return bad('ms.agree', 'Accept the declaration.', 'Acceptez la déclaration.');
     return '';
   }
@@ -470,7 +470,7 @@
     if (err) { jumpToBad(err); return toast(err, 1); }
     confirmBox({
       title: LBL('Proofread before final submission', 'Relisez avant l\'envoi définitif'),
-      warn: LBL('Check every name, date and document. After you submit, this application cannot be edited. A false declaration may cause rejection and legal action.', 'Vérifiez chaque nom, date et pièce. Après l\'envoi, cette demande ne pourra plus être modifiée. Toute fausse déclaration peut entraîner le rejet et des poursuites judiciaires.'),
+      warn: LBL('Please check every name, date and document. After you submit, this application cannot be edited. A false declaration may cause rejection and legal action.', 'Vérifiez chaque nom, date et pièce. Après l\'envoi, cette demande ne pourra plus être modifiée. Toute fausse déclaration peut entraîner le rejet et des poursuites judiciaires.'),
       body: summary(st),
       action: 'mssubmit',
       ok: LBL('Submit application', 'Envoyer la demande')
@@ -588,8 +588,8 @@
     const a = S.msapp[el.dataset.id]; if (!a) return;
     const status = el.dataset.s;
     const f = FORMS.msad || {};
-    if (status === 'approved' && !f.elig) return toast(LBL('Confirm that you checked eligibility.', 'Confirmez que vous avez vérifié l\'éligibilité.'), 1);
-    if (status === 'rejected' && !(f.remark || '').trim()) return toast(LBL('Write a remark before rejecting.', 'Rédigez une observation avant de rejeter.'), 1);
+    if (status === 'approved' && !f.elig) return toast(LBL('Please confirm that you checked eligibility.', 'Confirmez que vous avez vérifié l\'éligibilité.'), 1);
+    if (status === 'rejected' && !(f.remark || '').trim()) return toast(LBL('Please write a remark before rejecting.', 'Veuillez rédiger une observation avant de rejeter.'), 1);
     el.disabled = true;
     const n = Object.assign({}, a, { status, remark: f.remark || '', eligOk: status === 'approved' && !!f.elig, endorsedTitle: f.title || a.endorsedTitle || '', endorsedBy: me().name, verifiedBy: me().name, decisionAt: Date.now() });
     try {
@@ -860,8 +860,8 @@
   ACT.msactivate = async el => {
     const f = FORMS.act || {}, email = String(f.email || '').trim().toLowerCase(), otp = String(f.otp || '').trim(), pw = String(f.pw || '');
     const bad = (k, m) => { const box = document.getElementById('aerr'); if (box) box.innerHTML = `<div class="note bad">${esc(m)}</div>`; focusField(k, m); };
-    if (!/^\S+@adiuniversity\.com$/.test(email)) return bad('act.email', LBL('Enter your ADI email address, ending with @adiuniversity.com.', 'Saisissez votre adresse ADI, se terminant par @adiuniversity.com.'));
-    if (!otp) return bad('act.otp', LBL('Enter the one-time password.', 'Saisissez le mot de passe à usage unique.'));
+    if (!/^\S+@adiuniversity\.com$/.test(email)) return bad('act.email', LBL('Please enter your ADI email address, ending with @adiuniversity.com.', 'Veuillez saisir votre adresse ADI, se terminant par @adiuniversity.com.'));
+    if (!otp) return bad('act.otp', LBL('Please enter the one-time password.', 'Veuillez saisir le mot de passe à usage unique.'));
     if (pw.length < 10 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return bad('act.pw', LBL('The new password needs at least 10 characters, a letter and a digit.', 'Le nouveau mot de passe exige au moins 10 caractères, une lettre et un chiffre.'));
     if (pw === otp) return bad('act.pw', LBL('The new password must differ from the one-time password.', 'Le nouveau mot de passe doit différer du mot de passe à usage unique.'));
     if (pw !== f.pw2) return bad('act.pw2', LBL('The two passwords do not match.', 'Les deux mots de passe ne correspondent pas.'));
@@ -876,37 +876,37 @@
 
   /* ===== Guidance text under every field that needs typing ===== */
   const HINTS = [
-    [/^su\.name$/, ['Type your full name exactly as it appears on your birth certificate or national identity card. International students: use your passport. This name becomes your official academic record, so accuracy matters.', 'Saisissez votre nom complet exactement comme sur votre acte de naissance ou votre carte nationale d\'identité. Étudiants internationaux : utilisez votre passeport. Ce nom figurera dans votre dossier académique officiel : veillez à son exactitude.']],
-    [/^su\.email$|contactEmail|^sa\.email$/, ['Type a personal email address that you check often. Messages from ADI, including your sign-in details, are sent here.', 'Saisissez une adresse e-mail personnelle que vous consultez souvent. Les messages de l\'ADI, y compris vos identifiants, y sont envoyés.']],
-    [/^su\.phone$|phone|tel$/, ['Type your telephone number with the area code, for example 6XXXXXXXX or +237 6XXXXXXXX. It is used for payment notices.', 'Saisissez votre numéro de téléphone avec l\'indicatif, par exemple 6XXXXXXXX ou +237 6XXXXXXXX. Il sert aux avis de paiement.']],
-    [/^su\.password$|^act\.pw$/, ['Choose a strong password of at least 8 characters, mixing letters and digits. Do not share it.', 'Choisissez un mot de passe robuste d\'au moins 8 caractères, mêlant lettres et chiffres. Ne le communiquez pas.']],
-    [/^su\.password2$|^act\.pw2$/, ['Type the same password again to confirm it.', 'Saisissez à nouveau le même mot de passe pour le confirmer.']],
-    [/^su\.matric$/, ['Type your ADI matricule as printed on your admission letter or student card, for example ADI26H0001.', 'Saisissez votre matricule ADI tel qu\'il figure sur votre lettre d\'admission ou votre carte, par exemple ADI26H0001.']],
-    [/^lg\.email$/, ['Type your email address. Applicants (including MINESUP) sign in only with the ADI address that ends with @adiuniversity.com. If you do not remember it, use “Find my ADI email and OTP” below the form.', 'Saisissez votre adresse e-mail. Les candidats (MINESUP compris) se connectent uniquement avec l\'adresse ADI se terminant par @adiuniversity.com. En cas d\'oubli, utilisez « Retrouver mon adresse ADI et mon OTP » sous le formulaire.']],
-    [/^lg\.pw$/, ['Type your password: the one you chose at registration, or the new one you created with your OTP.', 'Saisissez votre mot de passe : celui choisi à l\'inscription, ou le nouveau créé avec votre OTP.']],
-    [/^act\.email$/, ['Your ADI address is filled in automatically. If it is empty, copy it from the confirmation email.', 'Votre adresse ADI est renseignée automatiquement. Si le champ est vide, copiez-la depuis l\'e-mail de confirmation.']],
-    [/^act\.otp$/, ['The one-time password is filled in automatically. If it is empty, copy it from the confirmation email.', 'Le mot de passe à usage unique est renseigné automatiquement. Si le champ est vide, copiez-le depuis l\'e-mail de confirmation.']],
-    [/^msc\.matric$/, ['Type your ADI matricule, or choose your name in the list above to fill it for you.', 'Saisissez votre matricule ADI, ou choisissez votre nom dans la liste ci-dessus pour le renseigner.']],
-    [/^msc\.msNo$/, ['Type the MINESUP matricule printed on your HND/BTS registration form, for example 26SWE0762.', 'Saisissez le matricule MINESUP imprimé sur votre fiche d\'inscription HND/BTS, par exemple 26SWE0762.']],
-    [/^msp\.ref$|\.ref$|txn|trans/, ['Type the transaction ID from the Mobile Money confirmation message (at least 6 characters).', 'Saisissez l\'identifiant de transaction du message de confirmation Mobile Money (6 caractères minimum).']],
-    [/^sa\.name$/, ['Type the full name of the person exactly as on their birth certificate or national identity card (passport for international students).', 'Saisissez le nom complet de la personne exactement comme sur son acte de naissance ou sa carte nationale d\'identité (passeport pour les étudiants internationaux).']],
-    [/^sa\.q$|^sa\.dq$|search|\.q$/, ['Type part of a name, email, matricule or reference to filter the list.', 'Saisissez une partie d\'un nom, d\'un e-mail, d\'un matricule ou d\'une référence pour filtrer la liste.']],
-    [/dob|birth.*date|date/, ['Choose or type the date in the format day / month / year.', 'Choisissez ou saisissez la date au format jour / mois / année.']],
-    [/pob|place/, ['Type the town and country as written on your birth certificate.', 'Saisissez la ville et le pays tels qu\'ils figurent sur votre acte de naissance.']],
-    [/certName|fullname|name/, ['Type the name exactly as written on the document it refers to.', 'Saisissez le nom exactement comme sur le document concerné.']],
-    [/email/, ['Type a valid email address, for example name@example.com.', 'Saisissez une adresse e-mail valable, par exemple nom@exemple.com.']],
-    [/matric/, ['Type the matricule exactly as printed on your official document.', 'Saisissez le matricule exactement comme imprimé sur votre document officiel.']],
-    [/amount|fee|price|mark|score|credit/, ['Type the number only, without spaces or letters.', 'Saisissez uniquement le nombre, sans espaces ni lettres.']],
-    [/address|addr|street/, ['Type your full postal or residential address, including the town.', 'Saisissez votre adresse postale ou de résidence complète, avec la ville.']],
-    [/note|remark|comment|reason|body|message|desc|text/, ['Write clearly and briefly. State the facts that the reader needs in order to act.', 'Rédigez clairement et brièvement. Indiquez les faits dont le lecteur a besoin pour agir.']]
+    [/^su\.name$/, ['Please type your full name exactly as it appears on your birth certificate or national identity card. International students are kindly requested to use their passport. This name becomes your official academic record; accuracy is therefore essential.', 'Veuillez saisir votre nom complet exactement tel qu\'il figure sur votre acte de naissance ou votre carte nationale d\'identité. Les étudiants internationaux sont invités à utiliser leur passeport. Ce nom constituera votre dossier académique officiel : son exactitude est donc essentielle.']],
+    [/^su\.email$|contactEmail|^sa\.email$/, ['Please provide a personal email address that you consult regularly. The University will send you official messages there, including your sign-in details.', 'Veuillez indiquer une adresse e-mail personnelle que vous consultez régulièrement. L\'Université y enverra ses messages officiels, y compris vos identifiants de connexion.']],
+    [/^su\.phone$|phone|tel$/, ['Kindly enter your telephone number with the area code, for example 6XXXXXXXX or +237 6XXXXXXXX. It is used for payment notices and account recovery.', 'Veuillez saisir votre numéro de téléphone avec l\'indicatif, par exemple 6XXXXXXXX ou +237 6XXXXXXXX. Il sert aux avis de paiement et à la récupération de votre compte.']],
+    [/^su\.password$|^act\.pw$/, ['Please choose a strong password of at least 8 characters combining letters and digits. Kindly keep it confidential.', 'Veuillez choisir un mot de passe robuste d\'au moins 8 caractères, combinant lettres et chiffres. Nous vous prions de le garder confidentiel.']],
+    [/^su\.password2$|^act\.pw2$/, ['Please enter the same password once more to confirm it.', 'Veuillez saisir de nouveau le même mot de passe pour le confirmer.']],
+    [/^su\.matric$/, ['Please enter your ADI matricule exactly as printed on your admission letter or student card, for example ADI26H0001.', 'Veuillez saisir votre matricule ADI exactement tel qu\'il figure sur votre lettre d\'admission ou votre carte d\'étudiant, par exemple ADI26H0001.']],
+    [/^lg\.email$/, ['Please enter your email address. Applicants, including those applying through MINESUP, sign in with their ADI address ending in @adiuniversity.com. Should you not remember it, kindly use “Find my ADI email and OTP” below the form.', 'Veuillez saisir votre adresse e-mail. Les candidats, y compris ceux du MINESUP, se connectent avec leur adresse ADI se terminant par @adiuniversity.com. Si vous ne vous en souvenez pas, veuillez utiliser « Retrouver mon adresse ADI et mon OTP » sous le formulaire.']],
+    [/^lg\.pw$/, ['Please enter your password: the one you chose at registration, or the new one you created with your one-time password.', 'Veuillez saisir votre mot de passe : celui choisi lors de l\'inscription, ou le nouveau créé avec votre mot de passe à usage unique.']],
+    [/^act\.email$/, ['Your ADI address has been entered for you. Should the field be empty, please copy it from the confirmation email.', 'Votre adresse ADI a été saisie pour vous. Si le champ est vide, veuillez la copier depuis l\'e-mail de confirmation.']],
+    [/^act\.otp$/, ['Your one-time password has been entered for you. Should the field be empty, please copy it from the confirmation email.', 'Votre mot de passe à usage unique a été saisi pour vous. Si le champ est vide, veuillez le copier depuis l\'e-mail de confirmation.']],
+    [/^msc\.matric$/, ['Please enter your ADI matricule, or select your name in the list above and the field will be completed for you.', 'Veuillez saisir votre matricule ADI, ou sélectionner votre nom dans la liste ci-dessus : le champ sera alors complété pour vous.']],
+    [/^msc\.msNo$/, ['Please enter the MINESUP matricule printed on your HND/BTS registration form, for example 26SWE0762.', 'Veuillez saisir le matricule MINESUP imprimé sur votre fiche d\'inscription HND/BTS, par exemple 26SWE0762.']],
+    [/^msp\.ref$|\.ref$|txn|trans/, ['Please enter the transaction ID, exactly 11 digits, from your Mobile Money confirmation message. The screenshot you upload must show this same number.', 'Veuillez saisir l\'identifiant de transaction, exactement 11 chiffres, figurant dans votre message de confirmation Mobile Money. La capture d\'écran téléversée doit afficher ce même numéro.']],
+    [/^sa\.name$/, ['Please enter the person\'s full name exactly as on their birth certificate or national identity card (passport for international students).', 'Veuillez saisir le nom complet de la personne exactement comme sur son acte de naissance ou sa carte nationale d\'identité (passeport pour les étudiants internationaux).']],
+    [/^sa\.q$|^sa\.dq$|search|\.q$/, ['Kindly type part of a name, email, matricule or reference to filter the list.', 'Veuillez saisir une partie d\'un nom, d\'un e-mail, d\'un matricule ou d\'une référence pour filtrer la liste.']],
+    [/dob|birth.*date|date/, ['Please select or type the date in the format day / month / year.', 'Veuillez sélectionner ou saisir la date au format jour / mois / année.']],
+    [/pob|place/, ['Please enter the town and country exactly as written on your birth certificate.', 'Veuillez saisir la ville et le pays tels qu\'ils figurent sur votre acte de naissance.']],
+    [/certName|fullname|name/, ['Please type the name exactly as written on the document to which it refers.', 'Veuillez saisir le nom exactement comme il est écrit sur le document concerné.']],
+    [/email/, ['Please enter a valid email address, for example name@example.com.', 'Veuillez saisir une adresse e-mail valable, par exemple nom@exemple.com.']],
+    [/matric/, ['Please enter the matricule exactly as printed on your official document.', 'Veuillez saisir le matricule exactement comme il est imprimé sur votre document officiel.']],
+    [/amount|fee|price|mark|score|credit/, ['Kindly enter the number only, without spaces or letters.', 'Veuillez saisir uniquement le nombre, sans espaces ni lettres.']],
+    [/address|addr|street/, ['Please provide your complete postal or residential address, including the town.', 'Veuillez indiquer votre adresse postale ou de résidence complète, avec la ville.']],
+    [/note|remark|comment|reason|body|message|desc|text/, ['Kindly write clearly and concisely, stating the facts the reader requires in order to act.', 'Veuillez rédiger de façon claire et concise, en indiquant les faits dont le lecteur a besoin pour agir.']]
   ];
   function hintFor(key, el, label) {
     for (const h of HINTS) if (h[0].test(key)) return LBL(h[1][0], h[1][1]);
-    if (el.tagName === 'SELECT') return LBL('Choose one option from the list.', 'Choisissez une option dans la liste.');
-    if (el.tagName === 'TEXTAREA') return LBL('Write your answer in full sentences; the box grows as you type.', 'Rédigez votre réponse en phrases complètes ; la zone s\'agrandit à mesure que vous écrivez.');
-    if (el.type === 'number') return LBL('Type the number only.', 'Saisissez uniquement le nombre.');
-    if (el.type === 'password') return LBL('Type your password. Use the eye button to check what you typed.', 'Saisissez votre mot de passe. Le bouton en forme d\'œil permet de vérifier votre saisie.');
-    return label ? LBL('Type here: ', 'Saisissez ici : ') + label.replace(/[*:]+$/, '').trim() + '.' : LBL('Type your answer in this field.', 'Saisissez votre réponse dans ce champ.');
+    if (el.tagName === 'SELECT') return LBL('Please select one option from the list.', 'Veuillez sélectionner une option dans la liste.');
+    if (el.tagName === 'TEXTAREA') return LBL('Kindly write your answer in full sentences; the box expands as you type.', 'Veuillez rédiger votre réponse en phrases complètes ; la zone s\'agrandit à mesure que vous écrivez.');
+    if (el.type === 'number') return LBL('Kindly enter the number only.', 'Veuillez saisir uniquement le nombre.');
+    if (el.type === 'password') return LBL('Please enter your password. The eye button allows you to check what you have typed.', 'Veuillez saisir votre mot de passe. Le bouton en forme d\'œil vous permet de vérifier votre saisie.');
+    return label ? LBL('Please complete this field: ', 'Veuillez renseigner ce champ : ') + label.replace(/[*:]+$/, '').trim() + '.' : LBL('Please enter your answer in this field.', 'Veuillez saisir votre réponse dans ce champ.');
   }
   function addHints() {
     document.querySelectorAll('[data-f]').forEach(el => {
