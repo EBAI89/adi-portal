@@ -961,10 +961,10 @@
       const root = document.getElementById('app') || document.body;
       if (/^#\/?$/.test(location.hash)) return;
       const f = Array.from(root.querySelectorAll('input,textarea,select')).filter(el => isField(el) && visible(el) && !el.closest('nav,header,.nav,.topbar,#chat,.chat'));
-      const target = f.find(el => !String(el.value || '').trim()) || null;
+      const target = root.querySelector('.apphero') ? null : (f.find(el => !String(el.value || '').trim()) || null);
       window.scrollTo({ top: 0 });
       if (target) { try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); } setTimeout(() => keepVisible(target), 60); }
-      else { const h = root.querySelector('h1,h2'); if (h) h.scrollIntoView({ block: 'start' }); }
+      else if (!root.querySelector('.apphero')) { const h = root.querySelector('h1,h2'); if (h) h.scrollIntoView({ block: 'start' }); }
     }
     window.addEventListener('hashchange', () => { [250, 800, 1600].forEach(ms => setTimeout(land, ms)); });
     function kbHeight() { const v = window.visualViewport; return v ? Math.max(0, Math.round(window.innerHeight - v.height - v.offsetTop)) : 0; }
