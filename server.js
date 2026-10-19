@@ -93,7 +93,7 @@ function perms(store) { const s = store.get('settings', 'main') || {}; const def
 const RES_FEE_DEF = 1000;
 const resFee = store => { const v = (store.get('settings', 'main') || {}).resultsFee; return v == null || v === '' ? RES_FEE_DEF : Math.max(0, Number(v) || 0); };
 const resKind = (ay, sem) => 'res_' + String(ay).replace('/', '-') + '_' + Number(sem);
-const PLATFORM_FEE = 500, SERVICE_FEE = 2000;
+const PLATFORM_FEE = 500, SERVICE_FEE = 500;
 // Why a payment can be rejected, and the part of a payment already received when the amount was incomplete (the payer then owes only the balance).
 const REJ_CODES = ['not_received', 'incomplete', 'wrong_ref', 'wrong_payee', 'other'];
 const REJ_TXT = { not_received: ['the payment was not received on the ADI MoMo number', 'le paiement n’a pas été reçu sur le numéro MoMo de l’ADI'], incomplete: ['the amount received is incomplete', 'le montant reçu est incomplet'], wrong_ref: ['the transaction ID could not be found or does not match', 'l’identifiant de transaction est introuvable ou ne correspond pas'], wrong_payee: ['the payment was sent to a wrong number', 'le paiement a été envoyé à un mauvais numéro'], other: ['the payment was not accepted', 'le paiement n’a pas été accepté'] };
@@ -2183,15 +2183,15 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'settings' && n && n.site !== undefined) n.site = JSON.parse(JSON.stringify(logic.core.siteSanitize(n.site)));   // site appearance: re-validated on the server whatever the browser sent
   if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email }); if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
   if (c === 'payments') {
-    if (!o && n.kind === 'service') {                                                     // 2,000 XAF service fee: applicants and students, no student record needed
+    if (!o && n.kind === 'service') {                                                     // 500 XAF platform charge (kind 'service'): applicants and students, no student record needed
       if (!['applicant', 'student'].includes(u.role)) throw ['not allowed'];
       const cr0 = logic.creditAvail(S, u.id, 'service', logic.AY()), due0 = logic.SERVICE_FEE - cr0.sum;
       if (Number(n.amount) !== due0) throw ['amount must be ' + due0];
-      if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['service fee already paid or waiting for confirmation'];
+      if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['platform charge already paid or waiting for confirmation'];
       const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       const st0 = R.myStudent(u);
-      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Platform charge (balance)' : 'Platform charge', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
       if (cr0.sum) { n.credited = cr0.sum; n.creditIds = cr0.ids; }
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');
@@ -2767,8 +2767,8 @@ async function route(req, res) {
     const b = await body(req, 20000); const email = String(b.email || '').trim().toLowerCase(), name = String(b.name || '').trim().slice(0, 120);
     if (!name || !/^\S+@\S+\.\S+$/.test(email)) return send(res, 400, { error: 'A valid name and email are required.' });
     if (String(b.password || '').length < 8) return send(res, 400, { error: 'Password must have at least 8 characters.' });
-    const msOnly = String(b.purpose || '') === 'minesup' && String(b.role || 'applicant') === 'applicant';   // independent MINESUP account: never merged with another account that uses the same personal email
-    if (msOnly ? Object.values(S.all('users')).some(x => x.purpose === 'minesup' && String(x.contactEmail || '').toLowerCase() === email) : Object.values(S.all('users')).some(x => x.email === email)) return send(res, 409, { error: 'This email is already registered.' });
+    const msOnly = String(b.purpose || '') === 'minesup' && String(b.role || 'applicant') === 'applicant', adiApp = String(b.role || 'applicant') === 'applicant';   // every applicant receives an ADI address at sign-up   // independent MINESUP account: never merged with another account that uses the same personal email
+    if (msOnly ? Object.values(S.all('users')).some(x => x.purpose === 'minesup' && String(x.contactEmail || '').toLowerCase() === email) : Object.values(S.all('users')).some(x => x.email === email || (x.purpose !== 'minesup' && String(x.contactEmail || '').toLowerCase() === email))) return send(res, 409, { error: 'This email is already registered.' });
     const custom = ((S.get('settings', 'main') || {}).roles || []).map(r => r.id);
     let role = ['applicant', 'student', 'lecturer', 'accountant', 'admin', ...custom].includes(b.role) ? b.role : 'applicant', status = 'active', st = null;
     if (role === 'student') {
@@ -2777,24 +2777,33 @@ async function route(req, res) {
     } else if (role !== 'applicant') status = 'pending';
     const id = uid('u'); const nu = { email, name, phone: String(b.phone || '').slice(0, 30), role, status, lang: b.lang === 'fr' ? 'fr' : 'en', createdAt: now(), pw: await hashPw(b.password) };
     let issued = null;
-    if (msOnly && MB) { issued = await MB.issueForSignup({ id, name, phone: nu.phone }, email); nu.email = issued.email; nu.contactEmail = email; nu.purpose = 'minesup'; }
+    if (adiApp && MB) { issued = await MB.issueForSignup({ id, name, phone: nu.phone }, email, msOnly ? undefined : { title: 'Applicant', titleFr: 'Candidat(e)' }); nu.email = issued.email; nu.contactEmail = email; if (msOnly) nu.purpose = 'minesup'; }
     await save('users', id, nu); if (st) await save('students', st.matric, Object.assign({}, st, { userId: id }));
     await audit(nu, 'signup ' + role + ' ' + email);
     if (status === 'pending') for (const s of usersWith('__super')) await notifyUser(s.id, bi('New account to approve', 'Nouveau compte à approuver'), name + ' (' + role + ')');
-    else sendEmail({ to: email, subject: issued ? bi('Your ADI email address and one-time password', 'Votre adresse ADI et votre mot de passe à usage unique') : bi('Welcome to the ADI portal', 'Bienvenue sur le portail ADI'), text: issued ? 'Dear ' + name + ',\n\nYour ADI account for the MINESUP application has been opened.\n\nADI email address: ' + issued.email + '\nOne-time password: ' + issued.otp + '\n\nKeep this message. You need both items to complete the activation of your account and to choose your own password. Do not share them with anyone.\n\n— — —\n\nChère candidate, cher candidat,\n\nVotre compte ADI pour la demande MINESUP est ouvert.\n\nAdresse ADI : ' + issued.email + '\nMot de passe à usage unique : ' + issued.otp + '\n\nConservez ce message. Vous avez besoin des deux éléments pour activer votre compte et choisir votre propre mot de passe. Ne les communiquez à personne.' : 'Your account is ready. / Votre compte est prêt.' });
+    else sendEmail({ to: email, subject: issued ? bi('Your ADI email address and one-time password', 'Votre adresse ADI et votre mot de passe à usage unique') : bi('Welcome to the ADI portal', 'Bienvenue sur le portail ADI'), text: issued ? 'Dear ' + name + ',\n\nYour ADI account has been opened' + (msOnly ? ' for the MINESUP application' : ' for your admission application') + '.\n\nADI email address: ' + issued.email + '\nOne-time password: ' + issued.otp + '\n\nKeep this message. You need both items to complete the activation of your account and to choose your own password. Do not share them with anyone.\n\n— — —\n\nChère candidate, cher candidat,\n\nVotre compte ADI est ouvert' + (msOnly ? ' pour la demande MINESUP' : ' pour votre demande d’admission') + '.\n\nAdresse ADI : ' + issued.email + '\nMot de passe à usage unique : ' + issued.otp + '\n\nConservez ce message. Vous avez besoin des deux éléments pour activer votre compte et choisir votre propre mot de passe. Ne les communiquez à personne.' : 'Your account is ready. / Votre compte est prêt.' });
     return send(res, 200, issued ? { ok: true, pending: false, adiEmail: issued.email, otp: issued.otp } : { ok: true, pending: status === 'pending' });
   }
   if (p === '/api/login' && req.method === 'POST') {
     const b = await body(req, 10000); const email = String(b.email || '').trim().toLowerCase();
     if (limited('login:' + ip(req) + ':' + email, 8, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
-    let x = Object.values(S.all('users')).find(y => y.email === email || (y.altEmail && String(y.altEmail).toLowerCase() === email));
+    let x = Object.values(S.all('users')).find(y => y.email === email || (y.altEmail && String(y.altEmail).toLowerCase() === email) || (y.role === 'applicant' && String(y.contactEmail || '').toLowerCase() === email));
     let viaMail = false;
     if (!x && MB) {
       const via = await MB.login(email, String(b.password || ''));
       if (via && via.user) { x = via.user; viaMail = true; }
       else if (via && via.error) return send(res, via.status || 401, { error: via.error });
     }
-    if (!x || (!viaMail && !(await checkPw(b.password, x.pw)) && !(MB && x.purpose === 'minesup' && await MB.otpOk(x, b.password)))) return send(res, 401, { error: 'bad_login' });
+    if (!x || (!viaMail && !(await checkPw(b.password, x.pw)) && !(MB && (x.purpose === 'minesup' || x.contactEmail) && await MB.otpOk(x, b.password)))) return send(res, 401, { error: 'bad_login' });
+    // Applicants sign in with their ADI address only. The personal email is kept for contact and recovery.
+    if (MB && x.role === 'applicant' && x.status === 'active' && email !== String(x.email).toLowerCase()) {
+      return send(res, 403, { error: 'adi_only', adiEmail: x.email });
+    }
+    if (MB && x.role === 'applicant' && x.status === 'active' && !viaMail && !String(x.email).toLowerCase().endsWith('@' + MB.DOMAIN)) {   // an applicant registered before ADI addresses: issue one now, then ask for a fresh sign-in
+      const personal = x.email, iss = await MB.issueForSignup({ id: x.id, name: x.name, phone: x.phone }, personal, { title: 'Applicant', titleFr: 'Candidat(e)' });
+      const nx = Object.assign({}, x, { email: iss.email, contactEmail: personal, altEmail: undefined }); delete nx.altEmail; await save('users', x.id, nx); await audit(nx, 'adi address issued at sign-in ' + iss.email);
+      return send(res, 403, { error: 'adi_issued', adiEmail: iss.email, otp: iss.otp });
+    }
     if (x.status === 'pending') return send(res, 403, { error: 'pending' }); if (x.status !== 'active') return send(res, 403, { error: 'suspended' });
     let cur = x; if (!/^scrypt\$/.test(x.pw)) { cur = Object.assign({}, x, { pw: await hashPw(b.password) }); await save('users', x.id, cur); }
     await audit(cur, 'login'); return send(res, 200, { ok: true, me: cur.id }, { 'Set-Cookie': cookie(makeToken(cur), 7 * 86400) });
@@ -2835,12 +2844,12 @@ async function route(req, res) {
     const b = await body(req, 5000); const email = String(b.email || '').trim().toLowerCase();
     if (limited('forgot:' + ip(req), 6, 3600e3) || limited('forgot:' + email, 3, 3600e3)) return send(res, 429, { error: 'Too many requests. Try again later.' });
     const on = emailOn(); const out = { ok: true, email: on };
-    const x = Object.values(S.all('users')).find(y => y.email === email);
+    const x = Object.values(S.all('users')).find(y => y.email === email || (y.role === 'applicant' && String(y.contactEmail || '').toLowerCase() === email));
     if (x && x.status === 'active') {
       const token = crypto.randomBytes(32).toString('base64url'); const key = 'pwr:' + crypto.createHash('sha256').update(token).digest('hex');
       await S.setMeta(key, { uid: x.id, exp: now() + 3600e3 });
       const base = (E.PUBLIC_URL || ('https://' + req.headers.host)).replace(/\/$/, ''); const link = base + '/#/reset/' + token;
-      if (on) sendEmail({ to: x.email, subject: bi('Reset your ADI portal password', 'Réinitialisation de votre mot de passe ADI'), text: 'Hello ' + x.name + ',\n\nTo choose a new password, open this link (valid for 1 hour):\n' + link + '\n\nPour choisir un nouveau mot de passe, ouvrez ce lien (valable 1 heure).\n\nIf you did not ask for this, ignore this email. / Si vous n’avez rien demandé, ignorez ce message.' });
+      if (on) sendEmail({ to: (x.role === 'applicant' && x.contactEmail) || x.email, subject: bi('Reset your ADI portal password', 'Réinitialisation de votre mot de passe ADI'), text: 'Hello ' + x.name + ',\n\nTo choose a new password, open this link (valid for 1 hour):\n' + link + '\n\nPour choisir un nouveau mot de passe, ouvrez ce lien (valable 1 heure).\n\nIf you did not ask for this, ignore this email. / Si vous n’avez rien demandé, ignorez ce message.' });
       if (E.NODE_ENV === 'test') out.devToken = token;
       await audit(x, 'password reset requested');
     }

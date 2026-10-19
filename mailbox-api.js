@@ -224,15 +224,16 @@ module.exports = function makeMailbox(ctx) {
   }
 
   // An independent MINESUP account: the address is issued at sign-up, before the account row exists, so the caller passes the new user's id.
-  async function issueForSignup(user, personal) {
+  async function issueForSignup(user, personal, opts) {
+    opts = opts || {};
     const local = uniqueLocal(suggestLocal(user.name));
     const { rec, otp } = await persist({
       local, kind: 'applicant', role: 'applicant', name: clip(user.name, 160), userId: user.id,
       personalEmail: clip(personal, 160).toLowerCase(), phone: clip(user.phone || '', 40),
-      title: 'MINESUP applicant', titleFr: 'Candidat(e) MINESUP', ref: await nextRef(),
+      title: opts.title || 'MINESUP applicant', titleFr: opts.titleFr || 'Candidat(e) MINESUP', ref: await nextRef(),
       issuedBy: user.id, issuedByName: 'ADI Registry'
     });
-    await audit(Object.assign({ role: 'applicant' }, user), 'mailbox issued ' + rec.email + ' minesup applicant');
+    await audit(Object.assign({ role: 'applicant' }, user), 'mailbox issued ' + rec.email + ' ' + (opts.title ? 'applicant' : 'minesup applicant'));
     return Object.assign(pub(rec), { otp });
   }
   // The one-time password also signs in while the mailbox is not yet activated.

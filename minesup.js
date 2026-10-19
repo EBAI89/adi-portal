@@ -127,7 +127,7 @@
         const ok = st && levelOk(st) && tuitionOk(st);
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${ok ? LBL('Your tuition is confirmed. You may complete the official bilingual application.', 'Votre scolarité est confirmée. Vous pouvez remplir la demande officielle bilingue.') : LBL('An ADI student account is required. The form opens only after Finance confirms that tuition is fully paid.', 'Un compte étudiant ADI est requis. Le formulaire s\'ouvre seulement après confirmation du paiement intégral de la scolarité.')}</p><div class="row">${cta()}</div></div>`;
       } else if (isOwn(u)) {
-        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 2,000 XAF service fee, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
+        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 500 XAF platform charge, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de plateforme de 500 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
       } else if (can('manage_students') || u.role === 'super_admin') {
         const n = Object.values(S.msapp || {}).filter(a => a && a.status === 'submitted').length;
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--crimson)"><p class="ms-kicker">MINESUP</p><h3>${LBL('Applications to review', 'Demandes à examiner')}</h3><div class="kpi">${n}</div><p class="muted small">${LBL('Check eligibility, then approve or reject. Download carries the ADI round seal on every page.', 'Vérifiez l\'éligibilité, puis approuvez ou rejetez. Le téléchargement porte le sceau rond ADI sur chaque page.')}</p><a class="btn" href="#/minesup-admin">${LBL('Open the desk', 'Ouvrir le bureau')}</a></div>`;
@@ -279,7 +279,7 @@
     const fr = LANG === 'fr';
     if (typeof servicePaid === 'function' && !servicePaid(u)) {
       setTimeout(() => { if (typeof go === 'function') go('service-fee'); }, 60);
-      return head() + `<div class="note bad">${LBL('The service fee of 2,000 XAF must be paid and confirmed first. Opening the service-fee page.', 'Les frais de service de 2 000 XAF doivent d\'abord être payés et confirmés. Ouverture de la page des frais de service.')}</div>`;
+      return head() + `<div class="note bad">${LBL('The platform charge of 500 XAF must be paid and confirmed first. Opening the platform-charge page.', 'Les frais de plateforme de 500 XAF doivent d\'abord être payés et confirmés. Ouverture de la page des frais de plateforme.')}</div>`;
     }
     const c = clearFor(u);
     if (!c) { loadClear(); return head() + `<div class="card">${LBL('Checking your clearance…', 'Vérification de votre situation…')}</div>`; }
@@ -337,7 +337,7 @@
       CLEAR = Object.assign({ _for: me().id }, d); FORMS.msc = { matric: '', msNo: '' }; render();
     } catch (e) {
       if (el) el.disabled = false;
-      const msg = e.code === 'service_fee' ? LBL('Pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
+      const msg = e.code === 'service_fee' ? LBL('Pay the platform charge first.', 'Payez d\'abord les frais de plateforme.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
       focusField('msc.msNo', msg); toast(msg, 1);
     }
   };
@@ -847,7 +847,7 @@
   ACT.msissuego = () => { const f = FORMS.issued || {}; FORMS.act = { email: f.email || '', otp: f.otp || '', pw: '', pw2: '' }; go('activate'); };
   function viewActivate() {
     if (!FORMS.act) FORMS.act = { email: '', otp: '', pw: '', pw2: '' };
-    return pubShell(`<div class="auth"><div class="card"><p class="ms-kicker">${LBL('Step 2 of 2', 'Étape 2 sur 2')}</p><h2>${LBL('Activate your ADI account', 'Activez votre compte ADI')}</h2><div id="aerr"></div>
+    return pubShell(`<div class="auth"><div class="card"><p class="ms-kicker">${LBL('Activation', 'Activation')}</p><h2>${LBL('Activate your ADI account', 'Activez votre compte ADI')}</h2><div id="aerr"></div>
       <p class="muted">${LBL('Your ADI email address and one-time password are filled in for you. Choose the new password that you will use to sign in from now on.', 'Votre adresse ADI et votre mot de passe à usage unique sont déjà renseignés. Choisissez le nouveau mot de passe que vous utiliserez désormais pour vous connecter.')}</p>
       ${inp('act.email', LBL('ADI email address', 'Adresse ADI'), { type: 'email' })}${inp('act.otp', LBL('One-time password', 'Mot de passe à usage unique'))}
       ${inp('act.pw', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('act.pw2', LBL('Confirm the new password', 'Confirmez le nouveau mot de passe'), { type: 'password' })}
@@ -880,8 +880,8 @@
     [/^su\.password$|^act\.pw$/, ['Choose a strong password of at least 8 characters, mixing letters and digits. Do not share it.', 'Choisissez un mot de passe robuste d\'au moins 8 caractères, mêlant lettres et chiffres. Ne le communiquez pas.']],
     [/^su\.password2$|^act\.pw2$/, ['Type the same password again to confirm it.', 'Saisissez à nouveau le même mot de passe pour le confirmer.']],
     [/^su\.matric$/, ['Type your ADI matricule as printed on your admission letter or student card, for example ADI26H0001.', 'Saisissez votre matricule ADI tel qu\'il figure sur votre lettre d\'admission ou votre carte, par exemple ADI26H0001.']],
-    [/^lg\.email$/, ['Type the email address you used to register. MINESUP applicants use the ADI address that ends with @adiuniversity.com.', 'Saisissez l\'adresse utilisée à l\'inscription. Les candidats MINESUP utilisent l\'adresse ADI se terminant par @adiuniversity.com.']],
-    [/^lg\.pw$/, ['Type your password. If you have just registered for MINESUP, use the new password you created at activation.', 'Saisissez votre mot de passe. Si vous venez de vous inscrire au MINESUP, utilisez le nouveau mot de passe créé à l\'activation.']],
+    [/^lg\.email$/, ['Type your email address. Applicants (including MINESUP) sign in only with the ADI address that ends with @adiuniversity.com. If you do not remember it, use “Find my ADI email and OTP” below the form.', 'Saisissez votre adresse e-mail. Les candidats (MINESUP compris) se connectent uniquement avec l\'adresse ADI se terminant par @adiuniversity.com. En cas d\'oubli, utilisez « Retrouver mon adresse ADI et mon OTP » sous le formulaire.']],
+    [/^lg\.pw$/, ['Type your password: the one you chose at registration, or the new one you created with your OTP.', 'Saisissez votre mot de passe : celui choisi à l\'inscription, ou le nouveau créé avec votre OTP.']],
     [/^act\.email$/, ['Your ADI address is filled in automatically. If it is empty, copy it from the confirmation email.', 'Votre adresse ADI est renseignée automatiquement. Si le champ est vide, copiez-la depuis l\'e-mail de confirmation.']],
     [/^act\.otp$/, ['The one-time password is filled in automatically. If it is empty, copy it from the confirmation email.', 'Le mot de passe à usage unique est renseigné automatiquement. Si le champ est vide, copiez-le depuis l\'e-mail de confirmation.']],
     [/^msc\.matric$/, ['Type your ADI matricule, or choose your name in the list above to fill it for you.', 'Saisissez votre matricule ADI, ou choisissez votre nom dans la liste ci-dessus pour le renseigner.']],
