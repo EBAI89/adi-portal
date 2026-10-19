@@ -2143,7 +2143,44 @@ function limited(key, max, windowMs) { const t = now(); const a = (HITS.get(key)
 setInterval(() => { const t = now(); for (const [k, a] of HITS) if (!a.some(x => t - x < 3600e3)) HITS.delete(k); }, 600e3).unref();
 
 /* ---------- http helpers ---------- */
-function send(res, code, obj, headers = {}) { const b = JSON.stringify(obj); res.writeHead(code, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, headers)); res.end(b); }
+const zlib = require('zlib');
+function send(res, code, obj, headers = {}) {
+  let b = Buffer.from(JSON.stringify(obj)); const h = Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, headers);
+  const q = res.req; if (b.length > 1400 && q && /\bgzip\b/.test(String(q.headers['accept-encoding'] || ''))) { b = zlib.gzipSync(b, { level: 5 }); h['Content-Encoding'] = 'gzip'; h.Vary = 'Accept-Encoding'; }
+  h['Content-Length'] = b.length; res.writeHead(code, h); res.end(b);
+}
+/* ---------- fast delivery: compressed, cached and revalidated (a 304 costs a few hundred bytes on a weak connection) ---------- */
+let PAGE_C = null;
+function buildPage() {
+  let page = __EMBED_HTML; const v = encodeURIComponent(PORTAL_VER);
+  // the pictures are one very large line of the page script: they move to a separate, long-cached file, so the page itself is far smaller and a returning visitor downloads them only once
+  let img = null; const a = page.indexOf('const IMG = {');
+  if (a >= 0) { const z = page.indexOf('\n', a); const line = page.slice(a, z); if (/\};\s*$/.test(line)) { img = zEntry('img', line + '\n'); page = page.slice(0, a) + '/* IMG: loaded from /assets/img.js */' + page.slice(z); } }
+  page = page.replace(/<link href="https:\/\/cdn\.jsdelivr\.net\/npm\/@fontsource\/geist-sans[^>]*>\s*/g, '');                       // a fourth-choice font: four requests saved
+  page = page.replace(/<link href="(https:\/\/fonts\.googleapis\.com\/css2[^"]*)" rel="stylesheet">/, '<link rel="preload" as="style" href="$1" onload="this.onload=null;this.rel=\'stylesheet\'"><noscript><link rel="stylesheet" href="$1"></noscript>');   // fonts no longer hold up the first paint
+  page = page.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>', '<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>' + (img ? '<script src="/assets/img.js?v=' + img.etag.replace(/"/g, '').slice(0, 10) + '"></script>' : ''));
+  page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css?v=' + v + '"><link rel="stylesheet" href="/mailbox.css?v=' + v + '"><link rel="stylesheet" href="/pager.css?v=' + v + '"></head>').replace('</body>', '<script src="/minesup.js?v=' + v + '"></script><script src="/mailbox.js?v=' + v + '"></script><script src="/pager.js?v=' + v + '"></script><script src="/push.js?v=' + v + '"></script></body>');
+    if (!PROD) {
+      page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
+    }
+  return { page: zEntry('page', page), img };
+}
+const ZC = new Map();
+function zEntry(key, data) {
+  let e = ZC.get(key); if (e && e.src === data) return e;
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+  e = { src: data, buf, etag: '"' + crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 22) + '"', gz: null, br: null, brP: false }; ZC.set(key, e); return e;
+}
+function zServe(req, res, e, headers) {
+  const h = Object.assign({}, headers, { ETag: e.etag, Vary: 'Accept-Encoding' });
+  if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, h); return res.end(); }
+  const a = String(req.headers['accept-encoding'] || ''), enc = /\bbr\b/.test(a) ? 'br' : /\bgzip\b/.test(a) ? 'gzip' : ''; let body = e.buf;
+  if (enc && e.buf.length > 1024) {
+    if (enc === 'br' && !e.br && !e.brP) { e.brP = true; zlib.brotliCompress(e.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: e.buf.length } }, (err, out) => { if (!err) e.br = out; }); }
+    if (enc === 'br' && e.br) { body = e.br; h['Content-Encoding'] = 'br'; } else { if (!e.gz) e.gz = zlib.gzipSync(e.buf, { level: 9 }); body = e.gz; h['Content-Encoding'] = 'gzip'; }
+  }
+  h['Content-Length'] = body.length; res.writeHead(200, h); return res.end(body);
+}
 function body(req, limit) {
   return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > limit) { bad(Object.assign(new Error('too large'), { code: 413 })); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { ok(ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}); } catch (e) { bad(Object.assign(new Error('bad json'), { code: 400 })); } }); req.on('error', bad); });
 }
@@ -2558,8 +2595,7 @@ async function route(req, res) {
     const body = sideFile(p.slice(1));
     if (!body) return send(res, 404, { error: 'missing' });
     const mime = p.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
-    return res.end(body);
+    return zServe(req, res, zEntry('side:' + p, body), { 'Content-Type': mime, 'Cache-Control': url.searchParams.get('v') && p !== '/sw.js' ? 'public, max-age=31536000, immutable' : 'no-cache', 'X-Content-Type-Options': 'nosniff' });
   }
   if (p === '/vendor/pptxgen-4.0.1.js' && req.method === 'GET') { res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' }); return res.end(pptxLib()); }
   // Preview-only download. Hidden when NODE_ENV=production (the live school site).
@@ -2570,14 +2606,11 @@ async function route(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="ADI-portal-kit.zip"', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
     return res.end(buf);
   }
+  if (p === '/assets/img.js' && req.method === 'GET') { if (!PAGE_C) PAGE_C = buildPage(); if (!PAGE_C.img) return send(res, 404, { error: 'missing' }); return zServe(req, res, PAGE_C.img, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' }); }
   if (!p.startsWith('/api/')) {
     if (req.method !== 'GET') return send(res, 405, { error: 'method' });
-    let page = __EMBED_HTML;
-    page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css"><link rel="stylesheet" href="/mailbox.css"><link rel="stylesheet" href="/pager.css"></head>').replace('</body>', '<script src="/minesup.js"></script><script src="/mailbox.js"></script><script src="/pager.js"></script><script src="/push.js"></script></body>');
-    if (!PROD) {
-      page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
-    }
-    res.writeHead(200, Object.assign({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }, secNow())); return res.end(page);
+    if (!PAGE_C) PAGE_C = buildPage();
+    return zServe(req, res, PAGE_C.page, Object.assign({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }, secNow()));
   }
   if (req.method !== 'GET' && !sameOrigin(req)) return send(res, 403, { error: 'origin' });
   if (req.method !== 'GET' && req.method !== 'DELETE' && !/application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'json required' });
