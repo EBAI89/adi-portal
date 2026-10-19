@@ -123,9 +123,9 @@ async function apply(ctx, u, id, o, n) {
     const st = own ? S.get('students', u.msMatric) : R.myStudent(u);
     if (!st || !(u.role === 'student' || own) || st.matric !== clip(n.matric, 40)) throw ['Only an ADI student cleared by matricule can apply. / Seul un étudiant ADI dont le matricule est vérifié peut postuler.'];
     if (!msVerified(S, u, st)) throw ['The unique MINESUP HND/BTS matricule (from your registration form) is not verified. / Le matricule unique HND/BTS attribué par le MINESUP (sur votre fiche d\'inscription) n\'est pas vérifié.'];
-    if (!serviceOk(S, u.id)) throw ['The platform charge (500 XAF) is not paid and confirmed. / Les frais de plateforme (500 XAF) ne sont pas payés et confirmés.'];
+    if (!serviceOk(S, u.id)) throw ['The service fee (2,000 XAF) is not paid and confirmed. / Les frais de service (2 000 XAF) ne sont pas payés et confirmés.'];
     if (!LEVELS.includes(st.level)) throw ['This form is only for HND and BTS. / Ce formulaire est réservé au HND et au BTS.'];
-    if (!logic.platformOk(S, st)) throw ['The platform charge (500 XAF) is not paid and confirmed. / Les frais de plateforme (500 XAF) ne sont pas payés et confirmés.'];
+    if (!logic.platformOk(S, st)) throw ['The service fee (2,000 XAF) is not paid and confirmed. / Les frais de service (2 000 XAF) ne sont pas payés et confirmés.'];
     if (!tuitionComplete(logic, S, st)) throw ['Tuition is not fully paid and confirmed. / La scolarité n\'est pas entièrement payée et confirmée.'];
     if (Object.values(S.all('msapp')).some(a => a && a.userId === u.id && a.status === 'submitted')) throw ['An application is already awaiting review. / Une demande est déjà en examen.'];
     const files = filesOf(S, id, u.id);

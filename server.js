@@ -93,7 +93,7 @@ function perms(store) { const s = store.get('settings', 'main') || {}; const def
 const RES_FEE_DEF = 1000;
 const resFee = store => { const v = (store.get('settings', 'main') || {}).resultsFee; return v == null || v === '' ? RES_FEE_DEF : Math.max(0, Number(v) || 0); };
 const resKind = (ay, sem) => 'res_' + String(ay).replace('/', '-') + '_' + Number(sem);
-const PLATFORM_FEE = 500, SERVICE_FEE = 500;
+const PLATFORM_FEE = 500, SERVICE_FEE = 2000;
 // Why a payment can be rejected, and the part of a payment already received when the amount was incomplete (the payer then owes only the balance).
 const REJ_CODES = ['not_received', 'incomplete', 'wrong_ref', 'wrong_payee', 'other'];
 const REJ_TXT = { not_received: ['the payment was not received on the ADI MoMo number', 'le paiement n’a pas été reçu sur le numéro MoMo de l’ADI'], incomplete: ['the amount received is incomplete', 'le montant reçu est incomplet'], wrong_ref: ['the transaction ID could not be found or does not match', 'l’identifiant de transaction est introuvable ou ne correspond pas'], wrong_payee: ['the payment was sent to a wrong number', 'le paiement a été envoyé à un mauvais numéro'], other: ['the payment was not accepted', 'le paiement n’a pas été accepté'] };
@@ -2183,15 +2183,15 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'settings' && n && n.site !== undefined) n.site = JSON.parse(JSON.stringify(logic.core.siteSanitize(n.site)));   // site appearance: re-validated on the server whatever the browser sent
   if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email }); if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
   if (c === 'payments') {
-    if (!o && n.kind === 'service') {                                                     // 500 XAF platform charge (kind 'service'): applicants and students, no student record needed
+    if (!o && n.kind === 'service') {                                                     // 2,000 XAF service fee (kind 'service'): MINESUP transcript applicants, no student record needed
       if (!['applicant', 'student'].includes(u.role)) throw ['not allowed'];
       const cr0 = logic.creditAvail(S, u.id, 'service', logic.AY()), due0 = logic.SERVICE_FEE - cr0.sum;
       if (Number(n.amount) !== due0) throw ['amount must be ' + due0];
-      if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['platform charge already paid or waiting for confirmation'];
+      if (Object.values(S.all('payments')).some(p => p && p.userId === u.id && p.kind === 'service' && ['pending', 'confirmed'].includes(p.status))) throw ['service fee already paid or waiting for confirmation'];
       const ref = String(n.ref || '').trim(); if (!/^\d{11}$/.test(ref)) throw ['transaction id must be exactly 11 digits (numbers only)'];
       if (Object.values(S.all('payments')).some(p => String(p.ref).toLowerCase() === ref.toLowerCase())) throw ['duplicate transaction id'];
       const st0 = R.myStudent(u);
-      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Platform charge (balance)' : 'Platform charge', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
+      n = { userId: u.id, matric: st0 ? st0.matric : '', payerName: u.name, kind: 'service', label: cr0.sum ? 'Service fee (balance)' : 'Service fee', amount: due0, ref, payerPhone: String(n.payerPhone || '').slice(0, 30), status: 'pending', at: now(), ay: logic.AY(), momoTo: n.momoTo, method: 'manual' };
       if (cr0.sum) { n.credited = cr0.sum; n.creditIds = cr0.ids; }
       await save(c, id, n);
       for (const s of usersWith('verify_payments')) await notifyUser(s.id, bi('Payment to verify', 'Paiement à vérifier'), n.payerName + ' — ' + xaf(n.amount) + ' (' + n.ref + ')');

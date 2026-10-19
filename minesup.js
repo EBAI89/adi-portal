@@ -127,7 +127,7 @@
         const ok = st && levelOk(st) && tuitionOk(st);
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${ok ? LBL('Your tuition is confirmed. You may complete the official bilingual application.', 'Votre scolarité est confirmée. Vous pouvez remplir la demande officielle bilingue.') : LBL('An ADI student account is required. The form opens only after Finance confirms that tuition is fully paid.', 'Un compte étudiant ADI est requis. Le formulaire s\'ouvre seulement après confirmation du paiement intégral de la scolarité.')}</p><div class="row">${cta()}</div></div>`;
       } else if (isOwn(u)) {
-        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 500 XAF platform charge, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de plateforme de 500 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
+        h += `<div class="card gap ms-pop" style="border-top:4px solid var(--gold)"><p class="ms-kicker">MINESUP · HND / BTS</p><h3>${LBL('Transcript or diploma', 'Relevé de notes ou diplôme')}</h3><p class="muted">${LBL('Pay the 2,000 XAF service fee, enter your MINESUP matricule (like 26SWE0762), and clear your registration and tuition. Then the application form opens.', 'Réglez les frais de service de 2 000 XAF, saisissez votre matricule MINESUP (comme 26SWE0762) et soldez inscription et scolarité. Le formulaire s\'ouvre ensuite.')}</p><div class="row">${cta()}</div></div>`;
       } else if (can('manage_students') || u.role === 'super_admin') {
         const n = Object.values(S.msapp || {}).filter(a => a && a.status === 'submitted').length;
         h += `<div class="card gap ms-pop" style="border-top:4px solid var(--crimson)"><p class="ms-kicker">MINESUP</p><h3>${LBL('Applications to review', 'Demandes à examiner')}</h3><div class="kpi">${n}</div><p class="muted small">${LBL('Check eligibility, then approve or reject. Download carries the ADI round seal on every page.', 'Vérifiez l\'éligibilité, puis approuvez ou rejetez. Le téléchargement porte le sceau rond ADI sur chaque page.')}</p><a class="btn" href="#/minesup-admin">${LBL('Open the desk', 'Ouvrir le bureau')}</a></div>`;
@@ -279,7 +279,7 @@
     const fr = LANG === 'fr';
     if (typeof servicePaid === 'function' && !servicePaid(u)) {
       setTimeout(() => { if (typeof go === 'function') go('service-fee'); }, 60);
-      return head() + `<div class="note bad">${LBL('The platform charge of 500 XAF must be paid and confirmed first. Opening the platform-charge page.', 'Les frais de plateforme de 500 XAF doivent d\'abord être payés et confirmés. Ouverture de la page des frais de plateforme.')}</div>`;
+      return head() + `<div class="note bad">${LBL('The service fee of 2,000 XAF must be paid and confirmed first. Opening the service-fee page.', 'Les frais de service de 2 000 XAF doivent d\'abord être payés et confirmés. Ouverture de la page des frais de service.')}</div>`;
     }
     const c = clearFor(u);
     if (!c) { loadClear(); return head() + `<div class="card">${LBL('Checking your clearance…', 'Vérification de votre situation…')}</div>`; }
@@ -337,7 +337,7 @@
       CLEAR = Object.assign({ _for: me().id }, d); FORMS.msc = { matric: '', msNo: '' }; render();
     } catch (e) {
       if (el) el.disabled = false;
-      const msg = e.code === 'service_fee' ? LBL('Pay the platform charge first.', 'Payez d\'abord les frais de plateforme.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
+      const msg = e.code === 'service_fee' ? LBL('Pay the service fee first.', 'Payez d\'abord les frais de service.') : (e.message || LBL('Could not verify', 'Vérification impossible'));
       focusField('msc.msNo', msg); toast(msg, 1);
     }
   };
