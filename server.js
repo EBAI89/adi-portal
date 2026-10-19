@@ -222,7 +222,7 @@ module.exports = function makeRules(store, logic) {
     if (!u) return c === 'notices' && d.aud === 'all' ? d : null; // notices addressed to everybody are shown on the public home page
 
     switch (c) {
-      case 'users': { const { pw, ...safe } = d; if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
+      case 'users': { const { pw, totp, totpPending, ...safe } = d; safe.mfa = !!(totp && totp.on); safe.mfaReq = !!(typeof globalThis.ADI_MFA_REQ === 'function' && globalThis.ADI_MFA_REQ(d)); if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
       case 'apps': return d.userId === u.id || sany(u, 'manage_applications', 'view_students', 'manage_students') ? d : null;
       case 'students': return d.userId === u.id || sany(u, 'view_students', 'manage_students', 'manage_applications', 'view_classlists', 'verify_payments', 'enter_results', 'publish_results', 'manage_transcripts', 'finance_reports') ? d : null;
       case 'payments': return d.userId === u.id || (d.matric && (ownsMatric(u, d.matric) || (u.purpose === 'minesup' && u.msMatric === d.matric))) || sany(u, 'verify_payments', 'finance_reports', 'view_students', 'manage_students', 'view_classlists') || (/^tr_/.test(d.kind || '') && sany(u, 'manage_transcripts')) ? d : null;
@@ -2106,6 +2106,33 @@ function readToken(t, info) {
 const cookie = (tok, maxAge) => `adi_sid=${tok}; Path=/; HttpOnly; SameSite=Lax;${maxAge > 0 ? '' : ' Max-Age=0;'}${PROD ? ' Secure;' : ''}`.replace(/;$/, '');
 function userOf(req, info) { const m = /(?:^|;\s*)adi_sid=([^;]+)/.exec(req.headers.cookie || ''); return m ? readToken(m[1], info) : null; }
 
+
+/* ---------- two-step verification (TOTP, RFC 6238) for privileged accounts ---------- */
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const b32enc = buf => { let bits = '', out = ''; for (const x of buf) bits += x.toString(2).padStart(8, '0'); for (let i = 0; i < bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)]; return out; };
+const b32dec = str => { let bits = ''; for (const ch of String(str).toUpperCase().replace(/[^A-Z2-7]/g, '')) bits += B32.indexOf(ch).toString(2).padStart(5, '0'); const out = []; for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(out); };
+function totpAt(secret, step) { const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(step)); const h = crypto.createHmac('sha1', b32dec(secret)).update(c).digest(), o = h[h.length - 1] & 15, n = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]; return String(n % 1e6).padStart(6, '0'); }
+function totpCheck(secret, code, last) { code = String(code || '').replace(/\s/g, ''); if (!/^\d{6}$/.test(code)) return 0; const st = Math.floor(now() / 30000); for (const d of [0, -1, 1]) { const s2 = st + d; if (s2 <= (last || 0)) continue; const a = Buffer.from(totpAt(secret, s2)), b = Buffer.from(code); if (crypto.timingSafeEqual(a, b)) return s2; } return 0; }
+const MFA_KEY = () => crypto.createHash('sha256').update('adi-totp|' + SECRET).digest();
+function mfaSeal(txt) { const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', MFA_KEY(), iv), e = Buffer.concat([c.update(txt, 'utf8'), c.final()]); return iv.toString('base64url') + '.' + e.toString('base64url') + '.' + c.getAuthTag().toString('base64url'); }
+function mfaOpen(v) { try { const [a, b, t] = String(v).split('.'), d = crypto.createDecipheriv('aes-256-gcm', MFA_KEY(), Buffer.from(a, 'base64url')); d.setAuthTag(Buffer.from(t, 'base64url')); return Buffer.concat([d.update(Buffer.from(b, 'base64url')), d.final()]).toString('utf8'); } catch (e) { return ''; } }
+const MFA_ROLES = String(E.MFA_ROLES || 'super_admin,admin').split(',').map(x => x.trim()).filter(Boolean);
+const MFA_ENFORCE = PROD ? E.MFA_ENFORCE !== 'false' : E.MFA_ENFORCE === 'true';
+const mfaRequired = u => !!u && MFA_ENFORCE && MFA_ROLES.includes(u.role);
+globalThis.ADI_MFA_REQ = mfaRequired;
+const mfaOn = u => !!(u && u.totp && u.totp.on);
+const mfaPending = u => mfaRequired(u) && !mfaOn(u);
+const recHash = c => crypto.createHash('sha256').update('rec|' + String(c).toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
+function newRecovery() { const out = []; for (let i = 0; i < 8; i++) { const r = crypto.randomBytes(5).toString('hex').toUpperCase(); out.push(r.slice(0, 5) + '-' + r.slice(5)); } return out; }
+const mfaTicket = u => { const v = 'm.' + u.id + '.' + (now() + 5 * 60e3); return v + '.' + sign(v); };
+function mfaTicketUser(t) { const p = String(t || '').split('.'); if (p.length !== 4 || p[0] !== 'm') return null; const v = p.slice(0, 3).join('.'), a = Buffer.from(sign(v)), b = Buffer.from(p[3]); if (a.length !== b.length || !crypto.timingSafeEqual(a, b) || Number(p[2]) < now()) return null; const u = S.get('users', p[1]); return u && u.status === 'active' ? u : null; }
+// returns the updated user record when the code is a valid authenticator code or an unused recovery code; otherwise null
+async function mfaVerify(u, code) {
+  const t = u.totp; if (!t || !t.on) return u;
+  const st = totpCheck(mfaOpen(t.secret), code, t.last); if (st) { const n = Object.assign({}, u, { totp: Object.assign({}, t, { last: st }) }); await save('users', u.id, n); return n; }
+  const h = recHash(code); if ((t.rec || []).includes(h)) { const n = Object.assign({}, u, { totp: Object.assign({}, t, { rec: t.rec.filter(x => x !== h) }) }); await save('users', u.id, n); await audit(u, 'two-step: recovery code used'); return n; }
+  return null;
+}
 const emailOn = () => ['resend', 'brevo'].includes(String(E.EMAIL_PROVIDER || '').toLowerCase());
 function tempPassword() { const A = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'; let s = ''; const r = crypto.randomBytes(12); for (let i = 0; i < 12; i++) s += A[r[i] % A.length]; return s.slice(0, 4) + '-' + s.slice(4, 8) + '-' + s.slice(8); }
 function pwChangedMail(x) { if (emailOn() && x.email) sendEmail({ to: x.email, subject: bi('Your ADI portal password was changed', 'Votre mot de passe ADI a été modifié'), text: 'Your password was just changed. If this was not you, contact ' + INBOX() + ' immediately.\n\nVotre mot de passe vient d’être modifié. Si ce n’est pas vous, contactez ' + INBOX() + ' immédiatement.' }); }
@@ -2186,7 +2213,7 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'settings' && n && n.cls !== undefined) n.cls = JSON.parse(JSON.stringify(logic.core.clsCfg(n.cls)));
   if (c === 'settings' && n && n.lib !== undefined) n.lib = JSON.parse(JSON.stringify(logic.core.libCfgSanitize(n.lib)));
   if (c === 'settings' && n && n.site !== undefined) n.site = JSON.parse(JSON.stringify(logic.core.siteSanitize(n.site)));   // site appearance: re-validated on the server whatever the browser sent
-  if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email }); if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
+  if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email, totp: o.totp, totpPending: o.totpPending }); delete n.mfa; delete n.mfaReq; if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
   if (c === 'payments') {
     if (!o && n.kind === 'service') {                                                     // 2,000 XAF service fee (kind 'service'): MINESUP transcript applicants, no student record needed
       if (!['applicant', 'student'].includes(u.role)) throw ['not allowed'];
@@ -2392,8 +2419,8 @@ async function ai(u, b) {
 const INDEX = path.join(__dirname, 'public', 'index.html');
 let SEAL_JSON = ''; const SIGS_JSON = typeof __EMBED_SIGS !== 'undefined' ? __EMBED_SIGS : fs.readFileSync(path.join(__dirname, 'lib', 'signatures.json'), 'utf8');
 const SEC = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self'; frame-src 'self' blob: https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'" };
-if (PROD) SEC['Strict-Transport-Security'] = 'max-age=31536000';
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self'; frame-src 'self' blob: https://www.youtube-nocookie.com https://player.vimeo.com https://drive.google.com; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" };
+if (PROD) { SEC['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains'; SEC['Content-Security-Policy'] += '; upgrade-insecure-requests'; SEC['Cross-Origin-Opener-Policy'] = 'same-origin'; }
 // If the super administrator configures the school's own Jitsi server, the portal may show its video room in a frame and use the camera there — that one address only.
 function secNow() {
   const d = logic.core.clsCfg((S && S.get('settings', 'main') || {}).cls).jitsiDomain;
@@ -2435,6 +2462,7 @@ function sideMod(name) {
 async function route(req, res) {
   const url = new URL(req.url, 'http://x'); const p = url.pathname; const sinfo = {}; const u = userOf(req, sinfo);
   if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
+  if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
   if (p === '/calendar.ics' && req.method === 'GET') {          // the public calendar: people can subscribe to it, and their phone calendar follows any change the university makes
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
@@ -2765,7 +2793,7 @@ async function route(req, res) {
     const q = url.searchParams, since = Number(q.get('since') || 0), vk = vkey(u);
     const full = q.get('epoch') !== EPOCH || q.get('vk') !== vk || since < TOMB_FLOOR || since > SEQ;
     const out = { epoch: EPOCH, seq: SEQ, vk, me: u ? u.id : null, full, cols: {}, del: [] };
-    for (const c of COLS) { const m = {}; for (const [id, d] of Object.entries(S.all(c))) { if (!full && !(d._seq > since)) continue; const v = R.read(u, c, d); if (v) m[id] = v; else if (!full) out.del.push([c, id]); } out.cols[c] = m; }
+    const hold = !!(u && mfaPending(u)); for (const c of COLS) { const m = {}; if (hold && !['users', 'settings'].includes(c)) { out.cols[c] = m; continue; } for (const [id, d] of Object.entries(S.all(c))) { if (hold && c === 'users' && id !== u.id) continue; if (!full && !(d._seq > since)) continue; const v = R.read(u, c, d); if (v) m[id] = v; else if (!full) out.del.push([c, id]); } out.cols[c] = m; }
     if (!full) TOMB.filter(x => x.seq > since).forEach(x => out.del.push([x.c, x.id]));
     return send(res, 200, out);
   }
@@ -2813,7 +2841,14 @@ async function route(req, res) {
     }
     if (x.status === 'pending') return send(res, 403, { error: 'pending' }); if (x.status !== 'active') return send(res, 403, { error: 'suspended' });
     let cur = x; if (!/^scrypt\$/.test(x.pw)) { cur = Object.assign({}, x, { pw: await hashPw(b.password) }); await save('users', x.id, cur); }
+    if (mfaOn(cur)) return send(res, 200, { mfa: true, ticket: mfaTicket(cur) });
     await audit(cur, 'login'); return send(res, 200, { ok: true, me: cur.id }, { 'Set-Cookie': cookie(makeToken(cur), 7 * 86400) });
+  }
+  if (p === '/api/login/mfa' && req.method === 'POST') {
+    const b = await body(req, 4000), x = mfaTicketUser(b.ticket); if (!x) return send(res, 401, { error: 'mfa_expired' });
+    if (limited('mfa:' + x.id, 6, 900e3) || limited('mfaip:' + ip(req), 20, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
+    const cur = await mfaVerify(x, b.code); if (!cur) { await audit(x, 'two-step: wrong code'); return send(res, 401, { error: 'mfa_bad' }); }
+    await audit(cur, 'login (two-step)'); return send(res, 200, { ok: true, me: cur.id }, { 'Set-Cookie': cookie(makeToken(cur), 7 * 86400) });
   }
   if (p === '/api/logout' && req.method === 'POST') { if (u) await audit(u, 'logout'); return send(res, 200, { ok: true }, { 'Set-Cookie': cookie('', 0) }); }
   if (p === '/api/password' && req.method === 'POST') {
@@ -2822,12 +2857,38 @@ async function route(req, res) {
     const n = Object.assign({}, u, { pw: await hashPw(b.new), mustChange: false }); await save('users', u.id, n); if (MB) { try { await MB.onUserPassword(n); } catch (e) { console.error('[mail]', e && e.message || e); } } await audit(u, 'password changed'); pwChangedMail(n);
     return send(res, 200, { ok: true }, { 'Set-Cookie': cookie(makeToken(n), 7 * 86400) });
   }
+  if (u && p === '/api/mfa/begin' && req.method === 'POST') {
+    if (mfaOn(u)) return send(res, 400, { error: 'mfa_on' });
+    const sec = b32enc(crypto.randomBytes(20)); await save('users', u.id, Object.assign({}, u, { totpPending: mfaSeal(sec) }));
+    const issuer = 'ADI University'; return send(res, 200, { secret: sec.match(/.{1,4}/g).join(' '), uri: 'otpauth://totp/' + encodeURIComponent(issuer + ':' + u.email) + '?secret=' + sec + '&issuer=' + encodeURIComponent(issuer) + '&algorithm=SHA1&digits=6&period=30' });
+  }
+  if (u && p === '/api/mfa/confirm' && req.method === 'POST') {
+    const b = await body(req, 2000); if (!u.totpPending) return send(res, 400, { error: 'mfa_none' });
+    if (limited('mfacf:' + u.id, 10, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
+    const sec = mfaOpen(u.totpPending), st = totpCheck(sec, b.code, 0); if (!st) return send(res, 400, { error: 'mfa_bad' });
+    const rec = newRecovery(), n = Object.assign({}, u, { totp: { on: true, secret: mfaSeal(sec), last: st, rec: rec.map(recHash), at: now() } }); delete n.totpPending; await save('users', u.id, n); await audit(u, 'two-step verification enabled');
+    return send(res, 200, { ok: true, recovery: rec });
+  }
+  if (u && p === '/api/mfa/recovery' && req.method === 'POST') {
+    const b = await body(req, 2000); if (!mfaOn(u)) return send(res, 400, { error: 'mfa_none' }); if (!(await checkPw(b.password, u.pw))) return send(res, 400, { error: 'bad_login' });
+    const v = await mfaVerify(u, b.code); if (!v) return send(res, 400, { error: 'mfa_bad' });
+    const rec = newRecovery(); await save('users', u.id, Object.assign({}, v, { totp: Object.assign({}, v.totp, { rec: rec.map(recHash) }) })); await audit(u, 'two-step recovery codes regenerated'); return send(res, 200, { ok: true, recovery: rec });
+  }
+  if (u && p === '/api/mfa/disable' && req.method === 'POST') {
+    const b = await body(req, 2000); if (mfaRequired(u)) return send(res, 403, { error: 'mfa_required' });
+    if (!mfaOn(u)) return send(res, 200, { ok: true }); if (!(await checkPw(b.password, u.pw))) return send(res, 400, { error: 'bad_login' });
+    const v = await mfaVerify(u, b.code); if (!v) return send(res, 400, { error: 'mfa_bad' }); const n = Object.assign({}, v); delete n.totp; delete n.totpPending; await save('users', u.id, n); await audit(u, 'two-step verification disabled'); return send(res, 200, { ok: true });
+  }
+  if (u && p === '/api/mfa/reset' && req.method === 'POST') {
+    if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' }); const b = await body(req, 2000), x = S.get('users', String(b.userId || ''));
+    if (!x || x.id === u.id) return send(res, 400, { error: 'mfa_none' }); const n = Object.assign({}, x); delete n.totp; delete n.totpPending; await save('users', x.id, n); await audit(u, 'two-step verification reset for ' + x.email); return send(res, 200, { ok: true });
+  }
   let m;
   if ((m = /^\/api\/doc\/(\w+)\/([\w.-]{1,120})$/.exec(p)) && (req.method === 'PUT' || req.method === 'DELETE')) {
     const [, c, id] = m; if (!COLS.includes(c)) return send(res, 404, { error: 'collection' });
     if (!u && limited('anon:' + ip(req), 5, 3600e3)) return send(res, 429, { error: 'Too many messages' });
     const o = S.get(c, id); const n = req.method === 'DELETE' ? null : await body(req, c === 'apps' ? 400000 : 250000);
-    if (n) { delete n.id; delete n.pw; delete n._seq; }
+    if (n) { delete n.id; delete n.pw; delete n._seq; delete n.totp; delete n.totpPending; delete n.mfa; delete n.mfaReq; }
     const ok = R.write(u, c, id, o, n); if (ok !== true) return send(res, 403, { error: ok });
     try { await applyWrite(u, c, id, o, n); } catch (e) { if (Array.isArray(e)) return send(res, 400, { error: e[0] }); throw e; }
     return send(res, 200, { ok: true });
@@ -3355,7 +3416,7 @@ async function seed() {
   if (E.SUPER_ADMIN_PASSWORD.length < 10) { console.error('SUPER_ADMIN_PASSWORD must have at least 10 characters — super admin NOT set. Change it in the Environment tab.'); return; }
   const email = E.SUPER_ADMIN_EMAIL.trim().toLowerCase(); const ex = Object.values(S.all('users')).find(x => x.email === email);
   if (ex) {
-    await save('users', ex.id, Object.assign({}, ex, { role: 'super_admin', status: 'active', pw: await hashPw(E.SUPER_ADMIN_PASSWORD), mustChange: false }));
+    { const nx = Object.assign({}, ex, { role: 'super_admin', status: 'active', pw: await hashPw(E.SUPER_ADMIN_PASSWORD), mustChange: false }); if (E.SUPER_ADMIN_MFA_RESET === 'true') { delete nx.totp; delete nx.totpPending; console.warn('[security] SUPER_ADMIN_MFA_RESET=true: two-step verification cleared for the super administrator. Remove this variable now.'); } await save('users', ex.id, nx); }
     console.log('Super admin login reset for', email, '— now delete SUPER_ADMIN_RESET from the Environment so it is not reset at every restart.'); return;
   }
   await save('users', uid('u'), { email, name: E.SUPER_ADMIN_NAME || 'Super Administrator', phone: E.SUPER_ADMIN_PHONE || '', role: 'super_admin', status: 'active', createdAt: now(), pw: await hashPw(E.SUPER_ADMIN_PASSWORD) });
