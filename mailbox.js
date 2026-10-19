@@ -89,7 +89,7 @@
 
   function viewMail() {
     const u = me();
-    if (!u) return `<div class="note">${LBL('Sign in to open your ADI mailbox.', 'Connectez-vous pour ouvrir votre messagerie ADI.')}</div>`;
+    if (!u) return `<div class="note">${LBL('Please sign in to open your ADI mailbox.', 'Veuillez vous connecter pour ouvrir votre messagerie ADI.')}</div>`;
     if (!DESK || DESK._for !== u.id) {
       DESK = { loading: true, _for: u.id, officer: u.role === 'super_admin', mine: mineOf(), rows: [] };
       refresh();
@@ -103,7 +103,7 @@
       h += credCard(mine, { reveal: true, seal: (typeof SIGS !== 'undefined' && SIGS && SIGS.seal) ? `<img class="mb-seal" alt="" src="data:image/png;base64,${SIGS.seal.png}">` : '' });
       if (mine.status === 'pending_setup') {
         if (!FORMS.mb) FORMS.mb = { otp: '', password: '', password2: '' };
-        h += `<div class="card gap"><h3>${LBL('Activate this mailbox', 'Activer cette messagerie')}</h3><p class="muted">${LBL('Enter the one-time password from your letter, then choose your own password. At least 10 characters, with a letter and a digit.', 'Saisissez le mot de passe à usage unique de votre lettre, puis choisissez le vôtre. Au moins 10 caractères, avec une lettre et un chiffre.')}</p><div class="grid g2">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div><button class="btn gold" data-a="mailsetup">${LBL('Activate mailbox', 'Activer la messagerie')}</button></div>`;
+        h += `<div class="card gap"><h3>${LBL('Activate this mailbox', 'Activer cette messagerie')}</h3><p class="muted">${LBL('Please enter the one-time password from your letter, then choose your own password. At least 10 characters, with a letter and a digit.', 'Veuillez saisir le mot de passe à usage unique de votre lettre, puis choisissez le vôtre. Au moins 10 caractères, avec une lettre et un chiffre.')}</p><div class="grid g2">${inp('mb.otp', LBL('One-time password', 'Mot de passe à usage unique'))}${inp('mb.password', LBL('New password', 'Nouveau mot de passe'), { type: 'password' })}${inp('mb.password2', LBL('Confirm password', 'Confirmer le mot de passe'), { type: 'password' })}</div><button class="btn gold" data-a="mailsetup">${LBL('Activate mailbox', 'Activer la messagerie')}</button></div>`;
       }
       h += `<p><button class="btn" data-a="maildl" data-id="${esc(mine.id)}">${LBL('Download letter page', 'Télécharger la page de la lettre')}</button></p>`;
     } else if (!DESK.officer) {
@@ -157,12 +157,12 @@
   }
   ACT.mailsetup = el => {
     const f = FORMS.mb || {};
-    if (!f.otp || !f.password) return toast(LBL('Enter the one-time password and a new password.', 'Saisissez le mot de passe à usage unique et un nouveau mot de passe.'), 1);
+    if (!f.otp || !f.password) return toast(LBL('Please enter the one-time password and a new password.', 'Veuillez saisir le mot de passe à usage unique et un nouveau mot de passe.'), 1);
     if (f.password !== f.password2) return toast(LBL('The passwords do not match.', 'Les mots de passe ne correspondent pas.'), 1);
     run(el, () => api('/api/mail/setup', { body: { otp: f.otp, password: f.password } }).then(() => { FORMS.mb = { otp: '', password: '', password2: '' }; toast(LBL('Mailbox activated.', 'Messagerie activée.')); }));
   };
   ACT.mailstaff = el => {
-    const f = FORMS.mbs || {}; if (!String(f.name || '').trim()) return toast(LBL('Enter the staff member\'s full name.', 'Saisissez le nom complet du membre du personnel.'), 1);
+    const f = FORMS.mbs || {}; if (!String(f.name || '').trim()) return toast(LBL('Enter the staff member\'s full name.', 'Veuillez saisir le nom complet du membre du personnel.'), 1);
     run(el, () => api('/api/mail/issue-staff', { body: { name: f.name, role: f.role, title: f.title, personalEmail: f.personalEmail, phone: f.phone, local: f.local, lang: LANG } }).then(r => { FORMS.mbsOut = { name: r.mailbox.name, email: r.mailbox.email, otp: r.mailbox.otp }; FORMS.mbs = { name: '', role: f.role, personalEmail: '', phone: '', local: '', title: '' }; toast(r.mailbox.email); }));
   };
   ACT.mailcopy = el => { const t0 = el.dataset.t || ''; try { navigator.clipboard.writeText(t0).then(() => toast(LBL('Copied.', 'Copié.'))); } catch (e) { toast(t0); } };
