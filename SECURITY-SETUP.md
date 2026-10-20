@@ -30,3 +30,5 @@ Staff may now choose **"By SMS to my phone"** on *Account security*. At every si
 ## Two-step verification by e-mail (v2.61.0)
 
 *Account security* also offers **"By e-mail (free)"**: at each sign-in a 6-digit code (valid 5 minutes) is e-mailed to the account address. It needs only the e-mail provider (Brevo), no SMS credentials. Recovery codes are issued at activation.
+
+**Update (v2.61.1):** the SMS option is no longer offered on the set-up screen; choose e-mail or the authenticator app. SMS support stays dormant in the server and can be re-enabled later.
