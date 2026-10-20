@@ -222,7 +222,7 @@ module.exports = function makeRules(store, logic) {
     if (!u) return c === 'notices' && d.aud === 'all' ? d : null; // notices addressed to everybody are shown on the public home page
 
     switch (c) {
-      case 'users': { const { pw, totp, totpPending, ...safe } = d; safe.mfa = !!(totp && totp.on); safe.mfaReq = !!(typeof globalThis.ADI_MFA_REQ === 'function' && globalThis.ADI_MFA_REQ(d)); if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
+      case 'users': { const { pw, totp, totpPending, sms2, sms2Pending, ...safe } = d; safe.mfa = !!((totp && totp.on) || (sms2 && sms2.on)); safe.mfaKind = totp && totp.on ? 'app' : sms2 && sms2.on ? 'sms' : ''; if (sms2 && sms2.on && d.id === u.id) safe.mfaPhone = String(sms2.phone || '').replace(/\d(?=\d{3})/g, '•'); safe.mfaReq = !!(typeof globalThis.ADI_MFA_REQ === 'function' && globalThis.ADI_MFA_REQ(d)); if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
       case 'apps': return d.userId === u.id || sany(u, 'manage_applications', 'view_students', 'manage_students') ? d : null;
       case 'students': return d.userId === u.id || sany(u, 'view_students', 'manage_students', 'manage_applications', 'view_classlists', 'verify_payments', 'enter_results', 'publish_results', 'manage_transcripts', 'finance_reports') ? d : null;
       case 'payments': return d.userId === u.id || (d.matric && (ownsMatric(u, d.matric) || (u.purpose === 'minesup' && u.msMatric === d.matric))) || sany(u, 'verify_payments', 'finance_reports', 'view_students', 'manage_students', 'view_classlists') || (/^tr_/.test(d.kind || '') && sany(u, 'manage_transcripts')) ? d : null;
@@ -2120,7 +2120,24 @@ const MFA_ROLES = String(E.MFA_ROLES || 'super_admin,admin').split(',').map(x =>
 const MFA_ENFORCE = PROD ? E.MFA_ENFORCE !== 'false' : E.MFA_ENFORCE === 'true';
 const mfaRequired = u => !!u && MFA_ENFORCE && MFA_ROLES.includes(u.role);
 globalThis.ADI_MFA_REQ = mfaRequired;
-const mfaOn = u => !!(u && u.totp && u.totp.on);
+const mfaKind = u => u && u.totp && u.totp.on ? 'app' : u && u.sms2 && u.sms2.on ? 'sms' : '';
+const mfaOn = u => !!mfaKind(u);
+const smsReady = () => { const p = String(E.SMS_PROVIDER || 'log').toLowerCase(); return p === 'africastalking' ? !!(E.AT_USERNAME && E.AT_API_KEY) : p === 'twilio' ? !!(E.TWILIO_ACCOUNT_SID && E.TWILIO_AUTH_TOKEN && (E.TWILIO_FROM || E.TWILIO_MESSAGING_SERVICE_SID)) : false; };
+function normPhone(p) { const d = String(p || '').replace(/[\s().-]/g, ''); if (/^\+\d{8,15}$/.test(d)) return d; if (/^00\d{8,15}$/.test(d)) return '+' + d.slice(2); if (/^237\d{9}$/.test(d)) return '+' + d; if (/^6\d{8}$/.test(d)) return '+237' + d; return ''; }
+const maskPhone = p => String(p || '').replace(/\d(?=\d{3})/g, '•');
+/* one-time codes sent to the phone (SMS) and, as a safeguard, to the account e-mail; 5 minutes, 5 tries, rate-limited */
+const SMS2 = new Map();
+async function mfaSendCode(u, phone) {
+  if (limited('mfasend:' + u.id, 5, 600e3)) return { error: 'rate' };
+  const code = String(crypto.randomInt(0, 1e6)).padStart(6, '0');
+  SMS2.set(u.id, { h: crypto.createHash('sha256').update('sms|' + u.id + '|' + code + '|' + SECRET).digest('hex'), exp: now() + 5 * 60e3, tries: 0 });
+  const to = phone || (u.sms2 && u.sms2.phone) || u.phone, sent = { sms: false, email: false };
+  if (to && smsReady()) { await sendSMS({ to, text: 'ADI verification code: ' + code + '. Valid for 5 minutes. Never share it with anyone.' }); sent.sms = true; }
+  if (u.email && emailOn()) { try { await sendEmail({ to: u.contactEmail || u.email, subject: bi('Your ADI verification code', 'Votre code de vérification ADI'), text: 'Your ADI verification code / Votre code de vérification ADI: ' + code + '\n\nValid for 5 minutes. If you did not try to sign in, change your password and tell ' + INBOX() + '.\nValable 5 minutes.' }); sent.email = true; } catch (e) { console.error('[mfa] email', e && e.message); } }
+  if (!PROD) console.log('[mfa] code for ' + u.email + ': ' + code);
+  const r = { sent, phone: maskPhone(to) }; if (!PROD && E.MFA_DEBUG === 'true') r.devCode = code; return r;
+}
+function smsCodeOk(u, code) { const m = SMS2.get(u.id), c = String(code || '').replace(/\s/g, ''); if (!m || m.exp < now() || m.tries >= 5 || !/^\d{6}$/.test(c)) return false; m.tries++; const h = crypto.createHash('sha256').update('sms|' + u.id + '|' + c + '|' + SECRET).digest('hex'); if (h.length === m.h.length && crypto.timingSafeEqual(Buffer.from(h), Buffer.from(m.h))) { SMS2.delete(u.id); return true; } return false; }
 const mfaPending = u => mfaRequired(u) && !mfaOn(u);
 const recHash = c => crypto.createHash('sha256').update('rec|' + String(c).toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
 function newRecovery() { const out = []; for (let i = 0; i < 8; i++) { const r = crypto.randomBytes(5).toString('hex').toUpperCase(); out.push(r.slice(0, 5) + '-' + r.slice(5)); } return out; }
@@ -2128,6 +2145,11 @@ const mfaTicket = u => { const v = 'm.' + u.id + '.' + (now() + 5 * 60e3); retur
 function mfaTicketUser(t) { const p = String(t || '').split('.'); if (p.length !== 4 || p[0] !== 'm') return null; const v = p.slice(0, 3).join('.'), a = Buffer.from(sign(v)), b = Buffer.from(p[3]); if (a.length !== b.length || !crypto.timingSafeEqual(a, b) || Number(p[2]) < now()) return null; const u = S.get('users', p[1]); return u && u.status === 'active' ? u : null; }
 // returns the updated user record when the code is a valid authenticator code or an unused recovery code; otherwise null
 async function mfaVerify(u, code) {
+  if (mfaKind(u) === 'sms') {
+    if (smsCodeOk(u, code)) return u;
+    const hh = recHash(code), s2 = u.sms2; if ((s2.rec || []).includes(hh)) { const n = Object.assign({}, u, { sms2: Object.assign({}, s2, { rec: s2.rec.filter(x => x !== hh) }) }); await save('users', u.id, n); await audit(u, 'two-step: recovery code used'); return n; }
+    return null;
+  }
   const t = u.totp; if (!t || !t.on) return u;
   const st = totpCheck(mfaOpen(t.secret), code, t.last); if (st) { const n = Object.assign({}, u, { totp: Object.assign({}, t, { last: st }) }); await save('users', u.id, n); return n; }
   const h = recHash(code); if ((t.rec || []).includes(h)) { const n = Object.assign({}, u, { totp: Object.assign({}, t, { rec: t.rec.filter(x => x !== h) }) }); await save('users', u.id, n); await audit(u, 'two-step: recovery code used'); return n; }
@@ -2250,7 +2272,7 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'settings' && n && n.cls !== undefined) n.cls = JSON.parse(JSON.stringify(logic.core.clsCfg(n.cls)));
   if (c === 'settings' && n && n.lib !== undefined) n.lib = JSON.parse(JSON.stringify(logic.core.libCfgSanitize(n.lib)));
   if (c === 'settings' && n && n.site !== undefined) n.site = JSON.parse(JSON.stringify(logic.core.siteSanitize(n.site)));   // site appearance: re-validated on the server whatever the browser sent
-  if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email, totp: o.totp, totpPending: o.totpPending }); delete n.mfa; delete n.mfaReq; if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
+  if (c === 'users') { n = Object.assign({}, o, n, { pw: o.pw, email: o.email, totp: o.totp, totpPending: o.totpPending, sms2: o.sms2, sms2Pending: o.sms2Pending }); delete n.mfa; delete n.mfaReq; delete n.mfaKind; delete n.mfaPhone; if (n.photo && n.photo.length > 200000) throw ['photo too large']; }
   if (c === 'payments') {
     if (!o && n.kind === 'service') {                                                     // 2,000 XAF service fee (kind 'service'): MINESUP transcript applicants, no student record needed
       if (!['applicant', 'student'].includes(u.role)) throw ['not allowed'];
@@ -2874,8 +2896,13 @@ async function route(req, res) {
     }
     if (x.status === 'pending') return send(res, 403, { error: 'pending' }); if (x.status !== 'active') return send(res, 403, { error: 'suspended' });
     let cur = x; if (!/^scrypt\$/.test(x.pw)) { cur = Object.assign({}, x, { pw: await hashPw(b.password) }); await save('users', x.id, cur); }
-    if (mfaOn(cur)) return send(res, 200, { mfa: true, ticket: mfaTicket(cur) });
+    if (mfaOn(cur)) { const kind = mfaKind(cur), out = { mfa: true, ticket: mfaTicket(cur), method: kind }; if (kind === 'sms') Object.assign(out, await mfaSendCode(cur)); return send(res, 200, out); }
+    
     await audit(cur, 'login'); return send(res, 200, { ok: true, me: cur.id }, { 'Set-Cookie': cookie(makeToken(cur), 7 * 86400) });
+  }
+  if (p === '/api/login/mfa/resend' && req.method === 'POST') {
+    const b = await body(req, 2000), x = mfaTicketUser(b.ticket); if (!x || mfaKind(x) !== 'sms') return send(res, 401, { error: 'mfa_expired' });
+    const r = await mfaSendCode(x); if (r.error) return send(res, 429, { error: 'Please wait a few minutes before asking for another code.' }); return send(res, 200, r);
   }
   if (p === '/api/login/mfa' && req.method === 'POST') {
     const b = await body(req, 4000), x = mfaTicketUser(b.ticket); if (!x) return send(res, 401, { error: 'mfa_expired' });
@@ -2895,6 +2922,22 @@ async function route(req, res) {
     const sec = b32enc(crypto.randomBytes(20)); await save('users', u.id, Object.assign({}, u, { totpPending: mfaSeal(sec) }));
     const issuer = 'ADI University'; return send(res, 200, { secret: sec.match(/.{1,4}/g).join(' '), uri: 'otpauth://totp/' + encodeURIComponent(issuer + ':' + u.email) + '?secret=' + sec + '&issuer=' + encodeURIComponent(issuer) + '&algorithm=SHA1&digits=6&period=30' });
   }
+  if (u && p === '/api/mfa/sms/begin' && req.method === 'POST') {
+    const b = await body(req, 2000); if (mfaOn(u)) return send(res, 400, { error: 'mfa_on' });
+    const ph = normPhone(b.phone || u.phone); if (!ph) return send(res, 400, { error: 'phone_bad' });
+    if (!smsReady() && !(u.email && emailOn()) && !(!PROD && E.MFA_DEBUG === 'true')) return send(res, 503, { error: 'no_channel' });
+    await save('users', u.id, Object.assign({}, u, { sms2Pending: { phone: ph, at: now() } }));
+    const r = await mfaSendCode(u, ph); if (r.error) return send(res, 429, { error: 'Please wait a few minutes before asking for another code.' }); return send(res, 200, r);
+  }
+  if (u && p === '/api/mfa/sms/send' && req.method === 'POST') {
+    if (mfaKind(u) !== 'sms') return send(res, 400, { error: 'mfa_none' }); const r = await mfaSendCode(u); if (r.error) return send(res, 429, { error: 'Please wait a few minutes before asking for another code.' }); return send(res, 200, r);
+  }
+  if (u && p === '/api/mfa/sms/confirm' && req.method === 'POST') {
+    const b = await body(req, 2000); if (!u.sms2Pending || !u.sms2Pending.phone) return send(res, 400, { error: 'mfa_none' });
+    if (!smsCodeOk(u, b.code)) return send(res, 400, { error: 'mfa_bad' });
+    const rec = newRecovery(), n = Object.assign({}, u, { sms2: { on: true, phone: u.sms2Pending.phone, rec: rec.map(recHash), at: now() } }); delete n.sms2Pending; await save('users', u.id, n); await audit(u, 'two-step verification enabled (phone)');
+    return send(res, 200, { ok: true, recovery: rec });
+  }
   if (u && p === '/api/mfa/confirm' && req.method === 'POST') {
     const b = await body(req, 2000); if (!u.totpPending) return send(res, 400, { error: 'mfa_none' });
     if (limited('mfacf:' + u.id, 10, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
@@ -2905,23 +2948,23 @@ async function route(req, res) {
   if (u && p === '/api/mfa/recovery' && req.method === 'POST') {
     const b = await body(req, 2000); if (!mfaOn(u)) return send(res, 400, { error: 'mfa_none' }); if (!(await checkPw(b.password, u.pw))) return send(res, 400, { error: 'bad_login' });
     const v = await mfaVerify(u, b.code); if (!v) return send(res, 400, { error: 'mfa_bad' });
-    const rec = newRecovery(); await save('users', u.id, Object.assign({}, v, { totp: Object.assign({}, v.totp, { rec: rec.map(recHash) }) })); await audit(u, 'two-step recovery codes regenerated'); return send(res, 200, { ok: true, recovery: rec });
+    const rec = newRecovery(); await save('users', u.id, Object.assign({}, v, mfaKind(v) === 'sms' ? { sms2: Object.assign({}, v.sms2, { rec: rec.map(recHash) }) } : { totp: Object.assign({}, v.totp, { rec: rec.map(recHash) }) })); await audit(u, 'two-step recovery codes regenerated'); return send(res, 200, { ok: true, recovery: rec });
   }
   if (u && p === '/api/mfa/disable' && req.method === 'POST') {
     const b = await body(req, 2000); if (mfaRequired(u)) return send(res, 403, { error: 'mfa_required' });
     if (!mfaOn(u)) return send(res, 200, { ok: true }); if (!(await checkPw(b.password, u.pw))) return send(res, 400, { error: 'bad_login' });
-    const v = await mfaVerify(u, b.code); if (!v) return send(res, 400, { error: 'mfa_bad' }); const n = Object.assign({}, v); delete n.totp; delete n.totpPending; await save('users', u.id, n); await audit(u, 'two-step verification disabled'); return send(res, 200, { ok: true });
+    const v = await mfaVerify(u, b.code); if (!v) return send(res, 400, { error: 'mfa_bad' }); const n = Object.assign({}, v); delete n.totp; delete n.totpPending; delete n.sms2; delete n.sms2Pending; await save('users', u.id, n); await audit(u, 'two-step verification disabled'); return send(res, 200, { ok: true });
   }
   if (u && p === '/api/mfa/reset' && req.method === 'POST') {
     if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' }); const b = await body(req, 2000), x = S.get('users', String(b.userId || ''));
-    if (!x || x.id === u.id) return send(res, 400, { error: 'mfa_none' }); const n = Object.assign({}, x); delete n.totp; delete n.totpPending; await save('users', x.id, n); await audit(u, 'two-step verification reset for ' + x.email); return send(res, 200, { ok: true });
+    if (!x || x.id === u.id) return send(res, 400, { error: 'mfa_none' }); const n = Object.assign({}, x); delete n.totp; delete n.totpPending; delete n.sms2; delete n.sms2Pending; await save('users', x.id, n); await audit(u, 'two-step verification reset for ' + x.email); return send(res, 200, { ok: true });
   }
   let m;
   if ((m = /^\/api\/doc\/(\w+)\/([\w.-]{1,120})$/.exec(p)) && (req.method === 'PUT' || req.method === 'DELETE')) {
     const [, c, id] = m; if (!COLS.includes(c)) return send(res, 404, { error: 'collection' });
     if (!u && limited('anon:' + ip(req), 5, 3600e3)) return send(res, 429, { error: 'Too many messages' });
     const o = S.get(c, id); const n = req.method === 'DELETE' ? null : await body(req, c === 'apps' ? 400000 : 250000);
-    if (n) { delete n.id; delete n.pw; delete n._seq; delete n.totp; delete n.totpPending; delete n.mfa; delete n.mfaReq; }
+    if (n) { delete n.id; delete n.pw; delete n._seq; delete n.totp; delete n.totpPending; delete n.sms2; delete n.sms2Pending; delete n.mfa; delete n.mfaReq; delete n.mfaKind; delete n.mfaPhone; }
     const ok = R.write(u, c, id, o, n); if (ok !== true) return send(res, 403, { error: ok });
     try { await applyWrite(u, c, id, o, n); } catch (e) { if (Array.isArray(e)) return send(res, 400, { error: e[0] }); throw e; }
     return send(res, 200, { ok: true });
@@ -3449,7 +3492,7 @@ async function seed() {
   if (E.SUPER_ADMIN_PASSWORD.length < 10) { console.error('SUPER_ADMIN_PASSWORD must have at least 10 characters — super admin NOT set. Change it in the Environment tab.'); return; }
   const email = E.SUPER_ADMIN_EMAIL.trim().toLowerCase(); const ex = Object.values(S.all('users')).find(x => x.email === email);
   if (ex) {
-    { const nx = Object.assign({}, ex, { role: 'super_admin', status: 'active', pw: await hashPw(E.SUPER_ADMIN_PASSWORD), mustChange: false }); if (E.SUPER_ADMIN_MFA_RESET === 'true') { delete nx.totp; delete nx.totpPending; console.warn('[security] SUPER_ADMIN_MFA_RESET=true: two-step verification cleared for the super administrator. Remove this variable now.'); } await save('users', ex.id, nx); }
+    { const nx = Object.assign({}, ex, { role: 'super_admin', status: 'active', pw: await hashPw(E.SUPER_ADMIN_PASSWORD), mustChange: false }); if (E.SUPER_ADMIN_MFA_RESET === 'true') { delete nx.totp; delete nx.totpPending; delete nx.sms2; delete nx.sms2Pending; console.warn('[security] SUPER_ADMIN_MFA_RESET=true: two-step verification cleared for the super administrator. Remove this variable now.'); } await save('users', ex.id, nx); }
     console.log('Super admin login reset for', email, '— now delete SUPER_ADMIN_RESET from the Environment so it is not reset at every restart.'); return;
   }
   await save('users', uid('u'), { email, name: E.SUPER_ADMIN_NAME || 'Super Administrator', phone: E.SUPER_ADMIN_PHONE || '', role: 'super_admin', status: 'active', createdAt: now(), pw: await hashPw(E.SUPER_ADMIN_PASSWORD) });

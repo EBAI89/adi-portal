@@ -19,3 +19,10 @@
 ## Database
 * Render > adi-portal-db > Access Control: remove `0.0.0.0/0` so only Render services in the same region can connect.
 * Render > adi-portal-db > Recovery: confirm backups are enabled and test a restore into a new database.
+
+## Two-step verification by phone number (v2.60.0)
+
+Staff may now choose **"By SMS to my phone"** on *Account security*. At every sign-in a 6-digit code (valid 5 minutes) is sent to the verified number and, as a safeguard, to the account e-mail. The authenticator app remains available as an alternative.
+
+* SMS delivery needs provider keys in Render (Africa's Talking: `SMS_PROVIDER=africastalking`, `AT_USERNAME`, `AT_API_KEY`; or the Twilio variables). Until they are set, codes are sent by e-mail only.
+* Recovery codes are issued at activation and work for both methods.
