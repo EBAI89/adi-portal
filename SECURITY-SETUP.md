@@ -26,3 +26,7 @@ Staff may now choose **"By SMS to my phone"** on *Account security*. At every si
 
 * SMS delivery needs provider keys in Render (Africa's Talking: `SMS_PROVIDER=africastalking`, `AT_USERNAME`, `AT_API_KEY`; or the Twilio variables). Until they are set, codes are sent by e-mail only.
 * Recovery codes are issued at activation and work for both methods.
+
+## Two-step verification by e-mail (v2.61.0)
+
+*Account security* also offers **"By e-mail (free)"**: at each sign-in a 6-digit code (valid 5 minutes) is e-mailed to the account address. It needs only the e-mail provider (Brevo), no SMS credentials. Recovery codes are issued at activation.
