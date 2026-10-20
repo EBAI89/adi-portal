@@ -40,3 +40,7 @@ The portal fills `{{1}}` with the fee item and amount and `{{2}}` with the trans
 - A channel failure (wrong key, no credit) is logged and never prevents the notice from being saved or the other channels from sending.
 - A verifier cannot resend the notice within one hour, and no notice can be sent once a screenshot exists.
 - Until every credential for a channel is present, that channel does not deliver. Use `log` as the provider value to switch a channel off.
+
+## Official notices (v2.63.0)
+
+*Send a notice* (administration menu; super administrator and any role granted "Send official notices by e-mail") e-mails a formal bilingual letter to applicants, students, staff, MINESUP applicants or transcript requesters: admission decisions, fee confirmations and reminders, results published, transcript status, MINESUP status, or a custom message. Choose ADI addresses, personal addresses, or both; a portal notification is added unless switched off. Always preview before sending (maximum 250 people at once, 12 notices per hour per sender).
