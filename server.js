@@ -2499,7 +2499,7 @@ function sideMod(name) {
 async function route(req, res) {
   const url = new URL(req.url, 'http://x'); const p = url.pathname; const sinfo = {}; const u = userOf(req, sinfo);
   if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
-  if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
+  if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|mail\/(setup|desk)|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
   if (p === '/calendar.ics' && req.method === 'GET') {          // the public calendar: people can subscribe to it, and their phone calendar follows any change the university makes
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
