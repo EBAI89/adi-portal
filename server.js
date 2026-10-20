@@ -474,13 +474,15 @@ function letterBlock(b, heading0, chip) {
     if (ls.length <= 14 && ls.every(l => /^[^:\n.!?]{2,30}: \S/.test(l))) return `<table role="presentation" style="width:100%;border-collapse:collapse;margin:4px 0 16px;background:#F7F9FD;border:1px solid #D9DFEC;border-radius:8px">${ls.map(l => { const k = l.indexOf(': '); return `<tr><td style="padding:7px 12px;font-size:13px;color:#5A6580;width:38%;vertical-align:top;border-bottom:1px solid #E6EAF3">${esc(l.slice(0, k))}</td><td style="padding:7px 12px;font-size:14px;color:#0F1A33;font-weight:600;border-bottom:1px solid #E6EAF3">${esc(l.slice(k + 2))}</td></tr>`; }).join('')}</table>`;
     return `<p style="margin:0 0 14px;line-height:1.6;white-space:pre-line">${esc(c)}</p>`;
   }).join('');
-  return `${chip ? `<p style="margin:0 0 6px"><span style="background:#E8EDF8;color:#0B2559;font-size:11px;font-weight:700;letter-spacing:.06em;padding:3px 9px;border-radius:99px">${chip}</span></p>` : ''}${heading ? `<h2 style="margin:0 0 14px;font-size:19px;line-height:1.3;color:#0B2559">${esc(heading)}</h2>` : ''}${parts}${sig.length ? `<p style="margin:20px 0 0;line-height:1.5;color:#0B2559"><b>${esc(sig[0])}</b>${sig.slice(1).map(x => '<br>' + esc(x)).join('')}</p>` : ''}`;
+  return `${chip ? `<p style="margin:0 0 6px"><span style="background:#E8EDF8;color:#0B2559;font-size:11px;font-weight:700;letter-spacing:.06em;padding:3px 9px;border-radius:99px">${chip}</span></p>` : ''}${heading ? `<h2 style="margin:0 0 14px;font-size:19px;line-height:1.3;color:#0B2559">${esc(heading)}</h2>` : ''}${parts}${sig.length ? `<table role="presentation" style="margin:20px 0 0;border-collapse:collapse"><tr><td style="vertical-align:middle;padding:0 16px 0 0;line-height:1.5;color:#0B2559"><b>${esc(sig[0])}</b>${sig.slice(1).map(x => '<br>' + esc(x)).join('')}</td><td style="vertical-align:middle"><img src="${MAIL_BASE}/mail-assets/adi-seal.png" width="86" height="86" alt="ADI official seal" style="display:block;border:0;border-radius:50%"></td></tr></table>` : ''}`;
 }
+let MAIL_BASE = 'https://adi-portal.onrender.com';
 function html(subject, text, cta) {
+  if (/^https?:\/\//.test(String(cta || ''))) MAIL_BASE = String(cta).replace(/\/+$/, '');
   const blocks = String(text || '').split(/\n\s*— — —\s*\n/).map(x => x.trim()).filter(Boolean), sp = String(subject || '').split(/ — | \/ /);
   const body = blocks.map((b, i) => letterBlock(b, blocks.length === 1 ? subject : (sp.length === blocks.length ? sp[i] : ''), blocks.length > 1 ? (guessLang(b) === 'fr' ? 'FRANÇAIS' : 'ENGLISH') : '')).join('<hr style="border:0;border-top:1px solid #D9DFEC;margin:26px 0">');
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:auto;border:1px solid #D9DFEC;border-radius:10px;overflow:hidden;background:#fff">
-  <div style="background:#0B2559;color:#fff;padding:16px 20px"><div style="font-weight:bold;font-size:16px">American Ditek Institute (ADI University)</div><div style="font-size:11px;letter-spacing:.08em;color:#E5C24F;margin-top:2px">TODAY AND TOMORROW'S LEADERS</div></div>
+  <table role="presentation" style="width:100%;border-collapse:collapse;background:#0B2559;border-bottom:3px solid #C9A227"><tr><td style="padding:14px 0 14px 20px;width:74px;vertical-align:middle"><img src="${MAIL_BASE}/mail-assets/adi-logo.png" width="60" height="60" alt="ADI" style="display:block;border:0;border-radius:50%;background:#fff"></td><td style="padding:14px 20px 14px 14px;vertical-align:middle;color:#fff"><div style="font-weight:bold;font-size:17px;line-height:1.25">American Ditek Institute (ADI University)</div><div style="font-size:11px;letter-spacing:.08em;color:#E5C24F;margin-top:3px">TODAY AND TOMORROW'S LEADERS</div></td></tr></table>
   <div style="padding:22px 22px 8px;color:#0F1A33;font-size:14.5px">${body}
   ${cta ? `<p style="margin:18px 0 12px"><a href="${esc(cta)}" style="background:#C9A227;color:#0B2559;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">Open the ADI portal · Ouvrir le portail ADI</a></p>` : ''}</div>
   <div style="background:#F2F4F9;padding:12px 20px;font-size:12px;line-height:1.6;color:#5A6580">P.O. Box 31460 Yaoundé · <a href="https://www.adiuniversity.com" style="color:#2447B8">www.adiuniversity.com</a><br>WhatsApp — Yaoundé: <a href="https://wa.me/237651187835" style="color:#2447B8">+237 651 187 835</a> (English) · <a href="https://wa.me/237657936576" style="color:#2447B8">+237 657 936 576</a> (Français) · Buea: <a href="https://wa.me/237651044896" style="color:#2447B8">+237 651 044 896</a><br>Facebook: <a href="https://www.facebook.com/ADIUNIVERSITY" style="color:#2447B8">American Ditek Institute</a> (English) · <a href="https://www.facebook.com/share/1DxLMFTsd8/" style="color:#2447B8">Université ADI – Institut américain Ditek</a> (Français)<br>This message was sent by the ADI portal on behalf of the University administration. Please quote your reference when you write to us.<br>Ce message a été envoyé par le portail ADI au nom de l'administration de l'Université. Veuillez rappeler votre référence lorsque vous nous écrivez.</div></div>`;
@@ -2347,6 +2349,23 @@ const NOTE_T = {
   gen_custom: { g: 'general', t: ['A message from the University', 'Un message de l\'Université'], custom: true, vars: [],
     en: v => ({ p: String(v.body_en || '').split(/\n\s*\n/).map(x => x.trim()).filter(Boolean), k: [], q: [] }), fr: v => ({ p: String(v.body_fr || '').split(/\n\s*\n/).map(x => x.trim()).filter(Boolean), k: [], q: [] }) }
 };
+// Light editorial polish for notices typed by staff: common typing slips, spacing, capital letters and closing punctuation, so every letter reads correctly.
+const POLISH_FIX = { tbe: 'the', teh: 'the', hte: 'the', adn: 'and', comete: 'complete', recieve: 'receive', recieved: 'received', adress: 'address', registeration: 'registration', regsitration: 'registration', deadlne: 'deadline', seperate: 'separate', occured: 'occurred', untill: 'until', definately: 'definitely', tommorow: 'tomorrow', begining: 'beginning', accomodation: 'accommodation', payement: 'payment', tution: 'tuition', scholarhip: 'scholarship', studens: 'students', stundents: 'students', informtion: 'information', recieving: 'receiving', wich: 'which', thier: 'their', becuase: 'because', sucessful: 'successful', sucessfully: 'successfully', apllication: 'application', aplication: 'application', transcipt: 'transcript', trascript: 'transcript', certficate: 'certificate', examinaton: 'examination', semster: 'semester', lectuer: 'lecturer' };
+function polishText(raw, o = {}) {
+  let t = String(raw == null ? '' : raw).replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  t = t.replace(/\b[A-Za-z]{3,14}\b/g, w => { const k = POLISH_FIX[w.toLowerCase()]; if (!k) return w; return w[0] === w[0].toUpperCase() && w[0] !== w[0].toLowerCase() ? k[0].toUpperCase() + k.slice(1) : k; });
+  t = t.split('\n').map(line => line.split(' ').map(tok => /[@\/]|https?:|\d[.,:]\d/.test(tok) ? tok : tok.replace(/([a-zà-ÿ]{2,})([,;])(?=[A-Za-zÀ-ÿ])/g, '$1$2 ').replace(/([a-zà-ÿ]{2,})\.(?=[A-ZÀ-Ý][a-zà-ÿ])/g, '$1. ')).join(' ')).join('\n');
+  t = t.replace(/\b(january|february|april|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/g, m => m[0].toUpperCase() + m.slice(1));
+  t = t.replace(/ +([,;.!?:])/g, '$1').replace(/\bi\b(?=[ ',])/g, 'I');
+  t = t.replace(/(^|[.!?]\s+|\n)([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+  if (!o.line) t = t.split('\n\n').map(par => /[A-Za-zÀ-ÿ0-9)]$/.test(par) && par.length > 40 && !par.includes('\n') ? par + '.' : par).join('\n\n');
+  return t;
+}
+function polishTitle(raw) {
+  let t = polishText(raw, { line: true }).replace(/[.\s]+$/, ''); const small = /^(a|an|the|and|or|of|to|for|in|on|at|by|de|du|des|la|le|les|et|au|aux|un|une)$/i;
+  if (t === t.toUpperCase() || t === t.toLowerCase()) t = t.toLowerCase().split(' ').map((w, i) => i && small.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return t;
+}
 const canNotice = u => !!u && u.status === 'active' && (u.role === 'super_admin' || (logic.perms(S)[u.role] || []).includes('send_notices'));
 const clipT = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, n);
 function noticeAudience(a) {
@@ -2371,7 +2390,7 @@ function noticeLetter(tpl, vars, rec) {
 const isAdiAddr = e => /@adiuniversity\.com$/i.test(e);
 function noticePlan(b) {
   const tpl = String(b.template || ''); if (!NOTE_T[tpl]) return { err: 'template' };
-  const vars = {}; for (const k of Object.keys(b.vars || {}).slice(0, 24)) vars[String(k).slice(0, 30)] = clipT(b.vars[k], 1500);
+  const vars = {}; for (const k of Object.keys(b.vars || {}).slice(0, 24)) vars[String(k).slice(0, 30)] = /^(body_|subject_)/.test(k) ? (k.startsWith('subject_') ? polishTitle(clipT(b.vars[k], 160)) : polishText(clipT(b.vars[k], 1500))) : clipT(b.vars[k], 1500);
   const aud = noticeAudience(b.audience), ch = { adi: b.adi !== false, personal: b.personal !== false, inapp: b.inapp !== false };
   if (tpl === 'gen_custom' && !String(vars.body_en || '').trim() && !String(vars.body_fr || '').trim()) return { err: 'empty' };
   const items = [], skipped = []; let addresses = 0;
@@ -2590,7 +2609,7 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'msapp') { await sideMod('minesup-api.js').apply({ S, R, logic, save, audit, now, usersWith, notifyUser, bi }, u, id, o, n); return; }
   if (n === null) return remove(c, id);
   if (c === 'notices' && !o) {
-    const aud = ['all', 'student', 'lecturer', 'applicant', 'admin', 'accountant'].includes(n.aud) ? n.aud : 'all', title = clipT(n.title, 160).trim(), text = clipT(n.body, 4000).trim(); if (!title || !text) throw ['incomplete'];
+    const aud = ['all', 'student', 'lecturer', 'applicant', 'admin', 'accountant'].includes(n.aud) ? n.aud : 'all', title = polishTitle(clipT(n.title, 160)), text = polishText(clipT(n.body, 4000)); if (!title || !text) throw ['incomplete'];
     const people = Object.values(S.all('users')).filter(x => x && x.status === 'active' && (aud === 'all' || x.role === aud)).slice(0, 1500), addr = people.reduce((a, x) => a + noticeEmails(x).length, 0);
     n = { title, body: text, aud, at: now(), by: u.name, mail: { people: people.length, addresses: addr } };
     await save(c, id, n); await audit(u, 'notice posted: ' + title + ' to ' + aud + ' (' + people.length + ' user(s), ' + addr + ' address(es))');
@@ -2702,6 +2721,8 @@ async function route(req, res) {
   if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
   if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|mail\/(setup|desk)|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
+  const mas = /^\/mail-assets\/(adi-logo|adi-seal)\.png$/.exec(p);
+  if (mas && req.method === 'GET') { const buf = sideFile(mas[1] + '.png'); if (!buf) return send(res, 404, { error: 'missing' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf); }
   if (p === '/calendar.ics' && req.method === 'GET') {          // the public calendar: people can subscribe to it, and their phone calendar follows any change the university makes
     const core = logic.core, lang = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en', pr = url.searchParams.get('p'), ev = core.calEvents(core.calCfg((S.get('settings', 'main') || {}).cal)).filter(e => !['hnd', 'bm'].includes(pr) || e.p === pr);
     res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="ADI-calendar-2026-2027-' + lang.toUpperCase() + '.ics"', 'Cache-Control': 'public, max-age=900', 'X-Content-Type-Options': 'nosniff' }); return res.end(core.calIcs(ev, lang, new Date().toISOString()));

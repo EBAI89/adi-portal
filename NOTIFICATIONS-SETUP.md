@@ -52,3 +52,6 @@ A notice posted on **Notices** (`#/notices`) is now delivered automatically as a
 - **MINESUP** (`#/minesup-admin/<application>`) and **Transcript requests** (review dialog): the button **Send a status letter** lets an authorised administrator (permission `send_notices`, `manage_students` or `manage_transcripts`) pick *being processed*, *status update* or *ready for collection*, fill the expected date / collection point, preview the letter and send it to the applicant's ADI and personal addresses, with a portal notification.
 - Changing a transcript request to *Submitted*, *Processing* or *Ready* now sends the formal status letter automatically.
 - Every letter is bilingual, courteous, and recorded in the audit log.
+
+## Letterhead and proofreading (v2.66.0)
+Every e-mail now carries the ADI logo in its header and the round ADI seal beside the signature (served publicly from `/mail-assets/`). Notices typed on the board, and custom notices, are proofread automatically: common typing slips, spacing, capital letters, month names and closing punctuation are corrected before sending.
