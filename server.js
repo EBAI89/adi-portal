@@ -222,7 +222,7 @@ module.exports = function makeRules(store, logic) {
     if (!u) return c === 'notices' && d.aud === 'all' ? d : null; // notices addressed to everybody are shown on the public home page
 
     switch (c) {
-      case 'users': { const { pw, totp, totpPending, sms2, sms2Pending, ...safe } = d; safe.mfa = !!((totp && totp.on) || (sms2 && sms2.on)); safe.mfaKind = totp && totp.on ? 'app' : sms2 && sms2.on ? 'sms' : ''; if (sms2 && sms2.on && d.id === u.id) safe.mfaPhone = String(sms2.phone || '').replace(/\d(?=\d{3})/g, '•'); safe.mfaReq = !!(typeof globalThis.ADI_MFA_REQ === 'function' && globalThis.ADI_MFA_REQ(d)); if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
+      case 'users': { const { pw, totp, totpPending, sms2, sms2Pending, ...safe } = d; safe.mfa = !!((totp && totp.on) || (sms2 && sms2.on)); safe.mfaKind = totp && totp.on ? 'app' : sms2 && sms2.on ? (sms2.via === 'email' ? 'email' : 'sms') : ''; if (sms2 && sms2.on && sms2.phone && d.id === u.id) safe.mfaPhone = String(sms2.phone || '').replace(/\d(?=\d{3})/g, '•'); safe.mfaReq = !!(typeof globalThis.ADI_MFA_REQ === 'function' && globalThis.ADI_MFA_REQ(d)); if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
       case 'apps': return d.userId === u.id || sany(u, 'manage_applications', 'view_students', 'manage_students') ? d : null;
       case 'students': return d.userId === u.id || sany(u, 'view_students', 'manage_students', 'manage_applications', 'view_classlists', 'verify_payments', 'enter_results', 'publish_results', 'manage_transcripts', 'finance_reports') ? d : null;
       case 'payments': return d.userId === u.id || (d.matric && (ownsMatric(u, d.matric) || (u.purpose === 'minesup' && u.msMatric === d.matric))) || sany(u, 'verify_payments', 'finance_reports', 'view_students', 'manage_students', 'view_classlists') || (/^tr_/.test(d.kind || '') && sany(u, 'manage_transcripts')) ? d : null;
@@ -2124,6 +2124,7 @@ const mfaKind = u => u && u.totp && u.totp.on ? 'app' : u && u.sms2 && u.sms2.on
 const mfaOn = u => !!mfaKind(u);
 const smsReady = () => { const p = String(E.SMS_PROVIDER || 'log').toLowerCase(); return p === 'africastalking' ? !!(E.AT_USERNAME && E.AT_API_KEY) : p === 'twilio' ? !!(E.TWILIO_ACCOUNT_SID && E.TWILIO_AUTH_TOKEN && (E.TWILIO_FROM || E.TWILIO_MESSAGING_SERVICE_SID)) : false; };
 function normPhone(p) { const d = String(p || '').replace(/[\s().-]/g, ''); if (/^\+\d{8,15}$/.test(d)) return d; if (/^00\d{8,15}$/.test(d)) return '+' + d.slice(2); if (/^237\d{9}$/.test(d)) return '+' + d; if (/^6\d{8}$/.test(d)) return '+237' + d; return ''; }
+const maskMail = e => String(e || '').replace(/^(.).*(@.*)$/, '$1•••$2');
 const maskPhone = p => String(p || '').replace(/\d(?=\d{3})/g, '•');
 /* one-time codes sent to the phone (SMS) and, as a safeguard, to the account e-mail; 5 minutes, 5 tries, rate-limited */
 const SMS2 = new Map();
@@ -2131,11 +2132,11 @@ async function mfaSendCode(u, phone) {
   if (limited('mfasend:' + u.id, 5, 600e3)) return { error: 'rate' };
   const code = String(crypto.randomInt(0, 1e6)).padStart(6, '0');
   SMS2.set(u.id, { h: crypto.createHash('sha256').update('sms|' + u.id + '|' + code + '|' + SECRET).digest('hex'), exp: now() + 5 * 60e3, tries: 0 });
-  const to = phone || (u.sms2 && u.sms2.phone) || u.phone, sent = { sms: false, email: false };
+  const viaEmail = phone === 'email' || (!phone && u.sms2 && u.sms2.via === 'email'), to = viaEmail ? '' : (phone || (u.sms2 && u.sms2.phone) || u.phone), sent = { sms: false, email: false };
   if (to && smsReady()) { await sendSMS({ to, text: 'ADI verification code: ' + code + '. Valid for 5 minutes. Never share it with anyone.' }); sent.sms = true; }
   if (u.email && emailOn()) { try { await sendEmail({ to: u.contactEmail || u.email, subject: bi('Your ADI verification code', 'Votre code de vérification ADI'), text: 'Your ADI verification code / Votre code de vérification ADI: ' + code + '\n\nValid for 5 minutes. If you did not try to sign in, change your password and tell ' + INBOX() + '.\nValable 5 minutes.' }); sent.email = true; } catch (e) { console.error('[mfa] email', e && e.message); } }
   if (!PROD) console.log('[mfa] code for ' + u.email + ': ' + code);
-  const r = { sent, phone: maskPhone(to) }; if (!PROD && E.MFA_DEBUG === 'true') r.devCode = code; return r;
+  const r = { sent, phone: maskPhone(to), via: viaEmail ? 'email' : 'sms', mail: maskMail(u.contactEmail || u.email) }; if (!PROD && E.MFA_DEBUG === 'true') r.devCode = code; return r;
 }
 function smsCodeOk(u, code) { const m = SMS2.get(u.id), c = String(code || '').replace(/\s/g, ''); if (!m || m.exp < now() || m.tries >= 5 || !/^\d{6}$/.test(c)) return false; m.tries++; const h = crypto.createHash('sha256').update('sms|' + u.id + '|' + c + '|' + SECRET).digest('hex'); if (h.length === m.h.length && crypto.timingSafeEqual(Buffer.from(h), Buffer.from(m.h))) { SMS2.delete(u.id); return true; } return false; }
 const mfaPending = u => mfaRequired(u) && !mfaOn(u);
@@ -2929,13 +2930,19 @@ async function route(req, res) {
     await save('users', u.id, Object.assign({}, u, { sms2Pending: { phone: ph, at: now() } }));
     const r = await mfaSendCode(u, ph); if (r.error) return send(res, 429, { error: 'Please wait a few minutes before asking for another code.' }); return send(res, 200, r);
   }
+  if (u && p === '/api/mfa/email/begin' && req.method === 'POST') {
+    if (mfaOn(u)) return send(res, 400, { error: 'mfa_on' });
+    if (!(u.email && emailOn()) && !(!PROD && E.MFA_DEBUG === 'true')) return send(res, 503, { error: 'no_channel' });
+    await save('users', u.id, Object.assign({}, u, { sms2Pending: { via: 'email', at: now() } }));
+    const r = await mfaSendCode(u, 'email'); if (r.error) return send(res, 429, { error: 'Please wait a few minutes before asking for another code.' }); return send(res, 200, r);
+  }
   if (u && p === '/api/mfa/sms/send' && req.method === 'POST') {
     if (mfaKind(u) !== 'sms') return send(res, 400, { error: 'mfa_none' }); const r = await mfaSendCode(u); if (r.error) return send(res, 429, { error: 'Please wait a few minutes before asking for another code.' }); return send(res, 200, r);
   }
   if (u && p === '/api/mfa/sms/confirm' && req.method === 'POST') {
-    const b = await body(req, 2000); if (!u.sms2Pending || !u.sms2Pending.phone) return send(res, 400, { error: 'mfa_none' });
+    const b = await body(req, 2000); if (!u.sms2Pending || !(u.sms2Pending.phone || u.sms2Pending.via === 'email')) return send(res, 400, { error: 'mfa_none' });
     if (!smsCodeOk(u, b.code)) return send(res, 400, { error: 'mfa_bad' });
-    const rec = newRecovery(), n = Object.assign({}, u, { sms2: { on: true, phone: u.sms2Pending.phone, rec: rec.map(recHash), at: now() } }); delete n.sms2Pending; await save('users', u.id, n); await audit(u, 'two-step verification enabled (phone)');
+    const rec = newRecovery(), n = Object.assign({}, u, { sms2: { on: true, phone: u.sms2Pending.phone || '', via: u.sms2Pending.via || 'sms', rec: rec.map(recHash), at: now() } }); delete n.sms2Pending; await save('users', u.id, n); await audit(u, 'two-step verification enabled (' + (u.sms2Pending.via === 'email' ? 'e-mail' : 'phone') + ')');
     return send(res, 200, { ok: true, recovery: rec });
   }
   if (u && p === '/api/mfa/confirm' && req.method === 'POST') {
