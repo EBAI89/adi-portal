@@ -47,3 +47,8 @@ The portal fills `{{1}}` with the fee item and amount and `{{2}}` with the trans
 
 ## Notice board (v2.64.0)
 A notice posted on **Notices** (`#/notices`) is now delivered automatically as an official letter to the **personal and ADI e-mail addresses** of every active member of the chosen audience, and appears as an in-portal notification. The board shows, under each notice, how many recipients and addresses were reached and the delivery result. Posting requires the `manage_notices` permission; each posting is recorded in the audit log.
+
+## Status letters for MINESUP and transcript applicants (v2.65.0)
+- **MINESUP** (`#/minesup-admin/<application>`) and **Transcript requests** (review dialog): the button **Send a status letter** lets an authorised administrator (permission `send_notices`, `manage_students` or `manage_transcripts`) pick *being processed*, *status update* or *ready for collection*, fill the expected date / collection point, preview the letter and send it to the applicant's ADI and personal addresses, with a portal notification.
+- Changing a transcript request to *Submitted*, *Processing* or *Ready* now sends the formal status letter automatically.
+- Every letter is bilingual, courteous, and recorded in the audit log.
