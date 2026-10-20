@@ -155,6 +155,64 @@
   ROUTES.splice(at2 < 0 ? ROUTES.length : at2 + 1, 0, { id: 'minesup-admin', k: 'ms_admin', perm: 'manage_students', v: viewMinesupAdmin });
 
 
+  /* ===== Official notices: the administration e-mails the people concerned, at their ADI and personal addresses ===== */
+  L.nt_menu = ['Send a notice', 'Envoyer un avis'];
+  ROUTES.splice(Math.max(0, ROUTES.findIndex(r => r.id === 'tickets')), 0, { id: 'notify', k: 'nt_menu', perm: 'send_notices', v: viewNotify });
+  const NT = { tpls: null, loading: false, err: false, found: [], prev: null, res: null, busy: false };
+  const NT_GROUP = { admission: ['Admission', 'Admission'], fees: ['Fees', 'Frais'], results: ['Results', 'Résultats'], transcript: ['Transcript', 'Relevé de notes'], minesup: ['MINESUP', 'MINESUP'], general: ['General', 'Général'] };
+  const NT_KIND = [['ids', 'Selected people', 'Personnes choisies'], ['apps', 'Applicants, by admission status', 'Candidats, selon l\'état de la candidature'], ['students', 'Students', 'Étudiants'], ['staff', 'Staff', 'Personnel'], ['msapp', 'MINESUP applicants', 'Demandeurs MINESUP'], ['trreq', 'Transcript requests', 'Demandes de relevé']];
+  const NT_STATUS = {
+    apps: [['', 'Any status', 'Tout état'], ['submitted', 'Submitted', 'Soumise'], ['review', 'Under review', 'En examen'], ['waitlist', 'Waiting list', 'Liste d\'attente'], ['admitted', 'Admitted', 'Admis'], ['rejected', 'Not admitted', 'Non admis'], ['returned', 'Returned for correction', 'Renvoyée pour correction']],
+    students: [['', 'All students', 'Tous les étudiants'], ['admitted', 'Admitted, not yet registered', 'Admis, non inscrits'], ['registered', 'Registered', 'Inscrits']],
+    msapp: [['', 'Any status', 'Tout état'], ['pending', 'Pending review', 'En examen'], ['approved', 'Approved', 'Approuvée'], ['rejected', 'Rejected', 'Rejetée']],
+    trreq: [['', 'Any status', 'Tout état'], ['processing', 'Processing', 'En traitement'], ['ready', 'Ready', 'Prêt'], ['collected', 'Collected', 'Retiré'], ['rejected', 'Rejected', 'Rejeté']]
+  };
+  function ntLoad() { if (NT.tpls || NT.loading) return; NT.loading = true; api('/api/notice/templates', { body: {} }).then(d => { NT.tpls = d.templates; NT.loading = false; render(); }).catch(() => { NT.loading = false; NT.err = true; render(); }); }
+  function ntBody() {
+    const f = FORMS.nt || {}, T = (NT.tpls || []).find(x => x.id === f.tpl), vars = {};
+    if (T) { (T.vars || []).forEach(v => { vars[v[0]] = f['v_' + v[0]] || ''; }); if (T.custom) ['subject_en', 'body_en', 'subject_fr', 'body_fr'].forEach(k => { vars[k] = f['v_' + k] || ''; }); }
+    return { template: f.tpl, vars, audience: { kind: f.kind, status: f.status || '', role: f.role || '', ids: (f.ids || []).map(x => x.id) }, adi: f.adi !== false, personal: f.personal !== false, inapp: f.inapp !== false };
+  }
+  const ntErr = e => { const c = e && (e.code || e.message); return ({ empty: LBL('Please write the message before continuing.', 'Veuillez rédiger le message avant de continuer.'), nobody: LBL('No recipient matches this selection.', 'Aucun destinataire ne correspond à cette sélection.'), too_many: LBL('A notice may reach at most 250 people at once. Please narrow the selection.', 'Un avis peut atteindre au plus 250 personnes à la fois. Veuillez restreindre la sélection.'), rate: LBL('Too many notices were sent in the last hour. Please try again later.', 'Trop d\'avis ont été envoyés cette dernière heure. Veuillez réessayer plus tard.'), FORBIDDEN: LBL('You are not allowed to send notices.', 'Vous n\'êtes pas autorisé à envoyer des avis.') })[c] || String((e && e.message) || e); };
+  function viewNotify() {
+    if (!me() || !can('send_notices')) return `<div class="note bad">${LBL('Forbidden', 'Accès refusé')}</div>`;
+    ntLoad(); const f = FORMS.nt || (FORMS.nt = { kind: 'apps', adi: true, personal: true, inapp: true, ids: [] });
+    let h = `<p class="ms-kicker">${LBL('Administration', 'Administration')}</p><h2>${LBL('Send a notice', 'Envoyer un avis')}</h2><p class="muted">${LBL('Inform applicants, students and staff of an admission decision, a payment, a transcript, MINESUP progress or published results. Each person receives a courteous bilingual letter at the ADI and personal e-mail addresses you select, and a notification in the portal.', 'Informez candidats, étudiants et personnel d\'une décision d\'admission, d\'un paiement, d\'un relevé, de l\'avancement MINESUP ou de la publication des résultats. Chaque personne reçoit une lettre bilingue courtoise aux adresses ADI et personnelles que vous choisissez, ainsi qu\'une notification dans le portail.')}</p>`;
+    if (NT.err) return h + `<div class="note bad">${LBL('The notice service is not reachable. Please try again.', 'Le service d\'avis est inaccessible. Veuillez réessayer.')}</div>`;
+    if (!NT.tpls) return h + `<p class="muted">…</p>`;
+    const T = NT.tpls.find(x => x.id === f.tpl), fr = LANG === 'fr', lg = g => (NT_GROUP[g] || [g, g])[fr ? 1 : 0];
+    h += `<div class="card gap"><h3>1 · ${LBL('Subject of the notice', 'Objet de l\'avis')}</h3>${sel('nt.tpl', LBL('Type of notice', 'Type d\'avis'), NT.tpls.map(x => [x.id, lg(x.g) + ' — ' + x.t[fr ? 1 : 0]]), { r: 1 })}`;
+    if (T) {
+      if (T.custom) h += `<div class="grid g2">${inp('nt.v_subject_en', LBL('Subject (English)', 'Objet (anglais)'))}${inp('nt.v_subject_fr', LBL('Subject (French)', 'Objet (français)'))}</div><div class="grid g2">${area('nt.v_body_en', LBL('Message (English)', 'Message (anglais)'))}${area('nt.v_body_fr', LBL('Message (French, optional)', 'Message (français, facultatif)'))}</div><p class="small muted">${LBL('Separate paragraphs with a blank line. If you write in one language only, the letter is sent in that language.', 'Séparez les paragraphes par une ligne vide. Si vous n\'écrivez que dans une langue, la lettre est envoyée dans cette langue.')}</p>`;
+      else if ((T.vars || []).length) h += `<div class="grid g2">${T.vars.map(v => inp('nt.v_' + v[0], v[fr ? 2 : 1])).join('')}</div><p class="small muted">${LBL('The recipient\'s name, reference, level and matriculation number are filled in automatically.', 'Le nom, la référence, le niveau et le matricule du destinataire sont renseignés automatiquement.')}</p>`;
+      else h += `<p class="small muted">${LBL('The recipient\'s name, reference and level are filled in automatically.', 'Le nom, la référence et le niveau du destinataire sont renseignés automatiquement.')}</p>`;
+    }
+    h += `</div><div class="card gap"><h3>2 · ${LBL('Recipients', 'Destinataires')}</h3>${sel('nt.kind', LBL('Who should receive it?', 'Qui doit le recevoir ?'), NT_KIND.map(k => [k[0], k[fr ? 2 : 1]]), { r: 1, blank: false })}`;
+    if (NT_STATUS[f.kind]) h += sel('nt.status', LBL('Status', 'État'), NT_STATUS[f.kind].map(k => [k[0], k[fr ? 2 : 1]]), { r: 1, blank: false });
+    if (f.kind === 'staff') h += sel('nt.role', LBL('Role', 'Rôle'), [['', LBL('All staff', 'Tout le personnel')]].concat((typeof roleList === 'function' ? roleList() : []).filter(r => !['applicant', 'student'].includes(r)).map(r => [r, typeof roleName === 'function' ? roleName(r) : r])), { r: 1, blank: false });
+    if (f.kind === 'ids') h += `<div class="row">${inp('nt.q', LBL('Search by name or e-mail address', 'Rechercher par nom ou adresse e-mail'))}<button class="btn ghost" data-a="ntfind">${LBL('Search', 'Rechercher')}</button></div>${NT.found.length ? `<div class="chips">${NT.found.map(x => `<button class="chip" data-a="ntadd" data-id="${esc(x.id)}">+ ${esc(x.name)} <span class="small muted">${esc(x.role)}</span></button>`).join('')}</div>` : ''}${(f.ids || []).length ? `<p class="small">${LBL('Selected', 'Sélectionnés')}: ${(f.ids || []).map(x => `<button class="chip on" data-a="ntdel" data-id="${esc(x.id)}">${esc(x.name)} ✕</button>`).join(' ')}</p>` : ''}`;
+    h += `</div><div class="card gap"><h3>3 · ${LBL('Delivery', 'Envoi')}</h3><label class="small"><input type="checkbox" data-f="nt.adi" ${f.adi !== false ? 'checked' : ''}> ${LBL('ADI e-mail address (@adiuniversity.com)', 'Adresse e-mail ADI (@adiuniversity.com)')}</label><br><label class="small"><input type="checkbox" data-f="nt.personal" ${f.personal !== false ? 'checked' : ''}> ${LBL('Personal e-mail address', 'Adresse e-mail personnelle')}</label><br><label class="small"><input type="checkbox" data-f="nt.inapp" ${f.inapp !== false ? 'checked' : ''}> ${LBL('Notification inside the portal', 'Notification dans le portail')}</label><div id="nterr" class="gap"></div><div class="row"><button class="btn" data-a="ntprev" ${NT.busy ? 'disabled' : ''}>${LBL('Preview the letter', 'Prévisualiser la lettre')}</button></div></div>`;
+    if (NT.res) h += `<div class="note ok" role="status"><b>${LBL('Notice sent.', 'Avis envoyé.')}</b> ${NT.res.recipients} ${LBL('recipient(s)', 'destinataire(s)')} · ${NT.res.addresses} ${LBL('e-mail address(es)', 'adresse(s) e-mail')} · ${NT.res.inapp} ${LBL('portal notification(s)', 'notification(s) dans le portail')}.${(NT.res.skipped || []).length ? '<br>' + LBL('Not reached: ', 'Non joints : ') + (NT.res.skipped || []).map(esc).join(', ') : ''}</div>`;
+    if (NT.prev) { const p = NT.prev; h += `<div class="card gap"><h3>4 · ${LBL('Preview and confirmation', 'Aperçu et confirmation')}</h3><p><b>${p.recipients}</b> ${LBL('recipient(s)', 'destinataire(s)')} · <b>${p.addresses}</b> ${LBL('e-mail address(es)', 'adresse(s) e-mail')}${(p.skipped || []).length ? `<br><span class="small muted">${LBL('Without a selected address: ', 'Sans adresse sélectionnée : ')}${p.skipped.map(esc).join(', ')}</span>` : ''}</p>${p.sample ? `<p class="small muted">${LBL('Sample letter, as received by ', 'Exemple de lettre, telle que reçue par ')}${esc(p.sample.name)}</p><iframe title="${LBL('Letter preview', 'Aperçu de la lettre')}" sandbox="" srcdoc="${esc(p.sample.html)}" style="width:100%;height:560px;border:1px solid var(--rule);border-radius:10px;background:#fff"></iframe>` : ''}<div class="row gap"><button class="btn gold" data-a="ntsend" ${p.recipients && !NT.busy ? '' : 'disabled'}>${LBL('Send to ', 'Envoyer à ')}${p.recipients} ${LBL('recipient(s)', 'destinataire(s)')}</button></div></div>`; }
+    return h;
+  }
+  ACT.ntfind = async () => { const f = FORMS.nt || {}; try { const d = await api('/api/notice/people', { body: { q: f.q || '' } }); NT.found = d.people || []; render(); } catch (e) { toast(ntErr(e), 1); } };
+  ACT.ntadd = el => { const f = FORMS.nt, x = NT.found.find(p => p.id === el.dataset.id); if (x && !(f.ids || []).some(p => p.id === x.id)) f.ids = (f.ids || []).concat([{ id: x.id, name: x.name }]); NT.prev = null; render(); };
+  ACT.ntdel = el => { const f = FORMS.nt; f.ids = (f.ids || []).filter(p => p.id !== el.dataset.id); NT.prev = null; render(); };
+  const ntBox = m => { const b = $('#nterr'); if (b) b.innerHTML = m ? `<div class="note bad">${esc(m)}</div>` : ''; else if (m) toast(m, 1); };
+  ACT.ntprev = async el => {
+    const f = FORMS.nt || {}; if (!f.tpl) return ntBox(LBL('Please choose the type of notice.', 'Veuillez choisir le type d\'avis.'));
+    if (f.kind === 'ids' && !(f.ids || []).length) return ntBox(LBL('Please select at least one person.', 'Veuillez sélectionner au moins une personne.'));
+    ntBox(''); NT.busy = true; NT.res = null; if (el) el.disabled = true;
+    try { NT.prev = await api('/api/notice/preview', { body: ntBody() }); } catch (e) { NT.prev = null; NT.busy = false; return ntBox(ntErr(e)); }
+    NT.busy = false; render();
+  };
+  ACT.ntsend = async el => {
+    if (!NT.prev || !NT.prev.recipients) return; if (el) el.disabled = true; NT.busy = true;
+    try { NT.res = await api('/api/notice/send', { body: ntBody() }); NT.prev = null; NT.busy = false; render(); window.scrollTo(0, 0); }
+    catch (e) { NT.busy = false; if (el) el.disabled = false; toast(ntErr(e), 1); }
+  };
+
   /* ===== Super-administrator desk: accounts, ADI addresses, forms and receipts ===== */
   L.sa_desk = ['Accounts and documents', 'Comptes et documents'];
   ROUTES.splice(Math.max(0, ROUTES.findIndex(r => r.id === 'users')) + 1, 0, { id: 'sa-desk', k: 'sa_desk', perm: '__super', v: viewDesk });
