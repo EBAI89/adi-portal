@@ -463,7 +463,7 @@
         <div class="grid g2">${lock('Full name on the student record', 'Nom au dossier', st.name)}${inp('ms.certName', both('Full name as on the certificate', 'Nom et prénoms tels qu\'ils figurent sur le diplôme'))}${inp('ms.dob', both('Date of birth', 'Date de naissance'), { type: 'date' })}${inp('ms.pob', both('Place of birth', 'Lieu de naissance'))}${sel('ms.sex', both('Sex', 'Sexe'), [['F', LBL('Female', 'Féminin')], ['M', LBL('Male', 'Masculin')]], { blank: false })}${inp('ms.nationality', both('Nationality', 'Nationalité'))}${inp('ms.nid', both('National ID number', 'Numéro de la carte nationale d\'identité'))}${inp('ms.phone', both('Telephone or WhatsApp', 'Téléphone ou WhatsApp'), { type: 'tel' })}${inp('ms.email', both('Email address', 'Adresse électronique'), { type: 'email' })}${inp('ms.postal', both('Postal address', 'Adresse postale'))}</div>
       </section>
       <section class="ms-sec"><h3><span class="ms-num">B</span> ${both('Academic information', 'Informations académiques')}</h3>
-        <div class="grid g2">${lock('Qualification', 'Diplôme', st.level)}${lock('Specialty or option', 'Spécialité ou option', spec)}${lock('Institution', 'Établissement', 'American Ditek Institute (ADI University)')}${lock('MINESUP matricule (HND/BTS)', 'Matricule MINESUP (HND/BTS)', (clearFor(u) || {}).msNo || '')}${inp('ms.gradYear', both('Academic year of graduation', 'Année d\'obtention'), { type: 'number', ph: String(new Date().getFullYear()) })}${inp('ms.session', both('Examination session', 'Session d\'examen'), { ph: 'June 2026 / Juin 2026' })}${inp('ms.resultDate', both('Date of result publication', 'Date de publication des résultats'), { type: 'date' })}</div>
+        <div class="grid g2">${(pp => lock('Programme of study', "Programme d'étude", pp.programme) + lock(pp.unitEn, pp.unitFr, pp.field) + lock('Speciality', 'Spécialité', pp.specialtyFull))(progParts(st.specId, st.level))}${lock('Institution', 'Établissement', 'American Ditek Institute (ADI University)')}${lock('MINESUP matricule (HND/BTS)', 'Matricule MINESUP (HND/BTS)', (clearFor(u) || {}).msNo || '')}${inp('ms.gradYear', both('Academic year of graduation', 'Année d\'obtention'), { type: 'number', ph: String(new Date().getFullYear()) })}${inp('ms.session', both('Examination session', 'Session d\'examen'), { ph: 'June 2026 / Juin 2026' })}${inp('ms.resultDate', both('Date of result publication', 'Date de publication des résultats'), { type: 'date' })}</div>
       </section>
       <section class="ms-sec"><h3><span class="ms-num">1</span> ${both('Type of request', 'Type de demande')}</h3>
         ${ticks([['ms.tDiploma', 'Diploma', 'Diplôme'], ['ms.tTranscript', 'Transcript', 'Relevé de notes'], ['ms.tDuplicate', 'Duplicate', 'Duplicata'], ['ms.tCopy', 'Certified true copy', 'Copie certifiée conforme']])}
@@ -647,7 +647,7 @@
       ${lock('Certificate name', 'Nom sur le diplôme', a.certName)}${lock('Born', 'Naissance', (a.dob || '') + ' · ' + (a.pob || ''))}
       ${lock('Sex / Nationality', 'Sexe / Nationalité', (a.sex || '') + ' · ' + (a.nationality || ''))}${lock('National ID', 'CNI', a.nid)}
       ${lock('Phone', 'Téléphone', a.phone)}${lock('Email', 'Email', a.email)}
-      ${lock('Postal address', 'Adresse postale', a.postal)}${lock('Specialty', 'Spécialité', progName(a.specId))}
+      ${lock('Postal address', 'Adresse postale', a.postal)}${lock('Speciality', 'Spécialité', progName(a.specId))}
       ${lock('Graduation year', 'Année d\'obtention', a.gradYear)}${lock('Session', 'Session', a.session)}
       ${lock('Results published', 'Résultats publiés', a.resultDate)}${lock('Request', 'Demande', types)}
       ${lock('Reason', 'Motif', reason + (a.reason === 'other' ? ' — ' + (a.reasonOther || '') : ''))}${lock('Delivery', 'Remise', deliv)}
@@ -735,8 +735,7 @@
     kv('Postal address', 'Adresse postale', a.postal);
     y += 2;
     biLine('Section B — Academic information', 'Section B — Informations académiques', 3);
-    kv('Qualification', 'Diplôme', a.level);
-    kv('Specialty or option', 'Spécialité ou option', progName(a.specId));
+    { const pp = progParts(a.specId, a.level); kv('Programme of study', "Programme d'étude", pp.programme); kv(pp.unitEn, pp.unitFr, pp.field); kv('Speciality', 'Spécialité', pp.specialtyFull); }
     kv('Institution', 'Établissement', a.institution || 'American Ditek Institute (ADI University)');
     kv('MINESUP matricule (HND/BTS)', 'Matricule MINESUP (HND/BTS)', a.msNo || '—');
     kv('Academic year of graduation', 'Année d\'obtention', a.gradYear);
@@ -1280,13 +1279,18 @@
   const lead = (s, fr) => String(s || '').replace(fr ? /^(Fili[èe]re|Facult[ée]|[ÉE]cole)\s+(de l['’]|des |du |de |d['’])?\s*/i : /^(Field|Faculty|School)\s+of\s+(the\s+)?/i, '').replace(/^./, c => c.toUpperCase());
   window.progParts = function (specId, level) {
     const sp = (typeof SPEC !== 'undefined' && SPEC[specId]) || null, lv = (typeof LEVELS !== 'undefined' && LEVELS[level || (sp && sp.level)]) || null, g = sp && typeof GRP !== 'undefined' ? GRP[sp.gid] : null;
-    const prog = (txt, short) => { const m = String(txt || '').match(/^(.+?)\s+[—–-]\s+(.+)$/); return m ? m[2] + ' (' + m[1] + ')' : (txt || ''); };
+    const lvl = level || (sp && sp.level) || '', tech = /^(HND|BTS)$/.test(lvl);
+    const COMP = ['Computer Engineering', 'Génie informatique'];
+    const FOS = { 'Software Engineering': COMP, 'Hardware Maintenance': COMP, 'Network and Security': COMP, 'Database Management': COMP, 'Computer Science & Networks': COMP, 'Cyber Security': COMP, 'Artificial Intelligence': COMP, 'Génie logiciel': COMP, 'Réseau et sécurité': COMP };
+    const fo = sp && tech ? FOS[sp.name] : null;
     const code = sp ? CODES[sp.name] || '' : '';
     return {
-      programme: lv ? prog(lv.en) : '—', programmeFr: lv ? prog(lv.fr) : '—',
-      field: g ? lead(g.en, false) : '—', fieldFr: g ? lead(g.fr, true).replace(/ et de /g, ' et ') : '—',
-      unitEn: /^(HND|BTS)$/.test(level || (sp && sp.level) || '') ? 'Field' : 'Faculty', unitFr: /^(HND|BTS)$/.test(level || (sp && sp.level) || '') ? 'Filière' : 'Faculté', unitBi: /^(HND|BTS)$/.test(level || (sp && sp.level) || '') ? 'Field / Filière' : 'Faculty / Faculté',
-      specialty: sp ? sp.name : '—', code, specialtyFull: sp ? sp.name + (code ? ' (' + code + ')' : '') : '—'
+      programme: lv ? lv.en : '—', programmeFr: lv ? lv.fr : '—',
+      field: fo ? fo[0] : g ? lead(g.en, false) : '—', fieldFr: fo ? fo[1] : g ? lead(g.fr, true).replace(/ et de /g, ' et ') : '—',
+      unitEn: tech ? 'Field of Study' : 'Faculty', unitFr: tech ? "Domaine d'étude" : 'Faculté', unitBi: tech ? "Field of Study / Domaine d'étude" : 'Faculty / Faculté',
+      progEn: 'Programme of study', progFr: "Programme d'étude", progBi: "Programme of study / Programme d'étude",
+      specEn: 'Speciality', specFr: 'Spécialité', specBi: 'Speciality / Spécialité',
+      specialty: sp ? sp.name : '—', code, specialtyFull: sp ? sp.name : '—'
     };
   };
 })();
