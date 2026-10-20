@@ -2573,6 +2573,18 @@ async function applyWrite(u, c, id, o, n) {
   }
   if (c === 'msapp') { await sideMod('minesup-api.js').apply({ S, R, logic, save, audit, now, usersWith, notifyUser, bi }, u, id, o, n); return; }
   if (n === null) return remove(c, id);
+  if (c === 'notices' && !o) {
+    const aud = ['all', 'student', 'lecturer', 'applicant', 'admin', 'accountant'].includes(n.aud) ? n.aud : 'all', title = clipT(n.title, 160).trim(), text = clipT(n.body, 4000).trim(); if (!title || !text) throw ['incomplete'];
+    const people = Object.values(S.all('users')).filter(x => x && x.status === 'active' && (aud === 'all' || x.role === aud)).slice(0, 1500), addr = people.reduce((a, x) => a + noticeEmails(x).length, 0);
+    n = { title, body: text, aud, at: now(), by: u.name, mail: { people: people.length, addresses: addr } };
+    await save(c, id, n); await audit(u, 'notice posted: ' + title + ' to ' + aud + ' (' + people.length + ' user(s), ' + addr + ' address(es))');
+    (async () => {
+      let ok = 0, bad = 0; const jobs = [];
+      for (const x of people) { await save('notifs', uid('n'), { userId: x.id, title: title.slice(0, 200), body: text.slice(0, 800), at: now(), read: false }); const fr = x.lang === 'fr', letter = '# ' + title + '\n\n' + (fr ? 'Madame, Monsieur' + (x.name ? ' ' + x.name : '') + ',' : 'Dear ' + (x.name || 'Sir or Madam') + ',') + '\n\n' + text + '\n\n' + (fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,') + '\n\n--\n' + (fr ? 'L\'Administration' : 'The Administration') + '\nAmerican Ditek Institute (ADI University)'; for (const to of noticeEmails(x)) jobs.push({ to, subject: (fr ? 'Avis officiel : ' : 'Official notice: ') + title, text: letter }); }
+      for (let i = 0; i < jobs.length; i += 6) await Promise.all(jobs.slice(i, i + 6).map(j => sendEmail(j).then(r => { r === false ? bad++ : ok++; }, () => bad++)));
+      const cur = S.get('notices', id); if (cur) await save('notices', id, Object.assign({}, cur, { mail: Object.assign({}, cur.mail, { sent: ok, failed: bad, done: now() }) }));
+    })().catch(e => console.log('[notice board] ' + e.message)); return;
+  }
   await save(c, id, n);
 }
 

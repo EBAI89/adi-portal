@@ -44,3 +44,6 @@ The portal fills `{{1}}` with the fee item and amount and `{{2}}` with the trans
 ## Official notices (v2.63.0)
 
 *Send a notice* (administration menu; super administrator and any role granted "Send official notices by e-mail") e-mails a formal bilingual letter to applicants, students, staff, MINESUP applicants or transcript requesters: admission decisions, fee confirmations and reminders, results published, transcript status, MINESUP status, or a custom message. Choose ADI addresses, personal addresses, or both; a portal notification is added unless switched off. Always preview before sending (maximum 250 people at once, 12 notices per hour per sender).
+
+## Notice board (v2.64.0)
+A notice posted on **Notices** (`#/notices`) is now delivered automatically as an official letter to the **personal and ADI e-mail addresses** of every active member of the chosen audience, and appears as an in-portal notification. The board shows, under each notice, how many recipients and addresses were reached and the delivery result. Posting requires the `manage_notices` permission; each posting is recorded in the audit log.
