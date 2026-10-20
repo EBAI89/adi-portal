@@ -37,7 +37,9 @@ function rosterList(store) {
 // The name on MINESUP's list must be the name on the ADI student record (at least two words in common).
 function rosterMatch(store, no, name) {
   const n = normNo(no); if (!noOk(n)) return { ok: false, why: 'format' };
-  const hits = rosterList(store).filter(r => r.no === n); if (!hits.length) return { ok: false, why: 'not_listed' };
+  // Test Lab candidates are listed virtually (the official list itself is never changed).
+  const testList = Object.values(store.all('students')).filter(s => s && s.test && s.msNo).map(s => ({ no: normNo(s.msNo), name: String(s.name || '').toUpperCase(), level: s.level, field: 'TST', mark: 15 }));
+  const hits = rosterList(store).concat(testList).filter(r => r.no === n); if (!hits.length) return { ok: false, why: 'not_listed' };
   const mine = fold(name);
   const linked = Object.values(store.all('students')).some(s => s && normNo(s.msNo) === n && fold(s.name).join(' ') === mine.join(' '));
   if (linked) return { ok: true, entry: hits[0], no: n };

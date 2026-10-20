@@ -3256,6 +3256,57 @@ async function route(req, res) {
     await save('users', id, Object.assign({ email, name, phone: String(b.phone || '').slice(0, 30), role, status: 'active', lang: 'en', createdAt: now(), pw: await hashPw(temp), mustChange: true, createdBy: u.id }, contactOk ? { contactEmail: contact } : {}));
     await audit(u, 'account created ' + email + ' (' + role + ')'); return send(res, 200, { ok: true, id, email, temp });
   }
+  /* ---------- Test Lab (super administrator): imaginary accounts to rehearse every interface without touching real records ---------- */
+  if (p.startsWith('/api/admin/testlab') && req.method === 'POST') {
+    if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
+    const b = await body(req, 3000), TLK = ['student', 'minesup', 'lecturer', 'accountant', 'admin', 'applicant'];
+    const FIRST = ['Zephyr', 'Aurelia', 'Thaddeus', 'Ximena', 'Orion', 'Calliope', 'Leopold', 'Marisol', 'Peregrine', 'Isolde', 'Barnaby', 'Seraphina', 'Lysander', 'Octavia', 'Caspian', 'Rosalind'];
+    const LAST = ['Quillfeather', 'Brightwater', 'Stormhaven', 'Moonridge', 'Ashgrove', 'Fairweather', 'Thornfield', 'Silverbrook', 'Larkspur', 'Wildermoor', 'Evergreen', 'Starling'];
+    const users = () => Object.values(S.all('users')).filter(Boolean), tests = () => users().filter(x => x.test);
+    const pad = (n, w) => String(n).padStart(w, '0'), ay = logic.AY();
+    const newName = () => { const used = new Set(users().map(x => String(x.name || '').toLowerCase())); for (let i = 0; i < 400; i++) { const nm = FIRST[crypto.randomInt(FIRST.length)] + ' ' + LAST[crypto.randomInt(LAST.length)]; if (!used.has(nm.toLowerCase())) return nm; } return 'Test Person ' + pad(crypto.randomInt(9999), 4); };
+    const newEmail = (kind, name) => { const base = 'test.' + kind + '.' + name.toLowerCase().split(' ')[0]; const dom = (['applicant', 'minesup'].includes(kind) && MB && MB.DOMAIN) ? MB.DOMAIN : 'adi-test.invalid'; let e = base + '@' + dom, n = 1; const have = new Set(users().map(x => String(x.email).toLowerCase())); while (have.has(e)) e = base + (++n) + '@' + dom; return e; };
+    const pay = async (st, userId, kind, label) => { const id = uid('p'); await save('payments', id, { id, userId, matric: st ? st.matric : '', payerName: st ? st.name : '', kind, label: label + ' (test, no money)', amount: 0, ref: 'TEST-' + id.slice(-6).toUpperCase(), receiptNo: 'TEST-' + id.slice(-6).toUpperCase(), status: 'confirmed', at: now(), ay, test: true }); };
+    const makeStudent = async (name, userId) => {
+      const sts = Object.values(S.all('students')).filter(Boolean); let n = 1, m; do { m = 'TEST/HND/' + pad(n++, 3); } while (S.get('students', m));
+      const k = sts.filter(x => x.test).length + 1, msNo = '26TST' + pad(1000 + k + crypto.randomInt(8000), 4).slice(-4);
+      const st = { matric: m, adiNo: 'ADI/TEST/HND/26/' + pad(n - 1, 3), msNo, userId: userId || null, name, level: 'HND', gid: 'hnd-eng', specId: 'hnd-eng:software-engineering', entryYear: Number(String(ay).slice(0, 4)) || new Date().getFullYear(), status: 'registered', email: '', phone: '', photo: '', test: true };
+      await save('students', m, st);
+      await pay(st, userId || '', 'platform', 'Platform charge'); await pay(st, userId || '', 'registration', 'Registration fee'); await pay(st, userId || '', 'tuition_full', 'Full tuition');
+      return st;
+    };
+    const make = async kind => {
+      const name = newName(), temp = tempPassword(), id = uid('u'), email = newEmail(kind, name);
+      const nu = { email, name, phone: '', role: kind === 'minesup' ? 'applicant' : kind, status: 'active', lang: 'en', createdAt: now(), pw: await hashPw(temp), mustChange: false, createdBy: u.id, test: true, testKind: kind };
+      let st = null;
+      if (kind === 'student') { await save('users', id, nu); st = await makeStudent(name, id); }
+      else if (kind === 'minesup') { st = await makeStudent(name, null); nu.purpose = 'minesup'; nu.msMatric = st.matric; nu.msNo = st.msNo; await save('users', id, nu); await pay(st, id, 'service', 'MINESUP service fee'); }
+      else await save('users', id, nu);
+      await audit(u, 'test account created ' + email + ' (' + kind + ')');
+      return { id, kind, name, email, temp, matric: st ? st.matric : '', adiNo: st ? st.adiNo : '', msNo: st && kind === 'minesup' ? st.msNo : '' };
+    };
+    const purge = async x => {
+      const matrics = new Set(Object.values(S.all('students')).filter(s => s && s.test && (s.userId === x.id || (x.msMatric && s.matric === x.msMatric))).map(s => s.matric));
+      for (const col of ['payments', 'enroll', 'results', 'formb', 'notifs', 'tickets', 'apps', 'trreq', 'msapp', 'files']) for (const [id, d] of Object.entries(S.all(col))) if (d && (d.userId === x.id || d.owner === x.id || (d.matric && matrics.has(d.matric)))) await remove(col, id);
+      for (const m of matrics) await remove('students', m);
+      await remove('users', x.id);
+    };
+    if (p === '/api/admin/testlab/create') {
+      if (tests().length >= 60) return send(res, 400, { error: 'Test Lab limit reached (60 accounts). Delete some test accounts first.' });
+      const kinds = b.kind === 'cast' ? TLK : [String(b.kind || '')]; if (!kinds.every(k => TLK.includes(k))) return send(res, 400, { error: 'Unknown test account type.' });
+      const made = []; for (const k of kinds) made.push(await make(k));
+      return send(res, 200, { ok: true, made });
+    }
+    if (p === '/api/admin/testlab/password') {
+      const x = S.get('users', String(b.userId || '')); if (!x || !x.test) return send(res, 404, { error: 'Test account not found.' });
+      const temp = tempPassword(); await save('users', x.id, Object.assign({}, x, { pw: await hashPw(temp), mustChange: false })); await audit(u, 'test account password reset ' + x.email); return send(res, 200, { ok: true, email: x.email, temp });
+    }
+    if (p === '/api/admin/testlab/delete') {
+      const list = b.all ? tests() : [S.get('users', String(b.userId || ''))].filter(x => x && x.test);
+      if (!list.length) return send(res, 404, { error: 'No test accounts to delete.' });
+      for (const x of list) await purge(x); await audit(u, 'test accounts deleted (' + list.length + ')'); return send(res, 200, { ok: true, deleted: list.length });
+    }
+  }
   if (p === '/api/admin/users/delete' && req.method === 'POST') {
     if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
     const b = await body(req, 2000), x = S.get('users', String(b.userId || ''));
