@@ -1,17 +1,18 @@
 /* ADI portal service worker: shows portal alerts even when no portal page is open. */
 self.addEventListener('install', () => self.skipWaiting());
 /* Fast and resilient loading: the page shell and its versioned files are kept on the device, so a repeat visit opens at once and still opens on a weak or interrupted connection. */
-const SHELL = 'adi-shell-v1', FILES = 'adi-files-v1', EDGE = 'adi-edge-v1';
+const SHELL = 'adi-shell-v2', FILES = 'adi-files-v2', EDGE = 'adi-edge-v1';
 self.addEventListener('activate', e => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (![SHELL, FILES, EDGE].includes(k)) await caches.delete(k);
   await self.clients.claim();
 })()));
 const EDGE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net'];
 async function navigate(req) {
-  const c = await caches.open(SHELL);
+  const c = await caches.open(SHELL), hit = await c.match('/');
   const net = fetch(req).then(r => { if (r && r.ok) c.put('/', r.clone()); return r; });
-  try { return await Promise.race([net, new Promise((_, no) => setTimeout(no, 4500))]); }   // a slow network: show the saved page rather than a blank screen
-  catch (e) { const hit = await c.match('/'); return hit || net; }
+  if (hit) { net.catch(() => {}); return hit; }                           // returning visitor: the saved page opens at once, then refreshes quietly (the portal offers a reload when a new version exists)
+  try { return await Promise.race([net, new Promise((_, no) => setTimeout(no, 8000))]); }
+  catch (e) { return net; }
 }
 async function cacheFirst(req, name) {
   const c = await caches.open(name), hit = await c.match(req); if (hit) return hit;
@@ -28,7 +29,7 @@ self.addEventListener('fetch', e => {
   if (u.origin === self.location.origin) {
     if (u.pathname.startsWith('/api/') || u.pathname === '/sw.js' || r.headers.has('range')) return;
     if (r.mode === 'navigate' && u.pathname === '/') return e.respondWith(navigate(r));
-    if (u.searchParams.get('v') && /\.(js|css)$/.test(u.pathname)) return e.respondWith(cacheFirst(r, FILES));   // versioned: a new release has a new address
+    if ((u.searchParams.get('v') || u.pathname === '/assets/app.js') && /\.(js|css)$/.test(u.pathname)) return e.respondWith(cacheFirst(r, FILES));   // versioned: a new release has a new address
   } else if (EDGE_HOSTS.includes(u.hostname)) e.respondWith(revalidate(r, EDGE));
 });
 self.addEventListener('push', e => {

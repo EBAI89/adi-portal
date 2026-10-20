@@ -2230,8 +2230,10 @@ let PAGE_C = null;
 function buildPage() {
   let page = __EMBED_HTML; const v = encodeURIComponent(PORTAL_VER);
   // the pictures are one very large line of the page script: they move to a separate, long-cached file, so the page itself is far smaller and a returning visitor downloads them only once
-  let img = null; const a = page.indexOf('const IMG = {');
-  if (a >= 0) { const z = page.indexOf('\n', a); const line = page.slice(a, z); if (/\};\s*$/.test(line)) { img = zEntry('img', line + '\n'); page = page.slice(0, a) + '/* IMG: loaded from /assets/img.js */' + page.slice(z); } }
+  let img = null, img2 = null; const a = page.indexOf('const IMG = {');
+  if (a >= 0) { const z = page.indexOf('\n', a); const line = page.slice(a, z); if (/\};\s*$/.test(line)) { let o = null; try { o = JSON.parse(line.slice('const IMG = '.length).replace(/;\s*$/, '')); } catch (e) {}
+    if (o && o.logo) { img = zEntry('img', 'const IMG = ' + JSON.stringify({ logo: o.logo, imgs: {}, wm: {} }) + ';\n'); img2 = zEntry('img2', 'IMG.imgs=' + JSON.stringify(o.imgs || {}) + ';IMG.wm=' + JSON.stringify(o.wm || {}) + ';if(window.__imgLate)window.__imgLate();\n'); page = page.slice(0, a) + "/* IMG: logo from /assets/img.js, the large pictures load afterwards */ window.__imgLate=function(){try{if(/^#?\\/?(home)?$/.test(location.hash)&&typeof render==='function')render();}catch(e){}};addEventListener('load',function(){setTimeout(function(){var s=document.createElement('script');s.async=true;s.src='/assets/img2.js?v=" + img2.etag.replace(/"/g, '').slice(0, 10) + "';document.head.appendChild(s)},200)});" + page.slice(z); }
+    else { img = zEntry('img', line + '\n'); page = page.slice(0, a) + '/* IMG: loaded from /assets/img.js */' + page.slice(z); } } }
   page = page.replace(/<link href="https:\/\/cdn\.jsdelivr\.net\/npm\/@fontsource\/geist-sans[^>]*>\s*/g, '');                       // a fourth-choice font: four requests saved
   page = page.replace(/<link href="(https:\/\/fonts\.googleapis\.com\/css2[^"]*)" rel="stylesheet">/, '<link rel="preload" as="style" href="$1" onload="this.onload=null;this.rel=\'stylesheet\'"><noscript><link rel="stylesheet" href="$1"></noscript>');   // fonts no longer hold up the first paint
   page = page.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>', '<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>' + (img ? '<script src="/assets/img.js?v=' + img.etag.replace(/"/g, '').slice(0, 10) + '"></script>' : ''));
@@ -2239,7 +2241,13 @@ function buildPage() {
     if (!PROD) {
       page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
     }
-  return { page: zEntry('page', page), img };
+  // the page script (1.5 MB) becomes its own long-cached file: a returning visitor re-downloads only the small page shell
+  let app = null; { const a0 = page.indexOf('<script>'), a1 = a0 >= 0 ? page.indexOf('</script>', a0) : -1; if (a1 > a0 && a1 - a0 > 200000) { app = zEntry('app', page.slice(a0 + 8, a1)); page = page.slice(0, a0) + '<script defer src="/assets/app.js?v=' + app.etag.replace(/[^A-Za-z0-9]/g, '').slice(0, 12) + '"></script>' + page.slice(a1 + 9); } }
+  if (app) page = page.replace(/<script src="\//g, '<script defer src="/');   // all local scripts run in order, after the page has been drawn
+  // the first screen appears at once, before any script has arrived, and the data requests start in parallel with the script download
+  page = page.replace('<div id="app"></div>', '<div id="app"><div id="splash" role="status" aria-live="polite" style="min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:Inter,Arial,sans-serif;color:#0B2559;text-align:center;padding:24px"><style>@keyframes adispin{to{transform:rotate(360deg)}}@media (prefers-color-scheme:dark){#splash{color:#E7ECF8!important}}</style><div style="width:46px;height:46px;border-radius:50%;border:4px solid #D9DFEC;border-top-color:#C9A227;animation:adispin .9s linear infinite"></div><div style="font-weight:800;font-size:1.15rem">American Ditek Institute (ADI)</div><div style="opacity:.75;font-size:.95rem">Loading your portal… · Chargement du portail…</div></div></div>');
+  page = page.replace('<head>', '<head><script>window.__PF={h:fetch("/api/health",{credentials:"same-origin"}),s:fetch("/api/sync?since=0&epoch=&vk=&lite=1",{credentials:"same-origin"})};window.__PF.h.catch(function(){});window.__PF.s.catch(function(){});</script>');
+  const out = { page: zEntry('page', page), img, img2, app }; [out.page, out.img, out.img2, out.app].forEach(zWarm); return out;
 }
 const ZC = new Map();
 function zEntry(key, data) {
@@ -2247,6 +2255,7 @@ function zEntry(key, data) {
   const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
   e = { src: data, buf, etag: '"' + crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 22) + '"', gz: null, br: null, brP: false }; ZC.set(key, e); return e;
 }
+function zWarm(e) { if (e && !e.br && !e.brP && e.buf.length > 1024) { e.brP = true; zlib.brotliCompress(e.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: e.buf.length } }, (err, o) => { if (!err) e.br = o; }); } }
 function zServe(req, res, e, headers) {
   const h = Object.assign({}, headers, { ETag: e.etag, Vary: 'Accept-Encoding' });
   if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, h); return res.end(); }
@@ -2829,6 +2838,8 @@ async function route(req, res) {
     return res.end(buf);
   }
   if (p === '/assets/img.js' && req.method === 'GET') { if (!PAGE_C) PAGE_C = buildPage(); if (!PAGE_C.img) return send(res, 404, { error: 'missing' }); return zServe(req, res, PAGE_C.img, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' }); }
+  if (p === '/assets/img2.js' && req.method === 'GET') { if (!PAGE_C) PAGE_C = buildPage(); if (!PAGE_C.img2) return send(res, 404, { error: 'missing' }); return zServe(req, res, PAGE_C.img2, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' }); }
+  if (p === '/assets/app.js' && req.method === 'GET') { if (!PAGE_C) PAGE_C = buildPage(); if (!PAGE_C.app) return send(res, 404, { error: 'missing' }); return zServe(req, res, PAGE_C.app, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' }); }
   if (!p.startsWith('/api/')) {
     if (req.method !== 'GET') return send(res, 405, { error: 'method' });
     if (!PAGE_C) PAGE_C = buildPage();
@@ -3047,11 +3058,16 @@ async function route(req, res) {
   }
   if (p === '/api/sync' && req.method === 'GET') {
     const q = url.searchParams, since = Number(q.get('since') || 0), vk = vkey(u);
-    const full = q.get('epoch') !== EPOCH || q.get('vk') !== vk || since < TOMB_FLOOR || since > SEQ;
+    const full = q.get('epoch') !== EPOCH || q.get('vk') !== vk || since < TOMB_FLOOR || since > SEQ, lite = q.get('lite') === '1';
     const out = { epoch: EPOCH, seq: SEQ, vk, me: u ? u.id : null, full, cols: {}, del: [] };
-    const hold = !!(u && mfaPending(u)); for (const c of COLS) { const m = {}; if (hold && !['users', 'settings'].includes(c)) { out.cols[c] = m; continue; } for (const [id, d] of Object.entries(S.all(c))) { if (hold && c === 'users' && id !== u.id) continue; if (!full && !(d._seq > since)) continue; const v = R.read(u, c, d); if (v) m[id] = v; else if (!full) out.del.push([c, id]); } out.cols[c] = m; }
+    const hold = !!(u && mfaPending(u)); for (const c of COLS) { const m = {}; if (hold && !['users', 'settings'].includes(c)) { out.cols[c] = m; continue; } for (const [id, d] of Object.entries(S.all(c))) { if (hold && c === 'users' && id !== u.id) continue; if (!full && !(d._seq > since)) continue; const v = R.read(u, c, d); if (v) { if (lite && c === 'courses' && (v.outline !== undefined || v.outlineSrc !== undefined)) { const w = Object.assign({}, v); delete w.outline; delete w.outlineSrc; w._ol = 1; m[id] = w; } else m[id] = v; } else if (!full) out.del.push([c, id]); } out.cols[c] = m; }
     if (!full) TOMB.filter(x => x.seq > since).forEach(x => out.del.push([x.c, x.id]));
     return send(res, 200, out);
+  }
+  if (p === '/api/outlines' && req.method === 'GET') {   // official course contents (Ministry outlines), loaded after the first screen or when an outline is opened
+    if (!u) return send(res, 401, { error: 'auth' });
+    const o = {}; for (const [id, d] of Object.entries(S.all('courses'))) { if (!d || (d.outline === undefined && d.outlineSrc === undefined)) continue; if (!R.read(u, 'courses', d)) continue; o[id] = [d.outline || '', d.outlineSrc || '']; }
+    return send(res, 200, { o });
   }
   if (p === '/api/signup' && req.method === 'POST') {
     if (limited('signup:' + ip(req), E.NODE_ENV === 'test' ? 500 : 10, 3600e3)) return send(res, 429, { error: 'Too many sign-ups from this network' });
@@ -3173,6 +3189,7 @@ async function route(req, res) {
     if (!u && limited('anon:' + ip(req), 5, 3600e3)) return send(res, 429, { error: 'Too many messages' });
     const o = S.get(c, id); const n = req.method === 'DELETE' ? null : await body(req, c === 'apps' ? 400000 : 250000);
     if (n) { delete n.id; delete n.pw; delete n._seq; delete n.totp; delete n.totpPending; delete n.sms2; delete n.sms2Pending; delete n.mfa; delete n.mfaReq; delete n.mfaKind; delete n.mfaPhone; }
+    if (n && c === 'courses' && o) { for (const f of ['outline', 'outlineSrc']) if (n[f] === undefined && o[f] !== undefined) n[f] = o[f]; delete n._ol; }   // a course saved by a page that has not loaded the outlines yet keeps its official content
     const ok = R.write(u, c, id, o, n); if (ok !== true) return send(res, 403, { error: ok });
     try { await applyWrite(u, c, id, o, n); } catch (e) { if (Array.isArray(e)) return send(res, 400, { error: e[0] }); throw e; }
     return send(res, 200, { ok: true });
@@ -3782,7 +3799,7 @@ async function seed() {
   if (MB) await MB.seed();
   setInterval(() => momoPoll().catch(e => console.error(e)), 20000).unref();
   http.createServer((req, res) => route(req, res).catch(e => { console.error(e); if (!res.headersSent) send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too large' : e.code === 400 ? 'bad request' : 'server error' }); }))
-    .listen(PORT, '0.0.0.0', () => { console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'}, whatsapp: ${E.WHATSAPP_PROVIDER || 'log'})`); channelCheck(); });
+    .listen(PORT, '0.0.0.0', () => { try { if (!PAGE_C) PAGE_C = buildPage(); } catch (e) {} console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'}, whatsapp: ${E.WHATSAPP_PROVIDER || 'log'})`); channelCheck(); });
 })();
 
 })(__req);
