@@ -556,7 +556,8 @@
     const types = Object.keys(a.types || {}).filter(k => a.types[k]).map(k => (TYPE_L[k] ? TYPE_L[k][LANG === 'fr' ? 1 : 0] : k)).join(', ');
     const reason = REASON_L[a.reason] ? REASON_L[a.reason][LANG === 'fr' ? 1 : 0] : a.reason;
     const deliv = DELIV_L[a.delivery] ? DELIV_L[a.delivery][LANG === 'fr' ? 1 : 0] : a.delivery;
-    let h = `<p><a href="#/minesup-admin">← ${LBL('All applications', 'Toutes les demandes')}</a></p>`;
+    const nav = bot => typeof recNav === 'function' ? recNav({ list: Object.values(S.msapp || {}).filter(Boolean).sort((x, y) => (y.at || 0) - (x.at || 0)).map(x => ({ id: x.id, label: x.certName || x.name || x.ref })), id: a.id, base: '#/minesup-admin/', back: { href: '#/minesup-admin', label: LBL('All applications', 'Toutes les demandes') }, noun: ['Application', 'Demande'], fem: 1 }, bot) : (bot ? '' : `<p><a href="#/minesup-admin">← ${LBL('All applications', 'Toutes les demandes')}</a></p>`);
+    let h = nav();
     h += `<p class="ms-kicker">${esc(a.ref || '')}</p><h2>${esc(a.certName || a.name)}</h2><p>${statusBadge(a.status)} · ${esc(a.matric)} · ${esc(a.level)}</p>`;
     h += `<div class="card"><h3>${LBL('Eligibility', 'Éligibilité')}</h3><ul class="ms-criteria">${au.checks.map(c => `<li><span class="${c[0] ? 'ms-pass' : 'ms-fail'}">${c[0] ? '✓' : '✕'}</span><span>${esc(c[1])}</span></li>`).join('')}</ul></div>`;
     h += `<div class="card gap"><h3>${LBL('Application', 'Demande')}</h3><div class="grid g2">
@@ -582,6 +583,7 @@
     } else if (a.verifiedBy) {
       h += `<div class="note ok">${LBL('Decided by', 'Décision de')} ${esc(a.verifiedBy)} · ${fmtDT(a.decisionAt)}</div>`;
     }
+    h += nav(1);
     return h;
   }
   ACT.msdecide = async el => {
