@@ -2840,9 +2840,7 @@ async function route(req, res) {
   if (E.NODE_ENV === 'test' && p === '/api/test/outbox' && req.method === 'GET') return send(res, 200, { mails: OUTBOX.splice(0) });
   if (E.NODE_ENV === 'test' && p === '/api/test/clock' && req.method === 'POST') { SKEW = Number((await body(req, 1000)).skewMs) || 0; return send(res, 200, { ok: true, skew: SKEW }); }
   if (p === '/api/minesup/directory' && req.method === 'GET' && u && ((u.purpose === 'minesup' && logic.serviceOk(S, u.id)) || u.role === 'student')) {
-    const ms = sideMod('minesup-api.js'), mineT = ms.fold(u.name), own = u.role === 'student' ? R.myStudent(u) : null;
-    // Only the records this account is entitled to claim are listed (its own name), so every name offered is accepted and no other student's details are exposed.
-    const list = Object.values(S.all('students')).filter(x => x && ms.LEVELS.includes(x.level) && (x.msNo || x.adiNo) && (own ? x.matric === own.matric : ms.fold(x.name).some(t => mineT.includes(t)))).sort((a, b) => String(a.name).localeCompare(b.name));
+    const ms = sideMod('minesup-api.js'), list = Object.values(S.all('students')).filter(x => x && ms.LEVELS.includes(x.level) && (x.msNo || x.adiNo)).sort((a, b) => String(a.name).localeCompare(b.name));
     return send(res, 200, { students: list.map(x => ({ matric: x.adiNo || x.matric, name: x.name, level: x.level, msNo: x.msNo ? ms.normNo(x.msNo) : '' })) });
   }
   if (p === '/api/minesup/clearance' && u && (u.purpose === 'minesup' || u.role === 'student')) {
@@ -2879,7 +2877,7 @@ async function route(req, res) {
           st = S.get('students', matric) || Object.values(S.all('students')).find(x => x && ms.normAdi(x.adiNo) && ms.normAdi(x.adiNo) === ms.normAdi(matric));
           if (!st || !ms.LEVELS.includes(st.level)) return send(res, 400, { error: 'This ADI matricule is not on record for an HND or BTS student. Choose your name from the list.' });
           const mine = ms.fold(u.name), theirs = ms.fold(st.name);
-          if (!mine.some(x => theirs.includes(x))) return send(res, 400, { error: 'The name on this account (' + String(u.name || '').slice(0, 60) + ') does not match the ADI student record for this matricule. Register with the account name that appears on your ADI record.' });
+          if (!mine.some(x => theirs.includes(x))) return send(res, 400, { error: 'The name on this account does not match the ADI student record for this matricule.' });
           chk = ms.rosterMatch(S, msNo, st.name);
           if (!chk.ok && chk.why !== 'format' && chk.why !== 'not_listed') return send(res, 400, { error: 'The ADI matricule and the MINESUP matricule do not belong to the same candidate.' });
           if (Object.values(S.all('users')).some(x => x && x.id !== u.id && x.purpose === 'minesup' && x.msMatric === st.matric)) return send(res, 409, { error: 'This candidate is already registered on another MINESUP account.' });
