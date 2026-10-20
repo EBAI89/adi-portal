@@ -213,6 +213,31 @@
     catch (e) { NT.busy = false; if (el) el.disabled = false; toast(ntErr(e), 1); }
   };
 
+  /* ===== Status letter to the person behind one MINESUP application or transcript request ===== */
+  const RL = { msapp: [['ms_processing', 'Being processed', 'En cours de traitement'], ['ms_status', 'Status update (free wording)', 'Point d\'avancement (texte libre)'], ['ms_ready', 'Document ready for collection', 'Document prêt à être retiré']], trreq: [['tr_received', 'Request received', 'Demande reçue'], ['tr_processing', 'Being processed', 'En cours de traitement'], ['tr_ready', 'Transcript ready for collection', 'Relevé prêt à être retiré']] };
+  const RL_VARS = { ms_processing: [['date', 'Expected date', 'Date prévue']], ms_status: [['status', 'Current status', 'État actuel'], ['details', 'Further details', 'Précisions']], ms_ready: [['collect', 'Collection point and hours', 'Lieu et horaires de retrait']], tr_received: [], tr_processing: [['date', 'Expected date', 'Date prévue']], tr_ready: [['collect', 'Collection point and hours', 'Lieu et horaires de retrait']] };
+  const RLS = { st: null };
+  const rlBody = (f, prev) => { const vars = {}; (RL_VARS[f.tpl] || []).forEach(v => { vars[v[0]] = f['v_' + v[0]] || ''; }); return { kind: f.kind, id: f.id, template: f.tpl, vars, preview: !!prev }; };
+  function rlView() {
+    const f = FORMS.rl, fr = LANG === 'fr', rec = (f.kind === 'msapp' ? S.msapp : S.trreq)[f.id] || {}, who = esc(rec.certName || rec.name || ''), last = rec.lastLetter;
+    let h = `<h3>${LBL('Send a status letter', 'Envoyer une lettre d\'avancement')}</h3><p class="muted">${who} · ${esc(rec.ref || '')}<br>${LBL('The applicant receives a courteous bilingual letter at the ADI and personal e-mail addresses, and a notification in the portal.', 'Le demandeur reçoit une lettre courtoise bilingue aux adresses e-mail ADI et personnelle, ainsi qu\'une notification dans le portail.')}</p>`;
+    if (last) h += `<p class="small muted">${LBL('Last letter sent', 'Dernière lettre envoyée')}: ${esc(last.t)} · ${new Date(last.at).toLocaleString()} · ${esc(last.by || '')}</p>`;
+    h += sel('rl.tpl', LBL('Subject of the letter', 'Objet de la lettre'), RL[f.kind].map(x => [x[0], x[fr ? 2 : 1]]), { blank: false });
+    const vs = RL_VARS[f.tpl] || []; if (vs.length) h += `<div class="grid g2">${vs.map(v => inp('rl.v_' + v[0], v[fr ? 2 : 1])).join('')}</div>`;
+    h += `<div id="rlerr"></div>`;
+    if (f.prev) h += `<div class="card gap"><p class="small muted">${LBL('Preview — sent to', 'Aperçu — envoyé à')} <b>${esc(f.prev.name)}</b> (${f.prev.addresses} ${LBL('e-mail address(es)', 'adresse(s) e-mail')})</p><p><b>${esc(f.prev.sample.subject)}</b></p><iframe sandbox title="preview" style="width:100%;height:340px;border:1px solid #d5dbe6;border-radius:8px;background:#fff" srcdoc="${esc(f.prev.sample.html)}"></iframe></div>`;
+    h += `<div class="row gap"><button class="btn ghost" data-a="rlprev">${LBL('Preview', 'Aperçu')}</button>${f.prev ? `<button class="btn gold" data-a="rlsend">${LBL('Send the letter', 'Envoyer la lettre')}</button>` : ''}<button class="btn ghost" data-a="mclose">${LBL('Close', 'Fermer')}</button></div>`;
+    $('#overlay').innerHTML = `<div class="modal" data-a="mclose-bg"><div class="box" role="dialog" aria-modal="true">${h}</div></div>`;
+  }
+  const rlErr = e => { const m = ({ nobody: LBL('This applicant has no active account.', 'Ce demandeur n\'a pas de compte actif.'), FORBIDDEN: LBL('You are not authorised to send this letter.', 'Vous n\'êtes pas autorisé à envoyer cette lettre.'), rate: LBL('Too many letters in a short time. Please wait.', 'Trop de lettres en peu de temps. Veuillez patienter.') })[e && (e.code || e.message)] || (e && e.message) || 'Error'; const b = $('#rlerr'); if (b) b.innerHTML = `<div class="note bad">${esc(m)}</div>`; else toast(m, 1); };
+  ACT.reclet = el => { const k = el.dataset.k, id = el.dataset.id; FORMS.rl = { kind: k, id, tpl: RL[k][0][0], prev: null }; rlView(); };
+  ACT.rlprev = async () => { const f = FORMS.rl; try { f.prev = await api('/api/notice/record', { body: rlBody(f, true) }); rlView(); } catch (e) { rlErr(e); } };
+  ACT.rlsend = async el => { const f = FORMS.rl; if (el) el.disabled = true; try { const d = await api('/api/notice/record', { body: rlBody(f, false) }); await apiSync(); toast(LBL('Letter sent to ', 'Lettre envoyée à ') + d.sent + ' ' + LBL('address(es).', 'adresse(s).')); const c = $('#overlay'); if (c) c.innerHTML = ''; render(); } catch (e) { if (el) el.disabled = false; rlErr(e); } };
+  // the form re-renders the dialog when the subject changes
+  const rlOnChange = e => { const t = e.target; if (FORMS.rl && t && t.dataset && t.dataset.f === 'rl.tpl' && $('#overlay') && $('#overlay').querySelector('#rlerr')) { FORMS.rl.prev = null; rlView(); } };
+  document.addEventListener('change', rlOnChange);
+  window.rlButton = (k, id) => `<button class="btn gold" data-a="reclet" data-k="${k}" data-id="${esc(id)}">✉ ${LBL('Send a status letter', 'Envoyer une lettre d\'avancement')}</button>`;
+
   /* ===== Super-administrator desk: accounts, ADI addresses, forms and receipts ===== */
   L.sa_desk = ['Accounts and documents', 'Comptes et documents'];
   ROUTES.splice(Math.max(0, ROUTES.findIndex(r => r.id === 'users')) + 1, 0, { id: 'sa-desk', k: 'sa_desk', perm: '__super', v: viewDesk });
@@ -629,7 +654,7 @@
       ${lock('Signature', 'Signature', a.signName)} ${lock('Declared at', 'Déclaré à', (a.place || '') + ' · ' + (a.declDate || ''))}
     </div>${a.delivery === 'school' ? `<p><b>${esc(a.destName || '')}</b> — ${esc(a.destAddr || '')}</p>` : ''}</div>`;
     h += `<div class="card gap"><h3>${LBL('Attachments', 'Pièces jointes')}</h3>${fileBox('ms:' + a.id, { edit: false, types: true })}</div>`;
-    h += `<p><button class="btn gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download stamped form', 'Télécharger le formulaire cacheté')}</button></p>`;
+    h += `<p><button class="btn gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download stamped form', 'Télécharger le formulaire cacheté')}</button></p>${can('send_notices') || can('manage_students') ? ' ' + window.rlButton('msapp', a.id) : ''}</p>`;
     if (a.status === 'submitted') {
       h += `<div class="card ms-pop"><h3>${LBL('Decision', 'Décision')}</h3>
         ${inp('msad.title', both('Name and title of the endorsing officer', 'Nom et qualité du signataire'))}
