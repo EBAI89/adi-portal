@@ -60,7 +60,7 @@ function tuitionComplete(logic, store, st) {
 function filesOf(store, id, owner) {
   return Object.values(store.all('files')).filter(f => f && f.ctx === 'ms:' + id && (!owner || f.owner === owner));
 }
-const hasType = (files, k) => files.some(f => f.dtype === k);
+const hasType = (files, k) => files.some(f => f.dtype === k) || (k === 'id' && files.some(f => f.dtype === 'idfront') && files.some(f => f.dtype === 'idback'));
 /* Documents are requested according to WHAT is collected and WHO collects it.
    A transcript needs only the national ID and the proof of payment; a diploma, duplicate or certified copy also needs
    the birth certificate, the result proof and passport photographs. A representative adds an authorisation letter and

@@ -39,7 +39,7 @@
   const levelOk = st => !!st && (st.level === 'HND' || st.level === 'BTS');
   const mine = () => Object.values(S.msapp || {}).filter(a => a && a.userId === (me() && me().id)).sort((a, b) => (b.at || 0) - (a.at || 0));
   const filesFor = id => Object.values(S.files || {}).filter(f => f && f.ctx === 'ms:' + id);
-  const hasD = (id, k) => filesFor(id).some(f => f.dtype === k);
+  const hasD = (id, k) => { const fl = filesFor(id); return fl.some(f => f.dtype === k) || (k === 'id' && fl.some(f => f.dtype === 'idfront') && fl.some(f => f.dtype === 'idback')); };
   /* Documents are requested according to WHAT is collected and WHO collects it (mirrors the server rule). */
   const DOCN = { id: ['Applicant\'s national ID card', 'CNI du demandeur'], receipt: ['Proof of payment (receipt of complete fees)', 'Preuve de paiement (reçu des frais complets)'], birth: ['Birth certificate', 'Acte de naissance'], results: ['Result slip or success attestation', 'Relevé ou attestation de réussite'], photo: ['Two passport photographs', 'Deux photos d\'identité'], police: ['Police loss declaration', 'Déclaration de perte'], auth: ['Signed authorisation letter', 'Lettre d\'autorisation signée'], repid: ['Representative\'s national ID card', 'CNI du mandataire'], inst: ['Request letter from the institution', 'Lettre de demande de l\'établissement'] };
   const reqDocs = a => {
@@ -53,9 +53,18 @@
   const docPanel = f => {
     const need = reqDocs(fAsApp(f)), opt = f.delivery === 'school' ? ['inst'] : [];
     const who = f.delivery === 'rep' ? LBL('An authorised representative will collect', 'Un mandataire autorisé retirera le document') : f.delivery === 'school' ? LBL('The document is sent to an institution', 'Le document est envoyé à un établissement') : LBL('You collect in person', 'Vous retirez le document en personne');
-    const row = (k, req) => { const ok = hasD(f.id, k); return `<li class="${ok ? 'ok' : ''}"><span>${ok ? '✅' : req ? '⬜' : '▫️'}</span><span>${esc(LBL(DOCN[k][0], DOCN[k][1]))}${req ? '' : ' <i class="muted">(' + LBL('recommended', 'recommandé') + ')</i>'}</span></li>`; };
-    return `<div class="note" id="ms-doclist"><b>${LBL('Documents required for this request', 'Pièces exigées pour cette demande')}</b><p class="small muted" style="margin:4px 0 6px">${esc(who)}. ${LBL('Set the matching document type on each file you upload.', 'Choisissez le type correspondant pour chaque fichier envoyé.')}</p><ul style="list-style:none;padding:0;margin:0;display:grid;gap:4px">${need.map(k => row(k, true)).join('')}${opt.map(k => row(k, false)).join('')}</ul></div>`;
+    const acc = 'application/pdf,image/jpeg,image/png,image/webp', mine = filesFor(f.id), me0 = me();
+    const row = (k, req) => {
+      const ok = hasD(f.id, k), have = mine.filter(x => x.dtype === k || (k === 'id' && (x.dtype === 'idfront' || x.dtype === 'idback')));
+      const files = have.map(x => `<span class="small"><button type="button" class="flink" data-a="fdl" data-id="${x.id}">📎 ${esc(x.name)}</button>${me0 && x.owner === me0.id ? ` <button type="button" class="btn sm ghost" data-a="fdel" data-id="${x.id}" aria-label="${LBL('Remove', 'Retirer')}">✕</button>` : ''}</span>`).join(' ');
+      const up = `<label class="btn ${ok ? 'ghost' : 'gold'} sm">⬆ ${ok ? LBL('Replace', 'Remplacer') : LBL('Upload', 'Envoyer')}<input type="file" data-up="ms:${esc(f.id)}" data-dt="${k}" accept="${acc}" hidden></label>${k === 'id' ? ` <label class="btn ghost sm">📷 ${LBL('Take a photo', 'Prendre une photo')}<input type="file" data-up="ms:${esc(f.id)}" data-dt="id" accept="image/*" capture="environment" hidden></label>` : ''}`;
+      return `<li class="${ok ? 'ok' : ''}" style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between"><span><span>${ok ? '✅' : req ? '⬜' : '▫️'}</span> ${esc(LBL(DOCN[k][0], DOCN[k][1]))}${req ? '' : ' <i class="muted">(' + LBL('recommended', 'recommandé') + ')</i>'}</span><span style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${files} ${up}</span></li>`;
+    };
+    return `<div class="note" id="ms-doclist"><b>${LBL('Documents required for this request', 'Pièces exigées pour cette demande')}</b><p class="small muted" style="margin:4px 0 6px">${esc(who)}. ${LBL('Upload each document below: only the documents needed for this request are asked. PDF or clear photo (JPG, PNG), 12 MB maximum.', 'Envoyez chaque pièce ci-dessous : seules les pièces nécessaires à cette demande sont demandées. PDF ou photo nette (JPG, PNG), 12 Mo maximum.')}</p><ul style="list-style:none;padding:0;margin:0;display:grid;gap:4px">${need.map(k => row(k, true)).join('')}${opt.map(k => row(k, false)).join('')}</ul></div>`;
   };
+
+  const _rfb = window.refreshFileBoxes;
+  if (typeof _rfb === 'function') window.refreshFileBoxes = function () { _rfb.apply(this, arguments); try { const el = document.getElementById('ms-doclist'); if (el && FORMS.ms && typeof docPanel === 'function') el.outerHTML = docPanel(FORMS.ms); } catch (e) {} };
 
   function ctaLabel() {
     return LANG === 'fr'
@@ -498,7 +507,6 @@
       <section class="ms-sec" id="ms-docs"><h3><span class="ms-num">E</span> ${both('Documents attached', 'Pièces jointes')}</h3>
         <p class="small muted">${LBL('The documents requested depend on what you collect and who collects it. Upload a PDF or a clear photo (JPG, PNG) for each.', 'Les pièces demandées dépendent du document retiré et de la personne qui le retire. Envoyez un PDF ou une photo nette (JPG, PNG) pour chacune.')}</p>
         ${docPanel(f)}
-        ${fileBox('ms:' + f.id, { edit: true, types: true })}
         ${reqDocs(fAsApp(f)).includes('photo') ? chk('ms.photos2', both('I attach two passport photographs', 'Je joins deux photos d\'identité')) : ''}
       </section>
       <section class="ms-sec"><h3><span class="ms-num">F</span> ${both('Declaration', 'Déclaration du demandeur')}</h3>
@@ -541,7 +549,7 @@
     const need = reqDocs(p);
     if (need.includes('photo') && !p.photos2) return bad('ms.photos2', 'Please confirm the two passport photographs.', 'Confirmez les deux photos d\'identité.');
     const miss = need.filter(k => !hasD(id, k));
-    if (miss.length) { BAD = '#ms-docs'; return LBL('Please upload: ' + miss.map(k => DOCN[k][0]).join('; ') + '. Set the correct document type on each file.', 'Veuillez envoyer : ' + miss.map(k => DOCN[k][1]).join(' ; ') + '. Choisissez le bon type pour chaque fichier.'); }
+    if (miss.length) { BAD = '#ms-docs'; return LBL('Please upload: ' + miss.map(k => DOCN[k][0]).join('; ') + '. Use the Upload button beside each document.', 'Veuillez envoyer : ' + miss.map(k => DOCN[k][1]).join(' ; ') + '. Utilisez le bouton Envoyer en face de chaque pièce.'); }
     if (!p.declDate) return bad('ms.declDate', 'Please enter the declaration date.', 'Veuillez indiquer la date de la déclaration.');
     if (!p.place) return bad('ms.place', 'Please enter the place of declaration.', 'Veuillez indiquer le lieu de la déclaration.');
     if (!p.signName) return bad('ms.signName', 'Please type your full name as your signature.', 'Veuillez saisir votre nom complet comme signature.');
