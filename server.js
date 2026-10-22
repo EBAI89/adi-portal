@@ -2390,7 +2390,8 @@ function noticeAudience(a) {
 function noticeLetter(tpl, vars, rec) {
   const T = NOTE_T[tpl]; if (!T) return null; const u = rec.u, l0 = u.lang === 'fr' ? 'fr' : 'en', l1 = l0 === 'fr' ? 'en' : 'fr', v = Object.assign({}, vars, rec.v, { name: u.name }), off = NOTE_OFFICE[T.g] || NOTE_OFFICE.general;
   const custom = tpl === 'gen_custom', title = l => custom ? (clipT(vars['subject_' + l], 160) || T.t[l === 'fr' ? 1 : 0]) : T.t[l === 'fr' ? 1 : 0];
-  const blk = l => { const B = T[l](v), fr = l === 'fr', kv = (B.k || []).filter(x => String(x[1] || '').trim()).map(x => x[0] + ': ' + String(x[1]).trim().replace(/\n/g, ' ')).join('\n');
+  const lv = l => { if (l !== 'fr') return v; const o = Object.assign({}, v); for (const k of Object.keys(v)) if (/_fr$/.test(k) && !/^(body|subject)_/.test(k) && String(v[k] || '').trim()) o[k.slice(0, -3)] = v[k]; return o; };
+  const blk = l => { const B = T[l](lv(l)), fr = l === 'fr', kv = (B.k || []).filter(x => String(x[1] || '').trim()).map(x => x[0] + ': ' + String(x[1]).trim().replace(/\n/g, ' ')).join('\n');
     return ['# ' + title(l), fr ? 'Madame, Monsieur ' + u.name + ',' : 'Dear ' + u.name + ',', ...B.p, kv, ...B.q, fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,'].filter(Boolean).join('\n\n') + '\n\n--\n' + (fr ? off[1] : off[0]) + '\n' + (fr ? 'American Ditek Institute (Université ADI)' : 'American Ditek Institute (ADI University)'); };
   const second = custom && !String(vars['body_' + l1] || '').trim() ? '' : blk(l1), first = custom && !String(vars['body_' + l0] || '').trim() ? (second ? '' : blk(l0)) : blk(l0);
   const parts = [first, second].filter(Boolean); if (!parts.length) return null; const subj = (first ? title(l0) : title(l1)) + (first && second ? ' — ' + title(l1) : '');
@@ -2410,12 +2411,17 @@ async function noticeRoute(req, res, u, p) {
   if (p === '/api/notice/record') {   // status letter to the person behind one MINESUP application or transcript request
     const b = await body(req, 8000), isMs = b.kind === 'msapp', rec = S.get(isMs ? 'msapp' : 'trreq', String(b.id || '')); if (!['msapp', 'trreq'].includes(b.kind) || !rec) return send(res, 404, { error: 'NOT_FOUND' });
     if (!(u && u.status === 'active' && (canNotice(u) || u.role === 'super_admin' || (logic.perms(S)[u.role] || []).includes(isMs ? 'manage_students' : 'manage_transcripts')))) return send(res, 403, { error: 'FORBIDDEN' });
-    const ok = isMs ? ['ms_processing', 'ms_status', 'ms_ready'] : ['tr_received', 'tr_processing', 'tr_ready']; if (!ok.includes(b.template)) return send(res, 400, { error: 'template' });
+    const ok = (isMs ? ['ms_processing', 'ms_status', 'ms_ready'] : ['tr_received', 'tr_processing', 'tr_ready']).concat(['gen_custom']); if (!ok.includes(b.template)) return send(res, 400, { error: 'template' });
     const target = S.get('users', rec.userId); if (!target || target.status !== 'active') return send(res, 400, { error: 'nobody' });
     const pl = noticePlan({ template: b.template, vars: Object.assign({}, b.vars || {}, { ref: rec.ref || rec.id, matric: rec.matric || '' }), audience: { kind: 'ids', ids: [target.id] }, adi: true, personal: true, inapp: true }); if (pl.err || !pl.items.length) return send(res, 400, { error: pl.err || 'nobody' });
     const f = pl.items[0]; if (b.preview) return send(res, 200, { recipients: 1, addresses: pl.addresses, name: target.name, sample: { subject: f.lt.subject, html: html(f.lt.subject, f.lt.text, E.PUBLIC_URL) } });
     if (limited('noticerec:' + u.id, 60, 3600e3)) return send(res, 429, { error: 'rate' });
-    await save('notifs', uid('n'), { userId: target.id, title: f.lt.inapp.title, body: f.lt.inapp.body, at: now(), read: false });
+    const V = pl.vars, detail = clipT(V.collect || V.date || V.status || '', 200), isC = b.template === 'gen_custom';
+    const inBody = isC ? clipT(V.body_en || V.body_fr || '', 300) : (f.lt.inapp.body + (detail ? ' — ' + detail : '')).slice(0, 420);
+    const T0 = NOTE_T[b.template], lt0 = isC ? [clipT(V.subject_en || V.subject_fr || T0.t[0], 160), clipT(V.subject_fr || V.subject_en || T0.t[1], 160)] : T0.t;
+    await save('notifs', uid('n'), { userId: target.id, title: isC ? lt0[(target.lang === 'fr') ? 1 : 0] : f.lt.inapp.title, body: inBody, at: now(), read: false, link: isMs ? 'minesup' : 'trreq' });
+    const fresh = S.get(isMs ? 'msapp' : 'trreq', rec.id || String(b.id)) || rec, entry = { at: now(), en: lt0[0], fr: lt0[1], when: clipT(b.when || V.collect || V.date || V.status || '', 240), whenFr: clipT(V.collect_fr || V.date_fr || V.status || '', 240), by: u.name || '', tpl: b.template, addresses: pl.addresses };
+    await save(isMs ? 'msapp' : 'trreq', fresh.id || String(b.id), Object.assign({}, fresh, { letters: (Array.isArray(fresh.letters) ? fresh.letters : []).concat(entry).slice(-40), lastLetter: { t: lt0[0], at: entry.at, by: entry.by } }));
     await audit(u, 'status letter ' + b.template + ' → ' + (rec.ref || rec.id) + ' (' + pl.addresses + ' address(es))');
     const sent = await Promise.all(f.to.map(to => sendEmail({ to, subject: f.lt.subject, text: f.lt.text }).then(r => r !== false, () => false)));
     return send(res, 200, { ok: true, addresses: pl.addresses, sent: sent.filter(Boolean).length });

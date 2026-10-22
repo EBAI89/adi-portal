@@ -213,30 +213,60 @@
     catch (e) { NT.busy = false; if (el) el.disabled = false; toast(ntErr(e), 1); }
   };
 
-  /* ===== Status letter to the person behind one MINESUP application or transcript request ===== */
-  const RL = { msapp: [['ms_processing', 'Being processed', 'En cours de traitement'], ['ms_status', 'Status update (free wording)', 'Point d\'avancement (texte libre)'], ['ms_ready', 'Document ready for collection', 'Document prêt à être retiré']], trreq: [['tr_received', 'Request received', 'Demande reçue'], ['tr_processing', 'Being processed', 'En cours de traitement'], ['tr_ready', 'Transcript ready for collection', 'Relevé prêt à être retiré']] };
-  const RL_VARS = { ms_processing: [['date', 'Expected date', 'Date prévue']], ms_status: [['status', 'Current status', 'État actuel'], ['details', 'Further details', 'Précisions']], ms_ready: [['collect', 'Collection point and hours', 'Lieu et horaires de retrait']], tr_received: [], tr_processing: [['date', 'Expected date', 'Date prévue']], tr_ready: [['collect', 'Collection point and hours', 'Lieu et horaires de retrait']] };
+  /* ===== Applicant communication: status letters for one MINESUP application or transcript request ===== */
+  const RL = {
+    msapp: [['ms_processing', 'Being processed', 'En cours de traitement', 'Tell the applicant the file is in hand and when to expect it.', 'Informer que le dossier est en cours et quand l\'attendre.'], ['ms_ready', 'Ready for collection', 'Prêt à être retiré', 'Give the day, hour and office for collection.', 'Indiquer le jour, l\'heure et le bureau de retrait.'], ['ms_status', 'Status update', 'Point d\'avancement', 'Describe the current stage in your own words.', 'Décrire l\'étape en cours avec vos mots.'], ['gen_custom', 'Personal message', 'Message personnalisé', 'Write any message to the applicant.', 'Rédiger un message libre au demandeur.']],
+    trreq: [['tr_received', 'Request received', 'Demande reçue', 'Acknowledge receipt of the request.', 'Accuser réception de la demande.'], ['tr_processing', 'Being processed', 'En cours de traitement', 'Tell the applicant the transcript is in hand and when to expect it.', 'Informer que le relevé est en cours et quand l\'attendre.'], ['tr_ready', 'Ready for collection', 'Prêt à être retiré', 'Give the day, hour and office for collection.', 'Indiquer le jour, l\'heure et le bureau de retrait.'], ['gen_custom', 'Personal message', 'Message personnalisé', 'Write any message to the applicant.', 'Rédiger un message libre au demandeur.']]
+  };
+  const RL_PLACES = [['reception', 'Reception Office, ADI campus', 'Bureau de la réception, campus ADI'], ['registry', 'Registrar\'s Office (Registry), ADI campus', 'Service de la scolarité (Registry), campus ADI'], ['other', 'Another place…', 'Autre lieu…']];
+  const rlDay = (d, l) => { if (!d) return ''; const x = new Date(d + 'T12:00:00'); return isNaN(x) ? d : x.toLocaleDateString(l === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); };
+  const rlHour = (h, l) => { const m = /^(\d{1,2}):(\d{2})$/.exec(h || ''); if (!m) return ''; const H = +m[1]; return l === 'fr' ? H + ' h ' + m[2] : ((H % 12) || 12) + ':' + m[2] + ' ' + (H < 12 ? 'am' : 'pm'); };
+  const rlWhen = (f, l, by) => { const d = rlDay(f.v_date, l), h = rlHour(f.v_time, l); return d ? d + (h ? (l === 'fr' ? (by ? ' avant ' : ' à ') : (by ? ' by ' : ' at ')) + h : '') : ''; };
+  const rlPlace = (f, l) => f.v_place === 'other' ? (f.v_place2 || '').trim() : (RL_PLACES.find(x => x[0] === (f.v_place || 'reception')) || RL_PLACES[0])[l === 'fr' ? 2 : 1];
+  const rlBody = (f, prev) => {
+    const vars = {}, tpl = f.tpl;
+    if (/_processing$/.test(tpl)) { vars.date = rlWhen(f, 'en', true); vars.date_fr = rlWhen(f, 'fr', true); }
+    else if (/_ready$/.test(tpl)) { vars.collect = rlPlace(f, 'en') + ' — ' + rlWhen(f, 'en'); vars.collect_fr = rlPlace(f, 'fr') + ' — ' + rlWhen(f, 'fr'); }
+    else if (tpl === 'ms_status') { vars.status = f.v_status || ''; vars.details = f.v_details || ''; }
+    else if (tpl === 'gen_custom') { const l = f.v_lang === 'fr' ? 'fr' : 'en'; vars['subject_' + l] = f.v_subject || ''; vars['body_' + l] = f.v_msg || ''; }
+    return { kind: f.kind, id: f.id, template: tpl, vars, when: vars.collect || vars.date || vars.status || '', preview: !!prev };
+  };
+  const rlCheck = f => {
+    const tpl = f.tpl;
+    if (/_processing$/.test(tpl) && !f.v_date) return LBL('Please choose the expected date.', 'Veuillez choisir la date prévue.');
+    if (/_ready$/.test(tpl)) { if (!f.v_date) return LBL('Please choose the collection date.', 'Veuillez choisir la date de retrait.'); if (!f.v_time) return LBL('Please choose the collection time.', 'Veuillez choisir l\'heure de retrait.'); if (f.v_place === 'other' && !(f.v_place2 || '').trim()) return LBL('Please state the collection place.', 'Veuillez indiquer le lieu de retrait.'); }
+    if (tpl === 'ms_status' && !(f.v_status || '').trim()) return LBL('Please describe the current status.', 'Veuillez décrire l\'état actuel.');
+    if (tpl === 'gen_custom') { if (!(f.v_subject || '').trim()) return LBL('Please enter a subject.', 'Veuillez saisir un objet.'); if ((f.v_msg || '').trim().length < 5) return LBL('Please write your message.', 'Veuillez rédiger votre message.'); }
+    return '';
+  };
+  window.rlHistory = (rec, n) => { const L2 = (rec && rec.letters || []).slice().sort((a, b) => b.at - a.at).slice(0, n || 5), fr = LANG === 'fr'; return L2.map(x => `<li><span class="rl-dot"></span><div><b>${esc(fr ? (x.fr || x.en) : (x.en || x.fr))}</b>${x.when ? `<div class="rl-when">${esc(fr ? (x.whenFr || x.when) : x.when)}</div>` : ''}<div class="small muted">${new Date(x.at).toLocaleString(fr ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}${x.by ? ' · ' + esc(x.by) : ''}</div></div></li>`).join(''); };
+  window.rlTimeline = rec => { const li = window.rlHistory(rec, 4); return li ? `<div class="card gap rl-card"><h4>${LBL('Messages from the Registry', 'Messages de la scolarité')}</h4><ul class="rl-tl">${li}</ul></div>` : ''; };
+  window.rlLast = rec => { const l = (rec && rec.letters || []).slice().sort((a, b) => b.at - a.at)[0]; return l ? `<div class="small muted">✉ ${esc(LANG === 'fr' ? (l.fr || l.en) : (l.en || l.fr))} · ${fmtD(l.at)}</div>` : ''; };
   const RLS = { st: null };
-  const rlBody = (f, prev) => { const vars = {}; (RL_VARS[f.tpl] || []).forEach(v => { vars[v[0]] = f['v_' + v[0]] || ''; }); return { kind: f.kind, id: f.id, template: f.tpl, vars, preview: !!prev }; };
   function rlView() {
-    const f = FORMS.rl, fr = LANG === 'fr', rec = (f.kind === 'msapp' ? S.msapp : S.trreq)[f.id] || {}, who = esc(rec.certName || rec.name || ''), last = rec.lastLetter;
-    let h = `<h3>${LBL('Send a status letter', 'Envoyer une lettre d\'avancement')}</h3><p class="muted">${who} · ${esc(rec.ref || '')}<br>${LBL('The applicant receives a courteous bilingual letter at the ADI and personal e-mail addresses, and a notification in the portal.', 'Le demandeur reçoit une lettre courtoise bilingue aux adresses e-mail ADI et personnelle, ainsi qu\'une notification dans le portail.')}</p>`;
-    if (last) h += `<p class="small muted">${LBL('Last letter sent', 'Dernière lettre envoyée')}: ${esc(last.t)} · ${new Date(last.at).toLocaleString()} · ${esc(last.by || '')}</p>`;
-    h += sel('rl.tpl', LBL('Subject of the letter', 'Objet de la lettre'), RL[f.kind].map(x => [x[0], x[fr ? 2 : 1]]), { blank: false });
-    const vs = RL_VARS[f.tpl] || []; if (vs.length) h += `<div class="grid g2">${vs.map(v => inp('rl.v_' + v[0], v[fr ? 2 : 1])).join('')}</div>`;
+    const f = FORMS.rl, fr = LANG === 'fr', rec = (f.kind === 'msapp' ? S.msapp : S.trreq)[f.id] || {}, who = esc(rec.certName || rec.name || ''), tpl = f.tpl;
+    let h = `<div class="rl"><p class="rl-kick">${LBL('Applicant communication', 'Communication avec le demandeur')}</p><h3>${who}</h3><p class="muted">${esc(rec.ref || '')} · ${LBL('The applicant receives a courteous bilingual letter at the ADI and personal e-mail addresses, together with a notification in the portal that opens the request.', 'Le demandeur reçoit une lettre courtoise bilingue aux adresses e-mail ADI et personnelle, ainsi qu\'une notification dans le portail qui ouvre la demande.')}</p>`;
+    h += `<div class="rl-steps" role="radiogroup" aria-label="${LBL('Subject of the letter', 'Objet de la lettre')}">${RL[f.kind].map(x => `<button type="button" class="rl-step" role="radio" aria-checked="${x[0] === tpl}" data-a="rltpl" data-t="${x[0]}"><b>${x[fr ? 2 : 1]}</b><span>${x[fr ? 4 : 3]}</span></button>`).join('')}</div>`;
+    if (/_processing$/.test(tpl)) h += `<div class="grid g2">${inp('rl.v_date', LBL('Expected completion date', 'Date d\'achèvement prévue'), { type: 'date' })}${inp('rl.v_time', LBL('Latest time (optional)', 'Heure limite (facultatif)'), { type: 'time' })}</div>`;
+    else if (/_ready$/.test(tpl)) h += `<div class="grid g2">${inp('rl.v_date', LBL('Collection date', 'Date de retrait'), { type: 'date' })}${inp('rl.v_time', LBL('Collection time', 'Heure de retrait'), { type: 'time' })}</div>${sel('rl.v_place', LBL('Collection place', 'Lieu de retrait'), RL_PLACES.map(x => [x[0], x[fr ? 2 : 1]]), { blank: false })}${f.v_place === 'other' ? inp('rl.v_place2', LBL('Place and directions', 'Lieu et indications')) : ''}<p class="small muted">${LBL('Reminder in the letter: bring a valid identity document.', 'Rappel dans la lettre : se munir d\'une pièce d\'identité valide.')}</p>`;
+    else if (tpl === 'ms_status') h += `${inp('rl.v_status', LBL('Current status', 'État actuel'))}${area('rl.v_details', LBL('Further details (optional)', 'Précisions (facultatif)'))}`;
+    else if (tpl === 'gen_custom') h += `${sel('rl.v_lang', LBL('Language of the message', 'Langue du message'), [['en', 'English'], ['fr', 'Français']], { blank: false })}${inp('rl.v_subject', LBL('Subject', 'Objet'))}${area('rl.v_msg', LBL('Message', 'Message'))}`;
+    else h += `<p class="muted">${LBL('A standard acknowledgement will be sent. No further detail is needed.', 'Un accusé de réception standard sera envoyé. Aucune précision supplémentaire n\'est nécessaire.')}</p>`;
     h += `<div id="rlerr"></div>`;
-    if (f.prev) h += `<div class="card gap"><p class="small muted">${LBL('Preview — sent to', 'Aperçu — envoyé à')} <b>${esc(f.prev.name)}</b> (${f.prev.addresses} ${LBL('e-mail address(es)', 'adresse(s) e-mail')})</p><p><b>${esc(f.prev.sample.subject)}</b></p><iframe sandbox title="preview" style="width:100%;height:340px;border:1px solid #d5dbe6;border-radius:8px;background:#fff" srcdoc="${esc(f.prev.sample.html)}"></iframe></div>`;
+    if (f.prev) h += `<div class="card gap"><p class="small muted">${LBL('Preview — sent to', 'Aperçu — envoyé à')} <b>${esc(f.prev.name)}</b> (${f.prev.addresses} ${LBL('e-mail address(es)', 'adresse(s) e-mail')})</p><p><b>${esc(f.prev.sample.subject)}</b></p><iframe sandbox title="preview" style="width:100%;height:320px;border:1px solid #d5dbe6;border-radius:8px;background:#fff" srcdoc="${esc(f.prev.sample.html)}"></iframe></div>`;
     h += `<div class="row gap"><button class="btn ghost" data-a="rlprev">${LBL('Preview', 'Aperçu')}</button>${f.prev ? `<button class="btn gold" data-a="rlsend">${LBL('Send the letter', 'Envoyer la lettre')}</button>` : ''}<button class="btn ghost" data-a="mclose">${LBL('Close', 'Fermer')}</button></div>`;
+    const li = window.rlHistory(rec, 6); if (li) h += `<h4 class="gap">${LBL('Letters already sent', 'Lettres déjà envoyées')}</h4><ul class="rl-tl">${li}</ul>`;
     $('#overlay').innerHTML = `<div class="modal" data-a="mclose-bg"><div class="box" role="dialog" aria-modal="true">${h}</div></div>`;
   }
   const rlErr = e => { const m = ({ nobody: LBL('This applicant has no active account.', 'Ce demandeur n\'a pas de compte actif.'), FORBIDDEN: LBL('You are not authorised to send this letter.', 'Vous n\'êtes pas autorisé à envoyer cette lettre.'), rate: LBL('Too many letters in a short time. Please wait.', 'Trop de lettres en peu de temps. Veuillez patienter.') })[e && (e.code || e.message)] || (e && e.message) || 'Error'; const b = $('#rlerr'); if (b) b.innerHTML = `<div class="note bad">${esc(m)}</div>`; else toast(m, 1); };
-  ACT.reclet = el => { const k = el.dataset.k, id = el.dataset.id; FORMS.rl = { kind: k, id, tpl: RL[k][0][0], prev: null }; rlView(); };
-  ACT.rlprev = async () => { const f = FORMS.rl; try { f.prev = await api('/api/notice/record', { body: rlBody(f, true) }); rlView(); } catch (e) { rlErr(e); } };
+  ACT.reclet = el => { const k = el.dataset.k, id = el.dataset.id; FORMS.rl = { kind: k, id, tpl: RL[k][0][0], prev: null, v_place: 'reception', v_lang: LANG === 'fr' ? 'fr' : 'en' }; rlView(); };
+  ACT.rltpl = el => { const f = FORMS.rl; if (!f) return; f.tpl = el.dataset.t; f.prev = null; rlView(); };
+  ACT.rlprev = async () => { const f = FORMS.rl, bad = rlCheck(f); if (bad) return rlErr({ message: bad }); try { f.prev = await api('/api/notice/record', { body: rlBody(f, true) }); rlView(); } catch (e) { rlErr(e); } };
   ACT.rlsend = async el => { const f = FORMS.rl; if (el) el.disabled = true; try { const d = await api('/api/notice/record', { body: rlBody(f, false) }); await apiSync(); toast(LBL('Letter sent to ', 'Lettre envoyée à ') + d.sent + ' ' + LBL('address(es).', 'adresse(s).')); const c = $('#overlay'); if (c) c.innerHTML = ''; render(); } catch (e) { if (el) el.disabled = false; rlErr(e); } };
-  // the form re-renders the dialog when the subject changes
-  const rlOnChange = e => { const t = e.target; if (FORMS.rl && t && t.dataset && t.dataset.f === 'rl.tpl' && $('#overlay') && $('#overlay').querySelector('#rlerr')) { FORMS.rl.prev = null; rlView(); } };
+  // changing the place or the language redraws the dialog; any edit invalidates the preview
+  const rlOnChange = e => { const t = e.target; if (FORMS.rl && t && t.dataset && /^rl\./.test(t.dataset.f || '') && $('#overlay') && $('#overlay').querySelector('#rlerr')) { FORMS.rl.prev = null; if (/^rl\.v_(place|lang)$/.test(t.dataset.f)) rlView(); } };
   document.addEventListener('change', rlOnChange);
-  window.rlButton = (k, id) => `<button class="btn gold" data-a="reclet" data-k="${k}" data-id="${esc(id)}">✉ ${LBL('Send a status letter', 'Envoyer une lettre d\'avancement')}</button>`;
+  window.rlButton = (k, id, small) => `<button class="btn ${small ? 'sm ghost' : 'gold'}" data-a="reclet" data-k="${k}" data-id="${esc(id)}">✉ ${small ? LBL('Notify', 'Notifier') : LBL('Notify the applicant', 'Notifier le demandeur')}</button>`;
 
   /* ===== Super-administrator desk: accounts, ADI addresses, forms and receipts ===== */
   L.sa_desk = ['Accounts and documents', 'Comptes et documents'];
@@ -327,10 +357,11 @@
   }
   function history(rows) {
     if (!rows.length) return '';
+    const msgs = rows.map(a => window.rlTimeline(a)).join('');
     return `<h3>${LBL('Your applications', 'Vos demandes')}</h3>` + table(
       [LBL('Reference', 'Référence'), LBL('Date', 'Date'), LBL('Status', 'Statut'), ''],
       rows.map(a => [esc(a.ref || '—'), fmtD(a.at), statusBadge(a.status) + (a.remark ? `<div class="small">${esc(a.remark)}</div>` : ''), `<button class="btn sm gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download', 'Télécharger')}</button>`])
-    );
+    ) + msgs;
   }
 
 
@@ -607,7 +638,7 @@
       [LBL('Reference', 'Référence'), LBL('Student', 'Étudiant'), LBL('Programme', 'Programme'), LBL('Status', 'Statut'), ''],
       rows.map(a => {
         const au = auditApp(a);
-        return [esc(a.ref || '—'), esc(a.name) + `<div class="small muted">${esc(a.matric)}</div>`, esc(a.level), statusBadge(a.status) + `<div class="small">${au.ok ? '<span class="ms-pass">✓</span>' : '<span class="ms-fail">!</span>'} ${LBL('eligibility', 'éligibilité')}`, `<a class="btn sm" href="#/minesup-admin/${esc(a.id)}">${LBL('Open', 'Ouvrir')}</a> <button class="btn sm ghost" data-a="mspdf" data-id="${esc(a.id)}">PDF</button>`];
+        return [esc(a.ref || '—'), esc(a.name) + `<div class="small muted">${esc(a.matric)}</div>`, esc(a.level), statusBadge(a.status) + `<div class="small">${au.ok ? '<span class="ms-pass">✓</span>' : '<span class="ms-fail">!</span>'} ${LBL('eligibility', 'éligibilité')}`, `<a class="btn sm" href="#/minesup-admin/${esc(a.id)}">${LBL('Open', 'Ouvrir')}</a> <button class="btn sm ghost" data-a="mspdf" data-id="${esc(a.id)}">PDF</button> ${window.rlButton('msapp', a.id, true)}${window.rlLast(a)}`];
       })
     );
     return h + rosterCard();
@@ -650,7 +681,7 @@
       ${lock('Signature', 'Signature', a.signName)} ${lock('Declared at', 'Déclaré à', (a.place || '') + ' · ' + (a.declDate || ''))}
     </div>${a.delivery === 'school' ? `<p><b>${esc(a.destName || '')}</b> — ${esc(a.destAddr || '')}</p>` : ''}</div>`;
     h += `<div class="card gap"><h3>${LBL('Attachments', 'Pièces jointes')}</h3>${fileBox('ms:' + a.id, { edit: false, types: true })}</div>`;
-    h += `<p><button class="btn gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download stamped form', 'Télécharger le formulaire cacheté')}</button></p>${can('send_notices') || can('manage_students') ? ' ' + window.rlButton('msapp', a.id) : ''}</p>`;
+    h += `<p><button class="btn gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download stamped form', 'Télécharger le formulaire cacheté')}</button></p>${can('send_notices') || can('manage_students') || can('manage_transcripts') ? ' ' + window.rlButton('msapp', a.id) : ''}</p>${window.rlTimeline(a)}`;
     if (a.status === 'submitted') {
       h += `<div class="card ms-pop"><h3>${LBL('Decision', 'Décision')}</h3>
         ${inp('msad.title', both('Name and title of the endorsing officer', 'Nom et qualité du signataire'))}
