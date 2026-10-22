@@ -44,14 +44,14 @@ self.addEventListener('push', e => {
     } catch (err) { /* fall through to the generic alert */ }
     if (!items.length) items = [{ title: 'American Ditek Institute', body: 'You have a new notification on the portal.', at: Date.now() }];
     for (const it of items) {
-      await self.registration.showNotification(it.title || 'American Ditek Institute', { body: it.body || '', tag: 'adi-' + (it.at || Date.now()), data: { url: '/' } });
+      await self.registration.showNotification(it.title || 'American Ditek Institute', { body: it.body || '', tag: 'adi-' + (it.at || Date.now()), data: { url: '/#/notifs' } });
     }
   })());
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) { if ('focus' in c) return c.focus(); }
-    return self.clients.openWindow('/');
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async list => {
+    for (const c of list) { if ('focus' in c) { try { if (c.navigate && c.url.split('#')[0]) await c.navigate(c.url.split('#')[0] + '#/notifs'); } catch (x) {} return c.focus(); } }
+    return self.clients.openWindow('/#/notifs');
   }));
 });
