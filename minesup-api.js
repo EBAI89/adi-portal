@@ -142,7 +142,7 @@ async function apply(ctx, u, id, o, n) {
     await save('msapp', id, doc);
     await audit(u, 'MINESUP application ' + ref);
     for (const s of usersWith('manage_students')) await notifyUser(s.id, bi('MINESUP application to review', 'Demande MINESUP à examiner'), st.name + ' (' + st.matric + ') — ' + ref);
-    await notifyUser(u.id, bi('MINESUP application received', 'Demande MINESUP reçue'), ref + ' — ' + bi('Your application is with the Registry. You may download your application form as proof that you applied. The transcript itself cannot be downloaded: you will be notified when it is ready, and you collect it in person at the office in charge of issuing transcripts.', 'Votre demande est à la scolarité. Vous pouvez télécharger votre formulaire comme preuve de votre demande. Le relevé lui-même ne se télécharge pas : vous serez averti lorsqu\'il est prêt et vous le retirez en personne au bureau chargé de la délivrance des relevés.'));
+    await notifyUser(u.id, bi('Acknowledgement of your MINESUP application', 'Accusé de réception de votre demande MINESUP'), ref + ' — ' + bi('Your application has been received by the Registrar\'s Office and will be examined shortly. You may download your application form as proof of submission. The document itself is not available for download: you will be notified when it is ready, and it is collected in person.', 'Votre demande a bien été reçue par le service de la scolarité et sera examinée dans les meilleurs délais. Vous pouvez télécharger votre formulaire comme preuve de dépôt. Le document lui-même n\'est pas téléchargeable : vous serez informé(e) lorsqu\'il sera prêt, et il est retiré en personne.'));
     return;
   }
   const staff = u.role === 'super_admin' || R.has(u, 'manage_students') || R.has(u, 'manage_transcripts');
@@ -170,12 +170,12 @@ async function apply(ctx, u, id, o, n) {
   await save('msapp', id, doc);
   await audit(u, 'MINESUP ' + status + ' ' + o.ref);
   const title = status === 'approved'
-    ? bi('MINESUP application approved', 'Demande MINESUP approuvée')
+    ? bi('Your MINESUP application has been approved', 'Votre demande MINESUP a été approuvée')
     : status === 'rejected'
-      ? bi('MINESUP application rejected', 'Demande MINESUP rejetée')
-      : bi('MINESUP application updated', 'Demande MINESUP mise à jour');
-  const collect = status === 'approved' ? ' — ' + bi('Your transcript will be issued in person by the office in charge of issuing transcripts. It cannot be downloaded online. You will be told when to come.', 'Votre relevé sera remis en personne par le bureau chargé de la délivrance des relevés. Il ne peut pas être téléchargé en ligne. Vous serez informé de la date de retrait.') : '';
-  await notifyUser(o.userId, title, (o.ref || '') + (remark ? ' — ' + remark : '') + collect);
+      ? bi('Outcome of your MINESUP application', 'Issue de votre demande MINESUP')
+      : bi('Update on your MINESUP application', 'Mise à jour de votre demande MINESUP');
+  const collect = status === 'approved' ? ' — ' + bi('We are pleased to inform you that your application has been approved. The document will be issued to you in person by the Registrar\'s Office; it cannot be downloaded online. You will be notified of the day, date and time of collection.', 'Nous avons le plaisir de vous informer que votre demande a été approuvée. Le document vous sera remis en personne par le service de la scolarité ; il ne peut pas être téléchargé en ligne. Vous serez informé(e) du jour, de la date et de l\'heure de retrait.') : '';
+  await notifyUser(o.userId, title, (o.ref || '') + (remark ? ' — ' + bi('Remark', 'Observation') + ': ' + remark : '') + collect);
 }
 
 
