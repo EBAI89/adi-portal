@@ -223,13 +223,18 @@
   const rlHour = (h, l) => { const m = /^(\d{1,2}):(\d{2})$/.exec(h || ''); if (!m) return ''; const H = +m[1]; return l === 'fr' ? H + ' h ' + m[2] : ((H % 12) || 12) + ':' + m[2] + ' ' + (H < 12 ? 'am' : 'pm'); };
   const rlWhen = (f, l, by) => { const d = rlDay(f.v_date, l), h = rlHour(f.v_time, l); return d ? d + (h ? (l === 'fr' ? (by ? ' avant ' : ' à ') : (by ? ' by ' : ' at ')) + h : '') : ''; };
   const rlPlace = (f, l) => f.v_place === 'other' ? (f.v_place2 || '').trim() : (RL_PLACES.find(x => x[0] === (f.v_place || 'reception')) || RL_PLACES[0])[l === 'fr' ? 2 : 1];
+  const rlCompose = (tpl, f) => {
+    const vars = {}; let collect = null, eta = null;
+    if (/_processing$/.test(tpl)) { vars.date = rlWhen(f, 'en', true); vars.date_fr = rlWhen(f, 'fr', true); if (f.v_date) eta = { date: f.v_date, time: f.v_time || '' }; }
+    else if (/_ready$/.test(tpl)) { vars.collect = rlPlace(f, 'en') + ' — ' + rlWhen(f, 'en'); vars.collect_fr = rlPlace(f, 'fr') + ' — ' + rlWhen(f, 'fr'); collect = { date: f.v_date, time: f.v_time, place: rlPlace(f, 'en'), placeFr: rlPlace(f, 'fr') }; }
+    return { vars, collect, eta };
+  };
+  window.rlCompose = rlCompose;
   const rlBody = (f, prev) => {
-    const vars = {}, tpl = f.tpl;
-    if (/_processing$/.test(tpl)) { vars.date = rlWhen(f, 'en', true); vars.date_fr = rlWhen(f, 'fr', true); }
-    else if (/_ready$/.test(tpl)) { vars.collect = rlPlace(f, 'en') + ' — ' + rlWhen(f, 'en'); vars.collect_fr = rlPlace(f, 'fr') + ' — ' + rlWhen(f, 'fr'); }
-    else if (tpl === 'ms_status') { vars.status = f.v_status || ''; vars.details = f.v_details || ''; }
+    const tpl = f.tpl, c = rlCompose(tpl, f), vars = c.vars;
+    if (tpl === 'ms_status') { vars.status = f.v_status || ''; vars.details = f.v_details || ''; }
     else if (tpl === 'gen_custom') { const l = f.v_lang === 'fr' ? 'fr' : 'en'; vars['subject_' + l] = f.v_subject || ''; vars['body_' + l] = f.v_msg || ''; }
-    return { kind: f.kind, id: f.id, template: tpl, vars, when: vars.collect || vars.date || vars.status || '', preview: !!prev };
+    return { kind: f.kind, id: f.id, template: tpl, vars, collect: c.collect, eta: c.eta, when: vars.collect || vars.date || vars.status || '', preview: !!prev };
   };
   const rlCheck = f => {
     const tpl = f.tpl;
@@ -240,7 +245,9 @@
     return '';
   };
   window.rlHistory = (rec, n) => { const L2 = (rec && rec.letters || []).slice().sort((a, b) => b.at - a.at).slice(0, n || 5), fr = LANG === 'fr'; return L2.map(x => `<li><span class="rl-dot"></span><div><b>${esc(fr ? (x.fr || x.en) : (x.en || x.fr))}</b>${x.when ? `<div class="rl-when">${esc(fr ? (x.whenFr || x.when) : x.when)}</div>` : ''}<div class="small muted">${new Date(x.at).toLocaleString(fr ? 'fr-FR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}${x.by ? ' · ' + esc(x.by) : ''}</div></div></li>`).join(''); };
-  window.rlTimeline = rec => { const li = window.rlHistory(rec, 4); return li ? `<div class="card gap rl-card"><h4>${LBL('Messages from the Registry', 'Messages de la scolarité')}</h4><ul class="rl-tl">${li}</ul></div>` : ''; };
+  window.rlTicket = rec => { const c = rec && rec.collect, fr = LANG === 'fr'; if (!c || !c.date) return ''; if (['collected', 'rejected'].includes(rec.status)) return ''; const l = fr ? 'fr' : 'en', d = new Date(c.date + 'T12:00:00'); const day = isNaN(d) ? '' : d.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { weekday: 'long' }), rest = isNaN(d) ? c.date : d.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `<div class="rl-ticket"><div class="rl-t-cal"><span>${esc(day)}</span><b>${isNaN(d) ? '' : d.getDate()}</b><i>${esc(isNaN(d) ? '' : d.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { month: 'short' }))}</i></div><div class="rl-t-body"><p class="rl-kick">${LBL('Collection appointment', 'Rendez-vous de retrait')} · ${esc(rec.ref || '')}</p><h4>${esc(day)} ${esc(rest)}${c.time ? ' · ' + esc(rlHour(c.time, l)) : ''}</h4><p>${esc(fr ? (c.placeFr || c.place || '') : (c.place || ''))}</p><p class="small muted">${LBL('Please bring a valid identity document.', 'Veuillez vous munir d\'une pièce d\'identité valide.')}</p></div></div>`; };
+  window.rlTimeline = rec => { const li = window.rlHistory(rec, 4); return (window.rlTicket(rec) || li) ? window.rlTicket(rec) + (li ? `<div class="card gap rl-card"><h4>${LBL('Messages from the Registry', 'Messages de la scolarité')}</h4><ul class="rl-tl">${li}</ul></div>` : '') : ''; };
   window.rlLast = rec => { const l = (rec && rec.letters || []).slice().sort((a, b) => b.at - a.at)[0]; return l ? `<div class="small muted">✉ ${esc(LANG === 'fr' ? (l.fr || l.en) : (l.en || l.fr))} · ${fmtD(l.at)}</div>` : ''; };
   const RLS = { st: null };
   function rlView() {
@@ -248,7 +255,7 @@
     let h = `<div class="rl"><p class="rl-kick">${LBL('Applicant communication', 'Communication avec le demandeur')}</p><h3>${who}</h3><p class="muted">${esc(rec.ref || '')} · ${LBL('The applicant receives a courteous bilingual letter at the ADI and personal e-mail addresses, together with a notification in the portal that opens the request.', 'Le demandeur reçoit une lettre courtoise bilingue aux adresses e-mail ADI et personnelle, ainsi qu\'une notification dans le portail qui ouvre la demande.')}</p>`;
     h += `<div class="rl-steps" role="radiogroup" aria-label="${LBL('Subject of the letter', 'Objet de la lettre')}">${RL[f.kind].map(x => `<button type="button" class="rl-step" role="radio" aria-checked="${x[0] === tpl}" data-a="rltpl" data-t="${x[0]}"><b>${x[fr ? 2 : 1]}</b><span>${x[fr ? 4 : 3]}</span></button>`).join('')}</div>`;
     if (/_processing$/.test(tpl)) h += `<div class="grid g2">${inp('rl.v_date', LBL('Expected completion date', 'Date d\'achèvement prévue'), { type: 'date' })}${inp('rl.v_time', LBL('Latest time (optional)', 'Heure limite (facultatif)'), { type: 'time' })}</div>`;
-    else if (/_ready$/.test(tpl)) h += `<div class="grid g2">${inp('rl.v_date', LBL('Collection date', 'Date de retrait'), { type: 'date' })}${inp('rl.v_time', LBL('Collection time', 'Heure de retrait'), { type: 'time' })}</div>${sel('rl.v_place', LBL('Collection place', 'Lieu de retrait'), RL_PLACES.map(x => [x[0], x[fr ? 2 : 1]]), { blank: false })}${f.v_place === 'other' ? inp('rl.v_place2', LBL('Place and directions', 'Lieu et indications')) : ''}<p class="small muted">${LBL('Reminder in the letter: bring a valid identity document.', 'Rappel dans la lettre : se munir d\'une pièce d\'identité valide.')}</p>`;
+    else if (/_ready$/.test(tpl)) h += `<div class="grid g2">${inp('rl.v_date', LBL('Collection date', 'Date de retrait') + (f.v_date ? ' — ' + rlDay(f.v_date, fr ? 'fr' : 'en').split(' ')[0] : ''), { type: 'date' })}${inp('rl.v_time', LBL('Collection time', 'Heure de retrait'), { type: 'time' })}</div>${sel('rl.v_place', LBL('Collection place', 'Lieu de retrait'), RL_PLACES.map(x => [x[0], x[fr ? 2 : 1]]), { blank: false })}${f.v_place === 'other' ? inp('rl.v_place2', LBL('Place and directions', 'Lieu et indications')) : ''}<p class="small muted">${LBL('Reminder in the letter: bring a valid identity document.', 'Rappel dans la lettre : se munir d\'une pièce d\'identité valide.')}</p>`;
     else if (tpl === 'ms_status') h += `${inp('rl.v_status', LBL('Current status', 'État actuel'))}${area('rl.v_details', LBL('Further details (optional)', 'Précisions (facultatif)'))}`;
     else if (tpl === 'gen_custom') h += `${sel('rl.v_lang', LBL('Language of the message', 'Langue du message'), [['en', 'English'], ['fr', 'Français']], { blank: false })}${inp('rl.v_subject', LBL('Subject', 'Objet'))}${area('rl.v_msg', LBL('Message', 'Message'))}`;
     else h += `<p class="muted">${LBL('A standard acknowledgement will be sent. No further detail is needed.', 'Un accusé de réception standard sera envoyé. Aucune précision supplémentaire n\'est nécessaire.')}</p>`;
@@ -264,7 +271,7 @@
   ACT.rlprev = async () => { const f = FORMS.rl, bad = rlCheck(f); if (bad) return rlErr({ message: bad }); try { f.prev = await api('/api/notice/record', { body: rlBody(f, true) }); rlView(); } catch (e) { rlErr(e); } };
   ACT.rlsend = async el => { const f = FORMS.rl; if (el) el.disabled = true; try { const d = await api('/api/notice/record', { body: rlBody(f, false) }); await apiSync(); toast(LBL('Letter sent to ', 'Lettre envoyée à ') + d.sent + ' ' + LBL('address(es).', 'adresse(s).')); const c = $('#overlay'); if (c) c.innerHTML = ''; render(); } catch (e) { if (el) el.disabled = false; rlErr(e); } };
   // changing the place or the language redraws the dialog; any edit invalidates the preview
-  const rlOnChange = e => { const t = e.target; if (FORMS.rl && t && t.dataset && /^rl\./.test(t.dataset.f || '') && $('#overlay') && $('#overlay').querySelector('#rlerr')) { FORMS.rl.prev = null; if (/^rl\.v_(place|lang)$/.test(t.dataset.f)) rlView(); } };
+  const rlOnChange = e => { const t = e.target; if (FORMS.rl && t && t.dataset && /^rl\./.test(t.dataset.f || '') && $('#overlay') && $('#overlay').querySelector('#rlerr')) { FORMS.rl.prev = null; if (/^rl\.v_(place|lang|date)$/.test(t.dataset.f)) rlView(); } };
   document.addEventListener('change', rlOnChange);
   window.rlButton = (k, id, small) => `<button class="btn ${small ? 'sm ghost' : 'gold'}" data-a="reclet" data-k="${k}" data-id="${esc(id)}">✉ ${small ? LBL('Notify', 'Notifier') : LBL('Notify the applicant', 'Notifier le demandeur')}</button>`;
 
