@@ -6,7 +6,7 @@
   if (!Array.isArray(COLS)) return;
   if (!COLS.includes('msapp')) COLS.push('msapp');
   if (!S.msapp) S.msapp = {};
-  ['photo', 'police', 'auth'].forEach(k => { if (!DOC_TYPES.includes(k)) DOC_TYPES.push(k); });
+  ['police', 'auth'].forEach(k => { if (!DOC_TYPES.includes(k)) DOC_TYPES.push(k); });
   L.dt_photo = ['Passport photograph', "Photo d'identité"];
   L.dt_police = ['Police or loss declaration', 'Déclaration de perte'];
   L.dt_auth = ['Authorisation letter', "Lettre d'autorisation"];
@@ -286,7 +286,7 @@
       postal: '', gradYear: '', session: '', resultDate: '',
       tDiploma: false, tTranscript: true, tDuplicate: false, tCopy: false,
       reason: 'studies', reasonOther: '', delivery: 'person', destName: '', destAddr: '',
-      photos2: false, agree: false, signName: st.name, place: 'Yaoundé',
+      agree: false, signName: st.name, place: 'Yaoundé',
       declDate: new Date().toISOString().slice(0, 10)
     };
   }
@@ -303,7 +303,7 @@
       ['You are an ADI student with a portal account, and you give the unique MINESUP matricule from your HND/BTS registration form (like 26SWE0762).', 'Vous êtes étudiant(e) à ADI, avec un compte du portail, et vous indiquez le matricule unique MINESUP de votre fiche d\'inscription HND/BTS (comme 26SWE0762).'],
       ['The qualification is HND or BTS (MINESUP).', 'Le diplôme est le HND ou le BTS (MINESUP).'],
       ['Registration and full tuition for this academic year are paid and confirmed by Finance.', 'L\'inscription et la totalité de la scolarité de cette année sont payées et confirmées par les Finances.'],
-      ['You attach a national ID, birth certificate, result slip or success attestation, fee receipt, and two passport photographs.', 'Vous joignez la CNI, l\'acte de naissance, le relevé ou l\'attestation de réussite, le reçu des frais et deux photos d\'identité.'],
+      ['You attach a national ID, birth certificate, result slip or success attestation, and the fee receipt.', 'Vous joignez la CNI, l\'acte de naissance, le relevé ou l\'attestation de réussite et le reçu des frais.'],
       ['A lost document needs a police declaration. A representative needs an authorisation letter.', 'Un document perdu exige une déclaration de police. Un mandataire exige une lettre d\'autorisation.'],
       ['The Registry checks these points before approval.', 'Le service de la scolarité vérifie ces points avant approbation.']
     ];
@@ -477,9 +477,8 @@
         ${f.delivery === 'school' ? `<div class="grid g2">${inp('ms.destName', both('Institution name', 'Nom de l\'établissement'))}${inp('ms.destAddr', both('Institution address', 'Adresse de l\'établissement'))}</div>` : ''}
       </section>
       <section class="ms-sec" id="ms-docs"><h3><span class="ms-num">E</span> ${both('Documents attached', 'Pièces jointes')}</h3>
-        <p class="small muted">${LBL('Please choose the document type, then upload a PDF or a clear photo (JPG, PNG). Two passport photographs may be one scan.', 'Choisissez le type de pièce, puis envoyez un PDF ou une photo nette (JPG, PNG). Les deux photos d\'identité peuvent être sur un seul scan.')}</p>
+        <p class="small muted">${LBL('Please choose the document type, then upload a PDF or a clear photo (JPG, PNG). No passport photographs are needed for a transcript.', 'Choisissez le type de pièce, puis envoyez un PDF ou une photo nette (JPG, PNG). Aucune photo d\'identité n\'est nécessaire pour un relevé.')}</p>
         ${fileBox('ms:' + f.id, { edit: true, types: true })}
-        ${chk('ms.photos2', both('I attach two passport photographs', 'Je joins deux photos d\'identité'))}
       </section>
       <section class="ms-sec"><h3><span class="ms-num">F</span> ${both('Declaration', 'Déclaration du demandeur')}</h3>
         <p class="small">${LBL('I certify that the information above is accurate and complete. I understand that any false declaration may result in rejection and legal action.', 'Je certifie que les informations ci-dessus sont exactes et complètes. Je reconnais que toute fausse déclaration peut entraîner le rejet de la demande et des poursuites judiciaires.')}</p>
@@ -500,7 +499,7 @@
       types: { diploma: !!f.tDiploma, transcript: !!f.tTranscript, duplicate: !!f.tDuplicate, copy: !!f.tCopy },
       reason: f.reason, reasonOther: f.reasonOther || '', delivery: f.delivery,
       destName: f.destName || '', destAddr: f.destAddr || '',
-      photos2: !!f.photos2, agree: !!f.agree, signName: f.signName, place: f.place, declDate: f.declDate
+      agree: !!f.agree, signName: f.signName, place: f.place, declDate: f.declDate
     };
   }
   let BAD = '';
@@ -518,10 +517,9 @@
     if (p.reason === 'other' && !(p.reasonOther || '').trim()) return bad('ms.reasonOther', 'Specify the other reason.', 'Précisez le motif.');
     if (p.delivery === 'school' && !(p.destName || '').trim()) return bad('ms.destName', 'Please enter the institution name.', 'Indiquez le nom de l\'établissement.');
     if (p.delivery === 'school' && !(p.destAddr || '').trim()) return bad('ms.destAddr', 'Please enter the institution address.', 'Indiquez l\'adresse de l\'établissement.');
-    if (!p.photos2) return bad('ms.photos2', 'Please confirm the two passport photographs.', 'Confirmez les deux photos d\'identité.');
-    const docs = [['id', 'the national ID'], ['birth', 'the birth certificate'], ['results', 'the result slip or success attestation'], ['receipt', 'the fee receipt'], ['photo', 'a passport photograph']];
+    const docs = [['id', 'the national ID'], ['birth', 'the birth certificate'], ['results', 'the result slip or success attestation'], ['receipt', 'the fee receipt']];
     const miss = docs.filter(d => !hasD(id, d[0]));
-    if (miss.length) { BAD = '#ms-docs'; return LBL('Upload ' + miss.map(d => d[1]).join(', ') + '. Set the correct document type on each file.', 'Envoyez la CNI, l\'acte de naissance, le relevé, le reçu des frais et une photo d\'identité, avec le bon type pour chaque fichier.'); }
+    if (miss.length) { BAD = '#ms-docs'; return LBL('Upload ' + miss.map(d => d[1]).join(', ') + '. Set the correct document type on each file.', 'Envoyez la CNI, l\'acte de naissance, le relevé et le reçu des frais, avec le bon type pour chaque fichier.'); }
     if (p.reason === 'lost' && !hasD(id, 'police')) { BAD = '#ms-docs'; return LBL('Please upload the police loss declaration.', 'Envoyez la déclaration de perte.'); }
     if (p.delivery === 'rep' && !hasD(id, 'auth')) { BAD = '#ms-docs'; return LBL('Please upload the authorisation letter.', 'Envoyez la lettre d\'autorisation.'); }
     if (!p.declDate) return bad('ms.declDate', 'Please enter the declaration date.', 'Veuillez indiquer la date de la déclaration.');
@@ -595,7 +593,6 @@
       [has('birth'), LBL('Birth certificate', 'Acte de naissance')],
       [has('results'), LBL('Result slip or success attestation', 'Relevé ou attestation de réussite')],
       [has('receipt'), LBL('Receipt of complete fees', 'Reçu des frais complets')],
-      [has('photo'), LBL('Passport photograph', 'Photo d\'identité')],
       [a.reason !== 'lost' || has('police'), LBL('Police declaration (if lost)', 'Déclaration de police (si perte)')],
       [a.delivery !== 'rep' || has('auth'), LBL('Authorisation (if a representative collects)', 'Autorisation (si mandataire)')]
     ];
@@ -760,7 +757,7 @@
     biLine('Section E — Documents attached', 'Section E — Pièces jointes', 4);
     const attached = [
       ['id', 'National ID', 'CNI'], ['birth', 'Birth certificate', 'Acte de naissance'], ['results', 'Result slip / attestation', 'Relevé / attestation'],
-      ['photo', 'Passport photographs', 'Photos d\'identité'], ['receipt', 'Receipt of complete fees', 'Reçu des frais'], ['police', 'Police declaration', 'Déclaration de perte'], ['auth', 'Authorisation letter', 'Lettre d\'autorisation']
+      ['receipt', 'Receipt of complete fees', 'Reçu des frais'], ['police', 'Police declaration', 'Déclaration de perte'], ['auth', 'Authorisation letter', 'Lettre d\'autorisation']
     ];
     attached.forEach(row => { mark(14, hasD(a.id, row[0]), row[1], row[2]); y += 10; });
     y += 1;

@@ -101,18 +101,16 @@ function validateBody(n, files) {
   if (place.length < 2) return 'Place of declaration is required. / Le lieu de la déclaration est obligatoire.';
   if (signName.length < 3) return 'Signature (full name) is required. / La signature (nom complet) est obligatoire.';
   if (n.agree !== true) return 'You must accept the declaration. / Vous devez accepter la déclaration.';
-  if (n.photos2 !== true) return 'Confirm that two passport photographs are attached. / Confirmez les deux photos d\'identité.';
   if (!hasType(files, 'id')) return 'Scanned national ID is required. / La CNI numérisée est obligatoire.';
   if (!hasType(files, 'birth')) return 'Scanned birth certificate is required. / L\'acte de naissance est obligatoire.';
   if (!hasType(files, 'results')) return 'Proof of graduation or result slip is required. / L\'attestation de réussite ou le relevé est obligatoire.';
   if (!hasType(files, 'receipt')) return 'Receipt of complete fees is required. / Le reçu des frais complets est obligatoire.';
-  if (!hasType(files, 'photo')) return 'Passport photograph is required. / La photo d\'identité est obligatoire.';
   if (reason === 'lost' && !hasType(files, 'police')) return 'Police loss declaration is required. / La déclaration de perte est obligatoire.';
   if (delivery === 'rep' && !hasType(files, 'auth')) return 'Authorisation letter is required. / La lettre d\'autorisation est obligatoire.';
   return {
     types, certName, dob, pob, sex, nationality, nid, phone, email, postal,
     gradYear, session, resultDate, reason, reasonOther, delivery, destName, destAddr,
-    signName, place, declDate, agree: true, photos2: true
+    signName, place, declDate, agree: true
   };
 }
 
@@ -161,7 +159,7 @@ async function apply(ctx, u, id, o, n) {
     if (!st || !tuitionComplete(logic, S, st)) throw ['Tuition is not fully confirmed for this student. / La scolarité de cet étudiant n\'est pas entièrement confirmée.'];
     if (!LEVELS.includes(o.level)) throw ['Not an HND/BTS record. / Dossier hors HND/BTS.'];
     const files = filesOf(S, id, o.userId);
-    if (!hasType(files, 'id') || !hasType(files, 'birth') || !hasType(files, 'results') || !hasType(files, 'receipt') || !hasType(files, 'photo')) throw ['Required documents are missing. / Pièces obligatoires manquantes.'];
+    if (!hasType(files, 'id') || !hasType(files, 'birth') || !hasType(files, 'results') || !hasType(files, 'receipt')) throw ['Required documents are missing. / Pièces obligatoires manquantes.'];
     if (o.reason === 'lost' && !hasType(files, 'police')) throw ['Police declaration missing. / Déclaration de perte manquante.'];
     if (o.delivery === 'rep' && !hasType(files, 'auth')) throw ['Authorisation letter missing. / Lettre d\'autorisation manquante.'];
   }
