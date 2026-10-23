@@ -3211,6 +3211,13 @@ async function route(req, res) {
     try { await applyWrite(u, c, id, o, n); } catch (e) { if (Array.isArray(e)) return send(res, 400, { error: e[0] }); throw e; }
     return send(res, 200, { ok: true });
   }
+  if ((m = /^\/api\/files\/([\w-]{1,60})\/raw$/.exec(p)) && req.method === 'GET') {   // the attachment itself, for the browser's own download manager (staff with access control)
+    const id = m[1], f = S.get('files', id); if (!u) return send(res, 401, { error: 'auth' }); if (!R.fileVisible(u, f)) return send(res, 403, { error: 'forbidden' });
+    const buf = await S.getBlob(id); if (!buf) return send(res, 404, { error: 'missing' });
+    const head = Buffer.from(buf).subarray(0, 4).toString('hex'), mime = /^25504446/.test(head) ? 'application/pdf' : /^ffd8ff/.test(head) ? 'image/jpeg' : /^89504e47/.test(head) ? 'image/png' : /^52494646/.test(head) ? 'image/webp' : 'application/octet-stream';
+    const ext = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mime] || 'bin', base = String(f.name || 'attachment').normalize('NFKD').replace(/[^\w. -]+/g, '_').slice(0, 90) || 'attachment', nm = new RegExp('\\.' + ext + '$', 'i').test(base) || (ext === 'jpg' && /\.jpe?g$/i.test(base)) ? base : base + '.' + ext, dl = url.searchParams.get('dl') === '1';
+    res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Content-Disposition': (dl || mime === 'application/octet-stream' ? 'attachment' : 'inline') + '; filename="' + nm + '"', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' }); return res.end(buf);
+  }
   if ((m = /^\/api\/files\/([\w-]{1,60})$/.exec(p))) {
     const id = m[1];
     if (req.method === 'POST') {
