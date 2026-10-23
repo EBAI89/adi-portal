@@ -12,7 +12,7 @@
   const key64 = s => { const p = '='.repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
   async function mine() { try { const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); } catch (e) { return null; } }
   async function load() {
-    if (!SUP() || typeof me !== 'function' || !me()) return;
+    if (typeof me !== 'function' || !me()) return; if (!SUP()) { ST.loaded = true; if (typeof render === 'function') render(); return; }
     ST.on = !!(await mine()) && Notification.permission === 'granted';
     try { ST.devices = (await api('/api/push/status')).devices; } catch (e) { ST.devices = null; }
     ST.loaded = true; if (typeof render === 'function') render();
@@ -66,4 +66,5 @@
   };
   wrap('dashboard', u => !['student', 'applicant'].includes(u.role));
   wrap('profile', () => true);
+  const rn = ROUTES.find(x => x.id === 'notifs'); if (rn) { const nb = rn.v; rn.v = function () { const u = me(); if (u && !ST.loaded) load(); return (u ? banner() : '') + nb(); }; }
 })();
