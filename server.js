@@ -2286,7 +2286,12 @@ function channelCheck() {
 }
 /* ---------- writes with hooks ---------- */
 let PUSH = null;
-async function save(c, id, doc) { const fresh = c === 'notifs' && PUSH && !S.get(c, id); doc.id = id; doc._seq = ++SEQ; await S.put(c, id, doc); if (fresh && !doc.read && doc.userId) PUSH.notify(doc.userId, doc.title, doc.body).catch(e => console.error('[push]', e && e.message)); }
+async function save(c, id, doc) {
+  const isNew = c === 'notifs' && !S.get(c, id), fresh = isNew && PUSH; doc.id = id; doc._seq = ++SEQ; await S.put(c, id, doc);
+  if (fresh && !doc.read && doc.userId) PUSH.notify(doc.userId, doc.title, doc.body).catch(e => console.error('[push]', e && e.message));
+  // every administrator and staff member also receives each new portal notification by e-mail (unless the sender has already mailed it)
+  if (isNew && !doc.read && !doc._nm && doc.userId) { try { const u = S.get('users', doc.userId); if (u && u.status === 'active' && !['student', 'applicant'].includes(u.role)) { const letter = noticeLetterAuto(u, doc.title, doc.body); for (const to of noticeEmails(u)) sendEmail({ to, subject: String(doc.title || '').slice(0, 200), text: letter }).catch(() => {}); } } catch (e) { console.error('[staff-mail]', e && e.message); } }
+}
 async function remove(c, id) { await S.del(c, id); TOMB.push({ c, id, seq: ++SEQ }); if (TOMB.length > 5000) TOMB_FLOOR = TOMB.splice(0, 1000).pop().seq; }
 const vkey = u => crypto.createHash('sha1').update(JSON.stringify([u ? [u.id, u.role, u.status] : null, (S.get('settings', 'main') || {}).perms || null, logic.resFee(S)])).digest('hex').slice(0, 12);
 async function audit(u, action) { await save('audit', uid('a'), { at: now(), user: u ? u.name + ' (' + u.role + ')' : 'system', action: String(action).slice(0, 200) }); }
@@ -2304,7 +2309,7 @@ function noticeLetterAuto(u, title, body) {
 }
 async function notifyUser(userId, title, body, o = {}) {
   const u = S.get('users', userId); if (!u) return;
-  await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false });
+  await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false, _nm: 1 });
   const letter = noticeLetterAuto(u, title, body); for (const to of noticeEmails(u)) sendEmail({ to, subject: title, text: letter });
   if (o.sms && u.phone) sendSMS({ to: u.phone, text: o.smsText || ('ADI: ' + title + ' - ' + body) });
   if (o.wa && u.phone) sendWhatsApp({ to: u.phone, text: o.waText || ('ADI University — ' + title + '\n\n' + body), tpl: o.waTpl });
@@ -2424,7 +2429,7 @@ async function noticeRoute(req, res, u, p) {
     else if (/_processing$/.test(b.template) && detail) inBody = fl ? 'Nous vous informons que ' + what + ' est en cours de traitement. Achèvement prévu : ' + vf('date') + '.' : 'We wish to inform you that ' + what + ' is being processed. Expected completion: ' + vf('date') + '.';
     else inBody = (f.lt.inapp.body + (detail ? ' — ' + detail : '')).slice(0, 420);
     const T0 = NOTE_T[b.template], lt0 = isC ? [clipT(V.subject_en || V.subject_fr || T0.t[0], 160), clipT(V.subject_fr || V.subject_en || T0.t[1], 160)] : T0.t;
-    await save('notifs', uid('n'), { userId: target.id, title: isC ? lt0[(target.lang === 'fr') ? 1 : 0] : f.lt.inapp.title, body: inBody, at: now(), read: false, link: isMs ? 'minesup' : 'trreq' });
+    await save('notifs', uid('n'), { userId: target.id, title: isC ? lt0[(target.lang === 'fr') ? 1 : 0] : f.lt.inapp.title, body: inBody, at: now(), read: false, _nm: 1, link: isMs ? 'minesup' : 'trreq' });
     const fresh = S.get(isMs ? 'msapp' : 'trreq', rec.id || String(b.id)) || rec, entry = { at: now(), en: lt0[0], fr: lt0[1], when: clipT(b.when || V.collect || V.date || V.status || '', 240), whenFr: clipT(V.collect_fr || V.date_fr || V.status || '', 240), by: u.name || '', tpl: b.template, addresses: pl.addresses };
     const cz = b.collect && /^\d{4}-\d{2}-\d{2}$/.test(String(b.collect.date || '')) ? { date: String(b.collect.date), time: /^\d{1,2}:\d{2}$/.test(String(b.collect.time || '')) ? String(b.collect.time) : '', place: clipT(b.collect.place, 160), placeFr: clipT(b.collect.placeFr, 160) } : null, ez = b.eta && /^\d{4}-\d{2}-\d{2}$/.test(String(b.eta.date || '')) ? { date: String(b.eta.date), time: /^\d{1,2}:\d{2}$/.test(String(b.eta.time || '')) ? String(b.eta.time) : '' } : null;
     await save(isMs ? 'msapp' : 'trreq', fresh.id || String(b.id), Object.assign({}, fresh, /_ready$/.test(b.template) && cz ? { collect: cz } : {}, /_processing$/.test(b.template) && ez ? { eta: ez } : {}, { letters: (Array.isArray(fresh.letters) ? fresh.letters : []).concat(entry).slice(-40), lastLetter: { t: lt0[0], at: entry.at, by: entry.by } }));
@@ -2441,7 +2446,7 @@ async function noticeRoute(req, res, u, p) {
     if (p === '/api/notice/preview') { const f = pl.items[0]; return send(res, 200, { recipients: pl.items.length, addresses: pl.addresses, skipped: pl.skipped.slice(0, 20), sample: f ? { name: f.rec.u.name, subject: f.lt.subject, html: html(f.lt.subject, f.lt.text, E.PUBLIC_URL) } : null }); }
     if (!pl.items.length) return send(res, 400, { error: 'nobody' });
     if (limited('notice:' + u.id, 12, 3600e3)) return send(res, 429, { error: 'rate' });
-    let inapp = 0; for (const it of pl.items) if (pl.ch.inapp) { await save('notifs', uid('n'), { userId: it.rec.u.id, title: it.lt.inapp.title, body: it.lt.inapp.body, at: now(), read: false }); inapp++; }
+    let inapp = 0; for (const it of pl.items) if (pl.ch.inapp) { await save('notifs', uid('n'), { userId: it.rec.u.id, title: it.lt.inapp.title, body: it.lt.inapp.body, at: now(), read: false, _nm: 1 }); inapp++; }
     await audit(u, 'notice sent: ' + pl.tpl + ' to ' + pl.items.length + ' user(s), ' + pl.addresses + ' address(es)');
     const jobs = []; for (const it of pl.items) for (const to of it.to) jobs.push({ to, subject: it.lt.subject, text: it.lt.text });
     (async () => { let ok = 0, bad = 0; for (let i = 0; i < jobs.length; i += 6) await Promise.all(jobs.slice(i, i + 6).map(j => sendEmail(j).then(r => { r === false ? bad++ : ok++; }, () => bad++))); console.log('[notice] ' + pl.tpl + ': ' + ok + ' sent, ' + bad + ' failed'); })().catch(e => console.error('[notice]', e && e.message));
@@ -2636,7 +2641,7 @@ async function applyWrite(u, c, id, o, n) {
     await save(c, id, n); await audit(u, 'notice posted: ' + title + ' to ' + aud + ' (' + people.length + ' user(s), ' + addr + ' address(es))');
     (async () => {
       let ok = 0, bad = 0; const jobs = [];
-      for (const x of people) { await save('notifs', uid('n'), { userId: x.id, title: title.slice(0, 200), body: text.slice(0, 800), at: now(), read: false }); const fr = x.lang === 'fr', letter = '# ' + title + '\n\n' + (fr ? 'Madame, Monsieur' + (x.name ? ' ' + x.name : '') + ',' : 'Dear ' + (x.name || 'Sir or Madam') + ',') + '\n\n' + text + '\n\n' + (fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,') + '\n\n--\n' + (fr ? 'L\'Administration' : 'The Administration') + '\nAmerican Ditek Institute (ADI University)'; for (const to of noticeEmails(x)) jobs.push({ to, subject: (fr ? 'Avis officiel : ' : 'Official notice: ') + title, text: letter }); }
+      for (const x of people) { await save('notifs', uid('n'), { userId: x.id, title: title.slice(0, 200), body: text.slice(0, 800), at: now(), read: false, _nm: 1 }); const fr = x.lang === 'fr', letter = '# ' + title + '\n\n' + (fr ? 'Madame, Monsieur' + (x.name ? ' ' + x.name : '') + ',' : 'Dear ' + (x.name || 'Sir or Madam') + ',') + '\n\n' + text + '\n\n' + (fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,') + '\n\n--\n' + (fr ? 'L\'Administration' : 'The Administration') + '\nAmerican Ditek Institute (ADI University)'; for (const to of noticeEmails(x)) jobs.push({ to, subject: (fr ? 'Avis officiel : ' : 'Official notice: ') + title, text: letter }); }
       for (let i = 0; i < jobs.length; i += 6) await Promise.all(jobs.slice(i, i + 6).map(j => sendEmail(j).then(r => { r === false ? bad++ : ok++; }, () => bad++)));
       const cur = S.get('notices', id); if (cur) await save('notices', id, Object.assign({}, cur, { mail: Object.assign({}, cur.mail, { sent: ok, failed: bad, done: now() }) }));
     })().catch(e => console.log('[notice board] ' + e.message)); return;
