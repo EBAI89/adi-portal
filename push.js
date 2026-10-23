@@ -42,6 +42,20 @@
   async function test() {
     try { await api('/api/push/test', { body: {} }); toast(LBL('Test alert sent. It should appear in a few seconds, even if you close the portal.', 'Alerte de test envoyée. Elle doit apparaître dans quelques secondes, même si vous fermez le portail.')); } catch (e) { toast(String((e && e.message) || e), 1); }
   }
+  /* while the portal is open: a short chime and vibration for each new notification */
+  let ac = null, seen = null, seenFor = null;
+  const unlock = () => { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch (e) {} };
+  ['click', 'touchstart', 'keydown'].forEach(ev => addEventListener(ev, unlock, { passive: true }));
+  function chime() {
+    try { if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 500]); } catch (e) {}
+    try { unlock(); if (!ac || ac.state !== 'running') return; const t0 = ac.currentTime; [[880, 0], [1175, 0.18], [1568, 0.36]].forEach(([f, d]) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.35, t0 + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.32); o.connect(g); g.connect(ac.destination); o.start(t0 + d); o.stop(t0 + d + 0.34); }); } catch (e) {}
+  }
+  setInterval(() => {
+    const u = typeof me === 'function' && me(); if (!u || typeof S === 'undefined' || !S.notifs) { seen = null; return; }
+    const ids = Object.values(S.notifs).filter(n => n.userId === u.id && !n.read).map(n => n.id);
+    if (seen === null || seenFor !== u.id) { seen = new Set(ids); seenFor = u.id; return; }
+    const fresh = ids.filter(i => !seen.has(i)); ids.forEach(i => seen.add(i)); if (fresh.length) chime();
+  }, 2500);
   ACT.pushon = () => { enable(); }; ACT.pushoff = () => { disable(); }; ACT.pushtest = () => { test(); };
 
   function card() {

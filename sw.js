@@ -44,7 +44,7 @@ self.addEventListener('push', e => {
     } catch (err) { /* fall through to the generic alert */ }
     if (!items.length) items = [{ title: 'American Ditek Institute', body: 'You have a new notification on the portal.', at: Date.now() }];
     for (const it of items) {
-      await self.registration.showNotification(it.title || 'American Ditek Institute', { body: it.body || '', tag: 'adi-' + (it.at || Date.now()), data: { url: '/#/notifs' } });
+      await self.registration.showNotification(it.title || 'American Ditek Institute', { body: it.body || '', tag: 'adi-' + (it.at || Date.now()), icon: '/mail-assets/adi-logo.png', badge: '/mail-assets/adi-logo.png', vibrate: [300, 120, 300, 120, 500], silent: false, renotify: true, requireInteraction: true, timestamp: it.at || Date.now(), data: { url: '/#/notifs' } });
     }
   })());
 });
