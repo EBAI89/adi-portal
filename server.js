@@ -2222,7 +2222,8 @@ setInterval(() => { const t = now(); for (const [k, a] of HITS) if (!a.some(x =>
 const zlib = require('zlib');
 function send(res, code, obj, headers = {}) {
   let b = Buffer.from(JSON.stringify(obj)); const h = Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, headers);
-  const q = res.req; if (b.length > 1400 && q && /\bgzip\b/.test(String(q.headers['accept-encoding'] || ''))) { b = zlib.gzipSync(b, { level: 5 }); h['Content-Encoding'] = 'gzip'; h.Vary = 'Accept-Encoding'; }
+  const q = res.req; if (b.length > 1400 && q && /\bbr\b/.test(String(q.headers['accept-encoding'] || ''))) { b = zlib.brotliCompressSync(b, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: b.length } }); h['Content-Encoding'] = 'br'; h.Vary = 'Accept-Encoding'; }   // data replies: Brotli is about a quarter smaller than gzip at the same speed
+  else if (b.length > 1400 && q && /\bgzip\b/.test(String(q.headers['accept-encoding'] || ''))) { b = zlib.gzipSync(b, { level: 5 }); h['Content-Encoding'] = 'gzip'; h.Vary = 'Accept-Encoding'; }
   h['Content-Length'] = b.length; res.writeHead(code, h); res.end(b);
 }
 /* ---------- fast delivery: compressed, cached and revalidated (a 304 costs a few hundred bytes on a weak connection) ---------- */
@@ -2257,13 +2258,13 @@ function zEntry(key, data) {
   const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
   e = { src: data, buf, etag: '"' + crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 22) + '"', gz: null, br: null, brP: false }; ZC.set(key, e); return e;
 }
-function zWarm(e) { if (e && !e.br && !e.brP && e.buf.length > 1024) { e.brP = true; zlib.brotliCompress(e.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: e.buf.length } }, (err, o) => { if (!err) e.br = o; }); } }
+function zWarm(e) { if (e && !e.brP && e.buf.length > 1024) { e.brP = true; zlib.brotliCompress(e.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: e.buf.length } }, (err, o) => { if (!err) e.br = o; }); } }
 function zServe(req, res, e, headers) {
   const h = Object.assign({}, headers, { ETag: e.etag, Vary: 'Accept-Encoding' });
   if (req.headers['if-none-match'] === e.etag) { res.writeHead(304, h); return res.end(); }
   const a = String(req.headers['accept-encoding'] || ''), enc = /\bbr\b/.test(a) ? 'br' : /\bgzip\b/.test(a) ? 'gzip' : ''; let body = e.buf;
   if (enc && e.buf.length > 1024) {
-    if (enc === 'br' && !e.br && !e.brP) { e.brP = true; zlib.brotliCompress(e.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: e.buf.length } }, (err, out) => { if (!err) e.br = out; }); }
+    if (enc === 'br' && !e.br) { try { e.br = zlib.brotliCompressSync(e.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: e.buf.length } }); } catch (x) {} }   // first visitor after a release already gets Brotli (about 25% smaller than gzip); the maximum-quality copy replaces it when ready
     if (enc === 'br' && e.br) { body = e.br; h['Content-Encoding'] = 'br'; } else { if (!e.gz) e.gz = zlib.gzipSync(e.buf, { level: 9 }); body = e.gz; h['Content-Encoding'] = 'gzip'; }
   }
   h['Content-Length'] = body.length; res.writeHead(200, h); return res.end(body);
