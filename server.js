@@ -127,7 +127,7 @@ function priceFor(store, st, kind) {
     const fee = resFee(store); if (!fee) return null; const m = /^res_(\d{4})-(\d{4})_([12])$/.exec(kind); const ay = m[1] + '/' + m[2], sem = Number(m[3]);
     const has = Object.values(store.all('results')).some(r => r.matric === st.matric && r.ay === ay && Number(r.sem) === sem && r.state === 'published'); if (!has) return null;
     if (Object.values(store.all('payments')).some(p => p.matric === st.matric && p.kind === kind && p.status === 'confirmed')) return null;
-    return { amount: fee, label: 'Results access — ' + ay + ' · Semester ' + sem, custom: false };
+    return { amount: fee, label: 'Results access — ' + ay + ' · ' + (['', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'][Number(sem)] || sem) + ' Semester', custom: false };
   }
   if (/^tr_/.test(kind)) { const r = store.get('trreq', kind.slice(3)); if (!r || r.matric !== st.matric || r.status === 'rejected') return null; return { amount: r.fee, label: 'Transcript request ' + r.ref, custom: false }; }
   const it = core.payItems(JSON.parse(JSON.stringify(st))).find(x => x.k === kind); if (!it) return null;
