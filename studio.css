@@ -37,3 +37,30 @@ table.nopage td:first-child,table.nopage th:first-child{width:34px}
 .td-gy a{color:#fff;text-decoration:underline}
 .td-grp table{margin:0;border:0}
 @media (max-width:700px){.td-l span{min-width:0;width:100%}.td-gh{padding:12px}}
+/* course finder: the six steps of the academic structure, then secondary filters */
+.td-nav{margin-top:16px}
+.td-navh{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.td-navh h3{margin:2px 0 0;color:var(--navy);font-size:1.15rem}
+.td-crumb{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:var(--navy)}
+.td-crumb span{background:var(--soft);border:1px solid var(--line);border-radius:99px;padding:3px 10px;font-weight:600}
+.td-crumb em{color:var(--muted);font-style:normal}
+.td-crumb a{margin-left:6px;font-size:.8rem}
+.td-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px;padding:14px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--soft),var(--card))}
+.td-step label.f{display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--navy)}
+.td-step label.f i{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--navy);color:#fff;font:700 .7rem/1 var(--ui,inherit);font-style:normal;letter-spacing:0}
+.td-step select{width:100%}
+.td-step select:disabled{opacity:.85;background:var(--soft)}
+.td-sec{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 14px;margin:14px 0 8px}
+.td-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px}
+.td-tile{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:18px;border:1px solid var(--line);border-top:4px solid var(--gold);border-radius:14px;background:var(--card);box-shadow:0 8px 24px rgba(11,37,89,.06);transition:transform .15s,box-shadow .15s}
+.td-tile:hover,.td-tile:focus-visible{transform:translateY(-2px);box-shadow:0 14px 32px rgba(11,37,89,.14);outline:2px solid var(--navy);outline-offset:2px}
+.td-tile b{font-size:1.35rem;color:var(--navy);line-height:1.2}
+.td-tk{font:700 .68rem/1 var(--ui,inherit);letter-spacing:.16em;text-transform:uppercase;color:var(--crimson)}
+.td-ts{color:var(--muted);font-size:.86rem}
+.td-tm{display:block;font-size:.8rem;color:var(--muted)}
+.td-tm .td-bar{display:block;height:5px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:3px}
+.td-tm .td-bar i{display:block;height:100%;background:var(--gold)}
+.td-tgo{margin-top:6px;font-weight:700;color:var(--navy);font-size:.88rem}
+@media (max-width:900px){.td-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.td-steps{grid-template-columns:1fr}}
+.td-sec input,.td-step input{width:100%;box-sizing:border-box}

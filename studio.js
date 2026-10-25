@@ -26,7 +26,7 @@
 
   /* ---- state ---- */
   const PAGE = 25;
-  const ST = window.__TD = { page: 1, q: '', level: '', spec: '', sem: '', year: '', who: '', plan: '', lang: '', sel: new Set(), busy: false, prog: null, bLead: '', bCo: '', bRem: '' };
+  const ST = window.__TD = { page: 1, q: '', level: '', fac: '', spec: '', lvl: '', sem: '', who: '', plan: '', lang: '', sel: new Set(), busy: false, prog: null, bLead: '', bCo: '', bRem: '' };
   const outLang = () => ST.lang || (fr() ? 'fr' : 'en');
   const coOf = id => (((S.cassign || {})[id] || {}).co || []).filter(x => S.users && S.users[x]);
   const planOf = id => (S.clsx || {})[id] || null;
@@ -49,6 +49,7 @@
   const ayTxt = () => { try { return typeof AY === 'function' ? AY() : ''; } catch (e) { return ''; } };
   const progName = k => ({ HND: ['HND', 'HND'], BTS: ['BTS', 'BTS'], BSC: ['Bachelor', 'Licence / Bachelor'], MSC: ['Master', 'Master'] }[k] || [k || '—', k || '—']);
   const gKey = c => [c.level || '', c.specId || '', Number(c.year) || 1, Number(c.sem) === 2 ? 2 : 1].join('|');
+  const facKey = c => { const sp = specOf(c); return sp ? sp.gid : '__common'; };
   const specName = c => { const sp = specOf(c); return sp ? String(sp.name) : ''; };
   const grpName = c => { const g = grpOf(c); return g ? (fr() ? g.fr : g.en) : ''; };
   function filtered() {
@@ -57,7 +58,8 @@
       if (ST.level && c.level !== ST.level) return false;
       if (ST.spec && (ST.spec === '__common' ? !!specOf(c) : c.specId !== ST.spec)) return false;
       if (ST.sem && String(c.sem) !== ST.sem) return false;
-      if (ST.year && String(c.year || 1) !== ST.year) return false;
+      if (ST.fac && facKey(c) !== ST.fac) return false;
+      if (ST.lvl && String(lvNo(c)) !== ST.lvl) return false;
       if (q && !(String(c.code).toLowerCase().includes(q) || String(c.title).toLowerCase().includes(q))) return false;
       if (ST.who === '_none' && (c.lecturerId || coOf(c.id).length)) return false;
       if (ST.who === '_nolead' && c.lecturerId) return false;
@@ -75,19 +77,40 @@
     const all = Object.values(S.courses || {}), n = all.length, withLead = all.filter(c => c.lecturerId).length, withPlan = all.filter(c => planState(c.id) !== 'none').length, approved = all.filter(c => planState(c.id) === 'approved').length;
     const pct = x => n ? Math.round(100 * x / n) : 0, kpi = (v, label, p) => `<div class="td-kpi"><b>${v}</b><span>${label}</span>${p == null ? '' : `<div class="td-bar"><i style="width:${p}%"></i></div>`}</div>`;
     const L1 = lecs(), list = filtered(), selIn = list.filter(c => ST.sel.has(c.id)).length, selAll = ST.sel.size;
-    const lvOpts = Object.keys(typeof LEVELS !== 'undefined' ? LEVELS : {}).map(k => `<option value="${esc(k)}"${ST.level === k ? ' selected' : ''}>${esc(lvlName(k))}</option>`).join('');
-    const spOpts = (() => { try { const by = {}, have = new Set(all.map(c => c.specId)); Object.values(SPEC || {}).forEach(sp => { if ((ST.level && sp.level !== ST.level) || !have.has(sp.id)) return; if (!by[sp.id]) by[sp.id] = sp; }); const arr = Object.values(by).sort((a, b) => (LV_ORDER.indexOf(a.level) - LV_ORDER.indexOf(b.level)) || String(a.name).localeCompare(String(b.name))); const common = all.some(c => !specOf(c) && (!ST.level || c.level === ST.level)) ? `<option value="__common"${ST.spec === '__common' ? ' selected' : ''}>${LBL('Common courses (all specialties)', 'Cours communs (toutes spécialités)')}</option>` : ''; return common + arr.map(sp => `<option value="${esc(sp.id)}"${ST.spec === sp.id ? ' selected' : ''}>${esc((ST.level ? '' : progName(sp.level)[0] + ' · ') + sp.name)}</option>`).join(''); } catch (e) { return ''; } })();
-    const sOpt = (arr, cur) => arr.map(a => `<option value="${esc(a[0])}"${cur === a[0] ? ' selected' : ''}>${esc(a[1])}</option>`).join('');
-    const filters = `<div class="card gap"><div class="td-filters">
-      <div class="fld"><label class="f">${LBL('Search code or title', 'Rechercher code ou intitulé')}</label><input id="td-q" data-td="q" value="${esc(ST.q)}" placeholder="CSC, accounting…"></div>
-      <div class="fld"><label class="f">${LBL('Programme', 'Programme')}</label><select data-td="level"><option value="">${LBL('All', 'Tous')}</option>${lvOpts}</select></div>
-      <div class="fld"><label class="f">${LBL('Department / specialty', 'Département / spécialité')}</label><select data-td="spec"><option value="">${LBL('All', 'Toutes')}</option>${spOpts}</select></div>
-      <div class="fld"><label class="f">${LBL('Year', 'Année')}</label><select data-td="year"><option value="">${LBL('All', 'Toutes')}</option>${sOpt([['1', LBL('Year 1', 'Année 1')], ['2', LBL('Year 2', 'Année 2')], ['3', LBL('Year 3', 'Année 3')], ['4', LBL('Year 4', 'Année 4')]], ST.year)}</select></div>
-      <div class="fld"><label class="f">${LBL('Semester', 'Semestre')}</label><select data-td="sem"><option value="">${LBL('All', 'Tous')}</option>${sOpt([['1', LBL('First semester', 'Premier semestre')], ['2', LBL('Second semester', 'Second semestre')]], ST.sem)}</select></div>
-      <div class="fld"><label class="f">${LBL('Lecturer', 'Enseignant')}</label><select data-td="who"><option value="">${LBL('Anyone', 'Tous')}</option><option value="_none"${ST.who === '_none' ? ' selected' : ''}>${LBL('— Nobody assigned —', '— Aucun enseignant —')}</option><option value="_nolead"${ST.who === '_nolead' ? ' selected' : ''}>${LBL('— No lead lecturer —', '— Sans responsable —')}</option>${opts(L1, ST.who)}</select></div>
-      <div class="fld"><label class="f">${LBL('Outline', 'Plan de cours')}</label><select data-td="plan"><option value="">${LBL('Any', 'Tous')}</option>${Object.keys(STATUS).map(k => `<option value="${k}"${ST.plan === k ? ' selected' : ''}>${esc(fr() ? STATUS[k][1] : STATUS[k][0])}</option>`).join('')}</select></div>
-      <div class="fld"><label class="f">${LBL('Outline language', 'Langue des plans')}</label><select data-td="lang">${sOpt([['en', 'English'], ['fr', 'Français']], outLang())}</select></div>
-    </div><p class="small muted">${list.length} / ${n} ${LBL('courses match', 'cours correspondent')} · <a href="#" data-a="td_selall">${LBL('select all ' + list.length + ' matching', 'sélectionner les ' + list.length + ' cours')}</a> · <a href="#" data-a="td_selnone">${LBL('clear selection', 'effacer la sélection')}</a></p></div>`;
+    /* ---- the academic structure, in the order the university uses it: Programme > Faculty/Field > Department/Specialty > Level > Semester > Academic year ---- */
+    const ho = ST.level === 'BSC' || ST.level === 'MSC', anyL = !ST.level;
+    const facLbl = anyL ? LBL('Faculty / Field', 'Faculté / Filière') : ho ? LBL('Faculty', 'Faculté') : LBL('Field', 'Filière'), depLbl = anyL ? LBL('Department / Specialty', 'Département / Spécialité') : ho ? LBL('Department', 'Département') : LBL('Specialty', 'Spécialité');
+    const inL = c => !ST.level || c.level === ST.level, inF = c => inL(c) && (!ST.fac || facKey(c) === ST.fac), inS = c => inF(c) && (!ST.spec || (ST.spec === '__common' ? !specOf(c) : c.specId === ST.spec));
+    const uniq = (arr, key) => { const m = new Map(); arr.forEach(c => { const k = key(c); if (!m.has(k)) m.set(k, c); }); return [...m.entries()]; };
+    const optHtml = (arr, cur) => arr.map(a => `<option value="${esc(a[0])}"${cur === a[0] ? ' selected' : ''}>${esc(a[1])}</option>`).join('');
+    const allLbl = LBL('All', 'Tous'), commonF = ho ? LBL('All faculties (common courses)', 'Toutes les facultés (cours communs)') : LBL('All fields (common core)', 'Toutes les filières (tronc commun)');
+    const facOpts = uniq(all.filter(inL), facKey).map(([k, c]) => [k, k === '__common' ? commonF : grpName(c)]).sort((x, y) => (x[0] === '__common' ? -1 : y[0] === '__common' ? 1 : String(x[1]).localeCompare(String(y[1]))));
+    const spOpts2 = uniq(all.filter(inF), c => specOf(c) ? c.specId : '__common').map(([k, c]) => [k, k === '__common' ? LBL('Common courses (all specialties)', 'Cours communs (toutes spécialités)') : specName(c)]).sort((x, y) => (x[0] === '__common' ? -1 : y[0] === '__common' ? 1 : String(x[1]).localeCompare(String(y[1]))));
+    const lvOpts2 = uniq(all.filter(inS), lvNo).map(([k, c]) => [String(k), k + ' · ' + LBL('Year', 'Année') + ' ' + (Number(c.year) || 1)]).sort((x, y) => Number(x[0]) - Number(y[0]));
+    const progOpts = LV_ORDER.filter(k => typeof LEVELS !== 'undefined' && LEVELS[k]).map(k => [k, progName(k)[fr() ? 1 : 0]]);
+    const step = (i, label, html) => `<div class="fld td-step"><label class="f"><i>${i}</i>${label}</label>${html}</div>`;
+    const ayShow = ayTxt() || '—';
+    const crumb = [ST.level ? progName(ST.level)[fr() ? 1 : 0] : '', ST.fac ? (facOpts.find(o => o[0] === ST.fac) || [0, ''])[1] : '', ST.spec ? (spOpts2.find(o => o[0] === ST.spec) || [0, ''])[1] : '', ST.lvl ? (LBL('Level', 'Niveau') + ' ' + ST.lvl) : '', ST.sem ? (ST.sem === '2' ? LBL('Second semester', 'Second semestre') : LBL('First semester', 'Premier semestre')) : ''].filter(Boolean);
+    const filters = `<div class="card gap td-nav"><div class="td-navh"><div><p class="td-kicker">${LBL('Course finder', 'Recherche de cours')}</p><h3>${LBL('Academic structure', 'Structure académique')}</h3></div><div class="td-crumb">${crumb.length ? crumb.map(x => '<span>' + esc(x) + '</span>').join('<em>›</em>') : '<span class="muted">' + LBL('All programmes', 'Tous les programmes') + '</span>'}<a href="#" data-a="td_reset">${LBL('Reset', 'Réinitialiser')}</a></div></div>
+      <div class="td-steps">
+        ${step(1, LBL('Programme', 'Programme'), `<select data-td="level"><option value="">${allLbl}</option>${optHtml(progOpts, ST.level)}</select>`)}
+        ${step(2, facLbl, `<select data-td="fac"><option value="">${allLbl}</option>${optHtml(facOpts, ST.fac)}</select>`)}
+        ${step(3, depLbl, `<select data-td="spec"><option value="">${allLbl}</option>${optHtml(spOpts2, ST.spec)}</select>`)}
+        ${step(4, LBL('Level', 'Niveau'), `<select data-td="lvl"><option value="">${allLbl}</option>${optHtml(lvOpts2, ST.lvl)}</select>`)}
+        ${step(5, LBL('Semester', 'Semestre'), `<select data-td="sem"><option value="">${allLbl}</option>${optHtml([['1', LBL('First semester', 'Premier semestre')], ['2', LBL('Second semester', 'Second semestre')]], ST.sem)}</select>`)}
+        ${step(6, LBL('Academic year', 'Année académique'), `<select data-td="ay" disabled aria-readonly="true"><option>${esc(ayShow)}</option></select>`)}
+      </div>
+      <div class="td-sec">
+        <div class="fld"><label class="f">${LBL('Search code or title', 'Rechercher code ou intitulé')}</label><input id="td-q" data-td="q" value="${esc(ST.q)}" placeholder="CSC, accounting…"></div>
+        <div class="fld"><label class="f">${LBL('Lecturer', 'Enseignant')}</label><select data-td="who"><option value="">${LBL('Anyone', 'Tous')}</option><option value="_none"${ST.who === '_none' ? ' selected' : ''}>${LBL('— Nobody assigned —', '— Aucun enseignant —')}</option><option value="_nolead"${ST.who === '_nolead' ? ' selected' : ''}>${LBL('— No lead lecturer —', '— Sans responsable —')}</option>${opts(L1, ST.who)}</select></div>
+        <div class="fld"><label class="f">${LBL('Outline status', 'Statut du plan')}</label><select data-td="plan"><option value="">${LBL('Any', 'Tous')}</option>${Object.keys(STATUS).map(k => `<option value="${k}"${ST.plan === k ? ' selected' : ''}>${esc(fr() ? STATUS[k][1] : STATUS[k][0])}</option>`).join('')}</select></div>
+        <div class="fld"><label class="f">${LBL('Outline language', 'Langue des plans')}</label><select data-td="lang">${optHtml([['en', 'English'], ['fr', 'Français']], outLang())}</select></div>
+      </div>
+      <p class="small muted">${list.length} / ${n} ${LBL('courses match', 'cours correspondent')} · <a href="#" data-a="td_selall">${LBL('select all ' + list.length + ' matching', 'sélectionner les ' + list.length + ' cours')}</a> · <a href="#" data-a="td_selnone">${LBL('clear selection', 'effacer la sélection')}</a></p></div>`;
+    /* programme overview: shown until a programme, a search or a filter is chosen, so the desk never opens on thousands of rows */
+    const overview = !ST.level && !ST.q && !ST.who && !ST.plan && !ST.fac && !ST.spec && !ST.lvl && !ST.sem;
+    const tiles = overview ? `<div class="td-tiles" role="list">${progOpts.map(([k, nm]) => { const cs = all.filter(c => c.level === k); if (!cs.length) return ''; const lead = cs.filter(c => c.lecturerId).length, pl = cs.filter(c => planState(c.id) !== 'none').length, p1 = Math.round(100 * lead / cs.length), p2 = Math.round(100 * pl / cs.length);
+      return `<button type="button" class="td-tile" role="listitem" data-a="td_prog" data-k="${esc(k)}"><span class="td-tk">${LBL('Programme', 'Programme')}</span><b>${esc(String(nm).toLocaleUpperCase(fr() ? 'fr' : 'en'))}</b><span class="td-ts">${cs.length} ${LBL('courses', 'cours')}</span><span class="td-tm">${LBL('Lead lecturer', 'Responsable')} ${p1}%<i class="td-bar"><i style="width:${p1}%"></i></i></span><span class="td-tm">${LBL('Outline', 'Plan')} ${p2}%<i class="td-bar"><i style="width:${p2}%"></i></i></span><span class="td-tgo">${LBL('Open', 'Ouvrir')} →</span></button>`; }).join('')}</div>` : '';
 
     const pages = Math.max(1, Math.ceil(list.length / PAGE)); ST.page = Math.min(Math.max(1, ST.page), pages);
     const shown = list.slice((ST.page - 1) * PAGE, ST.page * PAGE);
@@ -133,7 +156,7 @@
       <div class="td-kpis">${kpi(n, LBL('courses', 'cours'))}${kpi(pct(withLead) + '%', LBL('have a lead lecturer', 'ont un responsable'), pct(withLead))}${kpi(pct(withPlan) + '%', LBL('have an outline', 'ont un plan'), pct(withPlan))}${kpi(pct(approved) + '%', LBL('outlines approved', 'plans validés'), pct(approved))}</div>
       <div class="row" style="margin-top:12px"><button class="btn" data-a="td_allstarter" ${ST.busy || !everyMissing ? 'disabled' : ''}>${LBL('Draft a starter outline for every course without one', 'Créer un plan type pour chaque cours sans plan')} (${everyMissing})</button></div>
       <p class="td-note-ai">${LBL('Starter outlines work without AI. AI outlines need an AI key on the server and are prepared one course at a time.', 'Les plans types fonctionnent sans IA. Les plans par IA exigent une clé IA sur le serveur et sont préparés un cours à la fois.')}</p></div>`;
-    return `${hero}${prog}${filters}${tableHTML}${pager}${bulk}`;
+    return `${hero}${prog}${filters}${overview ? tiles : tableHTML + pager}${bulk}`;
   }
   const at = Math.max(0, ROUTES.findIndex(r => r.id === 'outlines'));
   ROUTES.splice(at < 0 ? ROUTES.length : at, 0, { id: 'teaching', k: 'td_menu', perm: 'course_assign', v: viewDesk });
@@ -147,6 +170,8 @@
     catch (e) { ST.busy = false; fail(e); }
   }
   const selected = () => [...ST.sel].filter(id => (S.courses || {})[id]);
+  ACT.td_prog = el => { ST.level = el.dataset.k; ST.fac = ST.spec = ST.lvl = ''; ST.page = 1; render(); };
+  ACT.td_reset = () => { Object.assign(ST, { level: '', fac: '', spec: '', lvl: '', sem: '', who: '', plan: '', q: '', page: 1 }); render(); };
   ACT.td_selgrp = (el) => { const k = el.dataset.k, ids = filtered().filter(c => gKey(c) === k).map(c => c.id), all = ids.every(id => ST.sel.has(id)); ids.forEach(id => all ? ST.sel.delete(id) : ST.sel.add(id)); render(); };
   ACT.td_selall = () => { filtered().forEach(c => ST.sel.add(c.id)); render(); };
   ACT.td_selnone = () => { ST.sel.clear(); render(); };
@@ -211,6 +236,6 @@
     if (k === 'sel') { if (el.checked) ST.sel.add(id); else ST.sel.delete(id); return render(); }
     if (k === 'lead') return assign([id], { lead: el.value }, el.value ? LBL('Lead lecturer set', 'Responsable défini') : LBL('Lead lecturer cleared', 'Responsable retiré'));
     if (k === 'coadd') { if (!el.value) return; return assign([id], { addCo: [el.value] }, LBL('Co-lecturer added', 'Co-enseignant ajouté')); }
-    if (['level', 'spec', 'sem', 'year', 'who', 'plan', 'lang', 'bLead', 'bCo'].includes(k)) { ST[k] = el.value; if (k === 'level') ST.spec = ''; if (['level', 'spec', 'sem', 'year', 'who', 'plan'].includes(k)) ST.page = 1; render(); }
+    if (['level', 'fac', 'spec', 'lvl', 'sem', 'who', 'plan', 'lang', 'bLead', 'bCo'].includes(k)) { ST[k] = el.value; if (k === 'level') { ST.fac = ''; ST.spec = ''; ST.lvl = ''; } if (k === 'fac') { ST.spec = ''; ST.lvl = ''; } if (k === 'spec') ST.lvl = ''; if (['level', 'fac', 'spec', 'lvl', 'sem', 'who', 'plan'].includes(k)) ST.page = 1; render(); }
   });
 })();
