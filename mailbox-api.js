@@ -115,7 +115,7 @@ module.exports = function makeMailbox(ctx) {
       kind: m.kind, role: m.role || '', name: m.name, userId: m.userId || '',
       matric: m.matric || '', hrId: m.hrId || '', hrRef: m.hrRef || '',
       personalEmail: m.personalEmail || '', phone: m.phone || '',
-      title: m.title || '', titleFr: m.titleFr || '',
+      title: m.title || '', titleFr: m.titleFr || '', dept: m.dept || '', prob: m.prob || '',
       status: m.status, ref: m.ref, issuedAt: m.issuedAt, issuedBy: m.issuedBy || '',
       issuedByName: m.issuedByName || '', setupAt: m.setupAt || null
     };
@@ -212,7 +212,7 @@ module.exports = function makeMailbox(ctx) {
       phone: clip(a.phone || user.phone || '', 40),
       title: titles[0] + (hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
       titleFr: titles[1] + (hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
-      ref: await nextRef(),
+      ref: await nextRef(), dept: clip(((hra.vac && S.get('hrv', hra.vac)) || {}).field || '', 120), prob: '',
       issuedBy: actor && actor.id, issuedByName: actor && actor.name || 'Human Resources'
     }, otp);
     if (user.email === rec.email) {
@@ -453,7 +453,7 @@ module.exports = function makeMailbox(ctx) {
     const { rec } = await persist({
       local, kind: kindRole[0], role: user.role, name: user.name || name, userId: user.id, personalEmail: personal,
       phone: clip(b.phone || user.phone || '', 40), title: clip(b.title, 120) || kindRole[2], titleFr: clip(b.title, 120) || kindRole[3],
-      ref: await nextRef(), issuedBy: actor.id, issuedByName: actor.name || 'Super administrator'
+      ref: await nextRef(), dept: clip(b.dept, 120), prob: ['15d', '1', '2', '3', '4', '6', '8'].includes(String(b.prob)) ? String(b.prob) : '', issuedBy: actor.id, issuedByName: actor.name || 'Super administrator'
     }, otp);
     await audit(actor, 'mailbox issued ' + rec.email + ' staff (' + role + ')');
     await tell(user.id, rec.email);
