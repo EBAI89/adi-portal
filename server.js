@@ -5,28 +5,37 @@
 globalThis.ADI_AI = (() => {
   const P = {
     gemini: { key: () => process.env.GEMINI_API_KEY, url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-flash', name: 'Google Gemini' },
+    openai: { key: () => process.env.OPENAI_API_KEY, url: (process.env.OPENAI_BASE_URL || 'https://api.openai.com') + '/v1/chat/completions', model: 'gpt-4o-mini', name: 'ChatGPT (OpenAI)' },
     deepseek: { key: () => process.env.DEEPSEEK_API_KEY, url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat', name: 'DeepSeek' },
     anthropic: { key: () => process.env.ANTHROPIC_API_KEY, name: 'Claude' }
   };
-  const provider = () => { const w = String(process.env.AI_PROVIDER || '').toLowerCase(); if (P[w] && P[w].key()) return w; return ['gemini', 'deepseek', 'anthropic'].find(k => P[k].key()) || ''; };
+  const ORDER = ['gemini', 'openai', 'deepseek', 'anthropic'];
+  /* every provider that has a key, the one named in AI_PROVIDER first; if one fails (limit reached, outage) the next is tried */
+  const chain = () => { const w = String(process.env.AI_PROVIDER || '').toLowerCase(), all = ORDER.filter(k => P[k].key()); return P[w] && P[w].key() ? [w].concat(all.filter(k => k !== w)) : all; };
+  const provider = () => chain()[0] || '';
   const fail = (code, msg, status) => { const e = new Error(msg); e.aiCode = code; e.status = status; throw e; };
-  async function llm({ system, messages, maxTokens, model, temperature, timeout }) {
-    const pv = provider(); if (!pv) fail('AI_NOKEY', 'No AI key is configured on the server.', 503);
+  const own = m => process.env['AI_MODEL_' + m.toUpperCase()] || '';
+  async function one(pv, { system, messages, maxTokens, model, temperature, timeout }) {
     const ac = new AbortController(), tm = setTimeout(() => ac.abort(), timeout || 100000), p = P[pv];
     try {
       let r, j;
       if (pv === 'anthropic') {
-        r = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', { method: 'POST', signal: ac.signal, headers: { 'x-api-key': p.key(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ model: model || process.env.AI_MODEL || 'claude-sonnet-5-5', max_tokens: maxTokens || 900, messages }, system ? { system } : {}, temperature != null ? { temperature } : {})) });
-        if (!r.ok) fail('AI_ERROR', 'The AI service returned an error (' + r.status + ').', 502);
+        r = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', { method: 'POST', signal: ac.signal, headers: { 'x-api-key': p.key(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ model: own(pv) || (model && /^claude/i.test(model) ? model : '') || (/^claude/i.test(process.env.AI_MODEL || '') ? process.env.AI_MODEL : '') || 'claude-sonnet-5-5', max_tokens: maxTokens || 900, messages }, system ? { system } : {}, temperature != null ? { temperature } : {})) });
+        if (!r.ok) fail('AI_ERROR', p.name + ' returned an error (' + r.status + ').', 502);
         j = await r.json(); return (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('');
       }
-      const m = model && !/^claude/i.test(model) ? model : (process.env.AI_MODEL && !/^claude/i.test(process.env.AI_MODEL) ? process.env.AI_MODEL : p.model);
-      r = await fetch(p.url, { method: 'POST', signal: ac.signal, headers: { authorization: 'Bearer ' + p.key(), 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ model: m, max_tokens: maxTokens || 900, messages: (system ? [{ role: 'system', content: system }] : []).concat(messages) }, temperature != null ? { temperature } : {})) });
+      const m = own(pv) || p.model;
+      r = await fetch(p.url, { method: 'POST', signal: ac.signal, headers: { authorization: 'Bearer ' + p.key(), 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ model: m }, pv === 'openai' ? { max_completion_tokens: maxTokens || 900 } : { max_tokens: maxTokens || 900 }, { messages: (system ? [{ role: 'system', content: system }] : []).concat(messages) }, temperature != null && pv !== 'openai' ? { temperature } : {})) });
       if (!r.ok) fail('AI_ERROR', p.name + ' returned an error (' + r.status + ').', 502);
       j = await r.json(); return String(j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '');
     } catch (e) { if (e.aiCode) throw e; fail('AI_DOWN', 'The AI service could not be reached. Try again in a moment.', 502); } finally { clearTimeout(tm); }
   }
-  return { provider, ready: () => !!provider(), name: () => (P[provider()] || {}).name || '', llm };
+  async function llm(o) {
+    const ch = chain(); if (!ch.length) fail('AI_NOKEY', 'No AI key is configured on the server.', 503);
+    let last; for (const pv of ch) { try { const out = await one(pv, o); if (out) return out; last = null; } catch (e) { last = e; console.error('[ai] ' + pv + ' failed: ' + e.message); } }
+    throw last || Object.assign(new Error('The AI service returned an empty answer.'), { aiCode: 'AI_ERROR', status: 502 });
+  }
+  return { provider, chain, ready: () => !!provider(), name: () => (P[provider()] || {}).name || '', llm };
 })();
 const __HND = require('./part-hnd.js');
 function __cat(prefix, n) { let s = ''; for (let i = 0; i < n; i++) s += require('./part-' + prefix + '-' + i + '.js'); return s; }
@@ -1045,7 +1054,7 @@ module.exports = function makeCls(ctx) {
   };
   const LEVEL = { HND: 'Higher National Diploma (HND)', BTS: 'Brevet de Technicien Supérieur (BTS)', BSC: "Bachelor's degree", MSC: "Master's degree" };
   async function aiGen(u, b) {
-    const c = course(b.courseId); if (!c) fail('NO_COURSE', 'Unknown course', 404); if (!(u && u.role === 'lecturer' && c.lecturerId === u.id && R.has(u, 'cls_teach'))) fail('FORBIDDEN', 'Only the lecturer of this course can generate notes and handouts. The administration controls access.', 403); const cf = cfg(); if (!cf.ai) fail('AI_OFF', 'The AI tools are not switched on for this portal.', 503); if (!ADI_AI.ready()) fail('AI_NOKEY', 'The AI tools are switched on, but the server has no AI key yet. The administrator must add GEMINI_API_KEY (free) or DEEPSEEK_API_KEY in the hosting settings.', 503); if (cf.aiBlocked && cf.aiBlocked[u.id]) fail('AI_BLOCKED', 'The administration has not enabled the AI tools for your account.', 403);
+    const c = course(b.courseId); if (!c) fail('NO_COURSE', 'Unknown course', 404); if (!(u && u.role === 'lecturer' && c.lecturerId === u.id && R.has(u, 'cls_teach'))) fail('FORBIDDEN', 'Only the lecturer of this course can generate notes and handouts. The administration controls access.', 403); const cf = cfg(); if (!cf.ai) fail('AI_OFF', 'The AI tools are not switched on for this portal.', 503); if (!ADI_AI.ready()) fail('AI_NOKEY', 'The AI tools are switched on, but the server has no AI key yet. The administrator must add GEMINI_API_KEY (free), OPENAI_API_KEY, DEEPSEEK_API_KEY or ANTHROPIC_API_KEY in the hosting settings.', 503); if (cf.aiBlocked && cf.aiBlocked[u.id]) fail('AI_BLOCKED', 'The administration has not enabled the AI tools for your account.', 403);
     const task = ['deck', 'handout', 'quiz', 'work'].includes(b.task) ? b.task : fail('TASK', 'Unknown task'); if (limited('clsai:' + u.id, Number(E.CLS_AI_RATE) || 8, 60e3)) fail('RATE', 'Please wait a minute before generating again.', 429);
     const day = new Date(now()).toISOString().slice(0, 10) + u.id, used = AIUSE.get(day) || 0; if (used >= cf.aiPerDay) fail('QUOTA', 'You have reached today\'s limit of ' + cf.aiPerDay + ' AI drafts.', 429);
     const plan = S.get('clsx', c.id); if (cf.requirePlan && !(plan && plan.status === 'approved')) fail('PLAN_NOT_APPROVED', 'The course plan must be approved before AI drafting. Submit it for approval first.', 409);
