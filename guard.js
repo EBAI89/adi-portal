@@ -61,7 +61,17 @@
     streak = now - streakAt < 4000 ? streak + 1 : 1; streakAt = now;
     const strong = streak >= 3;
     (cur.cards || [cur.panel]).forEach(el => { el.classList.remove('gd-hit'); void el.offsetWidth; el.classList.add('gd-hit'); setTimeout(() => el.classList.remove('gd-hit'), 800); });
-    toast(cur); beep(strong); buzz(strong);
+    if (cur.kind === 'download') note(cur); else toast(cur);
+    beep(strong); buzz(strong);
+  }
+
+  /* the download box carries its own short reminder, so nothing floats over the page behind it */
+  function note(cur) {
+    const card = (cur.cards || [])[0]; if (!card) return;
+    let n = card.querySelector('.gd-note');
+    if (!n) { n = document.createElement('div'); n.className = 'gd-note'; n.setAttribute('role', 'status'); card.appendChild(n); }
+    n.textContent = '⚠ ' + T('Please wait — your file is being prepared. You may cancel it.', 'Veuillez patienter — votre fichier est en préparation. Vous pouvez l\u2019annuler.');
+    clearTimeout(n._t); n._t = setTimeout(() => { n.remove(); }, 3200);
   }
 
   /* ---- block every pointer interaction outside the window ---- */
@@ -85,6 +95,7 @@
     '.gd-hit{animation:gdshake .5s cubic-bezier(.36,.07,.19,.97),gdglow .8s ease-out;outline:3px solid #B3261E;outline-offset:2px}' +
     '#gd-toast{position:fixed;z-index:2147483000;display:flex;flex-direction:column;gap:2px;box-sizing:border-box;padding:12px 16px;border-radius:12px;background:#B3261E;color:#fff;font:600 14px/1.35 Inter,Arial,sans-serif;box-shadow:0 14px 36px rgba(0,0,0,.35);border-left:6px solid #C9A227;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .18s,transform .18s}' +
     '#gd-toast.show{opacity:1;transform:none}#gd-toast b{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:#FFE08A}#gd-toast span{font-weight:500}' +
+    '.gd-note{margin-top:8px;padding:6px 10px;border-radius:8px;background:#FDECEA;color:#B3261E;font:600 12.5px/1.35 Inter,Arial,sans-serif}' +
     '@media (prefers-reduced-motion:reduce){.gd-hit{animation:gdglow .8s ease-out}}';
   document.head.appendChild(css);
 })();
