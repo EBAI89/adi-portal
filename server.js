@@ -861,14 +861,14 @@ module.exports = function makeCls(ctx) {
     const old = S.get('clsx', c.id), submit = b.submit === true, status = submit ? 'submitted' : 'draft';
     const doc = Object.assign({}, old || {}, { id: c.id, courseId: c.id }, p, { status, by: u.id, byName: u.name, at: now(), approvedBy: '', approvedAt: 0, note: '' });
     await save('clsx', c.id, doc); await audit(u, 'course plan ' + status + ' ' + c.code);
-    if (submit) for (const m of usersWith('cls_manage')) await notifyUser(m.id, bi('Course plan to approve', 'Plan de cours à valider'), 'A course plan has been submitted and awaits your review and approval.\n\nCourse: ' + c.code + (c.title ? ' — ' + c.title : '') + '\nSubmitted by: ' + u.name + '\n\nKindly sign in to the ADI portal, open Course plans, and approve the plan or return it with your comments.\n\n— — —\n\nUn plan de cours a été soumis et attend votre examen et votre validation.\n\nCours : ' + c.code + (c.title ? ' — ' + c.title : '') + '\nSoumis par : ' + u.name + '\n\nVeuillez vous connecter au portail ADI, ouvrir « Plans de cours », puis valider le plan ou le renvoyer avec vos observations.'); return { ok: true, status };
+    if (submit) for (const m of usersWith('cls_manage')) await notifyUser(m.id, bi('Course plan to approve', 'Plan de cours à valider'), 'A course plan has been submitted and awaits your review and approval.\n\nCourse: ' + c.code + (c.title ? ' — ' + c.title : '') + '\nSubmitted by: ' + u.name + '\n\nKindly sign in to the ADI portal, open Course plans, and approve the plan or return it with your comments.\n\n— — —\n\nUn plan de cours a été soumis et attend votre examen et votre validation.\n\nCours : ' + c.code + (c.title ? ' — ' + c.title : '') + '\nSoumis par : ' + u.name + '\n\nVeuillez vous connecter au portail ADI, ouvrir « Plans de cours », puis valider le plan ou le renvoyer avec vos observations.', { link: 'classroom/' + c.id + '/plan' }); return { ok: true, status };
   }
   async function reviewPlan(u, b) {
     if (!isMgr(u)) fail('FORBIDDEN', 'Not allowed', 403); const d = S.get('clsx', String(b.courseId || '')); if (!d) fail('NOT_FOUND', 'No plan', 404);
     const dec = b.decision === 'approve' ? 'approve' : b.decision === 'return' ? 'return' : fail('DECISION', 'Unknown decision'), note = String(b.note || '').slice(0, 300); if (dec === 'return' && note.trim().length < 5) fail('NOTE', 'Please say what must change (at least 5 characters).');
     if (d.by === u.id && !R.isSuper(u)) fail('SELF', 'Another person must approve your plan.', 403);
     const next = Object.assign({}, d, { status: dec === 'approve' ? 'approved' : 'returned', approvedBy: dec === 'approve' ? u.id : '', approvedByName: u.name, approvedAt: dec === 'approve' ? now() : 0, note: dec === 'approve' ? '' : note });
-    await save('clsx', d.id, next); await audit(u, 'course plan ' + dec + ' ' + d.courseId); await notifyUser(d.by, bi('Course plan ' + (dec === 'approve' ? 'approved' : 'returned'), 'Plan de cours ' + (dec === 'approve' ? 'validé' : 'renvoyé')), (course(d.courseId) || {}).code + (note ? ' — ' + note : '')); return { ok: true, status: next.status };
+    await save('clsx', d.id, next); await audit(u, 'course plan ' + dec + ' ' + d.courseId); await notifyUser(d.by, bi('Course plan ' + (dec === 'approve' ? 'approved' : 'returned'), 'Plan de cours ' + (dec === 'approve' ? 'validé' : 'renvoyé')), (course(d.courseId) || {}).code + (note ? ' — ' + note : ''), { link: 'classroom/' + d.courseId + '/plan' }); return { ok: true, status: next.status };
   }
 
   /* ---- decks and handouts ---- */
@@ -2323,7 +2323,7 @@ function noticeLetterAuto(u, title, body, lang) {
 }
 async function notifyUser(userId, title, body, o = {}) {
   const u = S.get('users', userId); if (!u) return;
-  await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false, _nm: 1 });
+  await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false, _nm: 1, link: o.link ? String(o.link).slice(0, 120) : undefined });
   const letter = noticeLetterAuto(u, title, body); for (const to of noticeEmails(u)) sendEmail({ to, subject: title, text: letter });
   if (o.sms && u.phone) sendSMS({ to: u.phone, text: o.smsText || ('ADI: ' + title + ' - ' + body) });
   if (o.wa && u.phone) sendWhatsApp({ to: u.phone, text: o.waText || ('ADI University — ' + title + '\n\n' + body), tpl: o.waTpl });
