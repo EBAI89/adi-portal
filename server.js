@@ -2211,6 +2211,14 @@ async function mfaVerify(u, code) {
 }
 const emailOn = () => ['resend', 'brevo'].includes(String(E.EMAIL_PROVIDER || '').toLowerCase());
 function tempPassword() { const A = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'; let s = ''; const r = crypto.randomBytes(12); for (let i = 0; i < 12; i++) s += A[r[i] % A.length]; return s.slice(0, 4) + '-' + s.slice(4, 8) + '-' + s.slice(8); }
+/* the recovery codes are e-mailed to the account holder as soon as they are created, so they can be found again whenever needed */
+async function recoveryMail(u, rec) {
+  if (!emailOn()) return false;
+  const to = Array.from(new Set([u.email].concat(typeof noticeEmails === 'function' ? noticeEmails(u) : []).filter(x => x && /@/.test(x)))).slice(0, 2); if (!to.length) return false;
+  const list = rec.join('\n'), text = 'Dear ' + (u.name || 'user') + ',\n\nYour ADI portal account security (recovery) codes are below. Each code works once if you lose access to your authenticator app or phone. Keep this e-mail in a safe place and never share the codes.\n\n' + list + '\n\nIf you did not request this, sign in and change your password at once, or contact ' + INBOX() + '.\n\nADI University — Today and Tomorrow\'s Leaders\n\n———\n\nCher(Chère) ' + (u.name || 'utilisateur') + ',\n\nVos codes de sécurité (codes de secours) du portail ADI figurent ci-dessous. Chaque code ne s\u2019utilise qu\u2019une fois si vous perdez l\u2019accès à votre application ou à votre téléphone. Conservez ce message en lieu sûr et ne partagez jamais ces codes.\n\n' + list + '\n\nSi vous n\u2019êtes pas à l\u2019origine de cette demande, connectez-vous et changez votre mot de passe immédiatement, ou contactez ' + INBOX() + '.';
+  let ok = false; for (const t of to) { try { if ((await sendEmail({ to: t, subject: bi('Your ADI account security codes', 'Vos codes de sécurité du compte ADI'), text })) !== false) ok = true; } catch (e) {} }
+  if (ok) await audit(u, 'recovery codes e-mailed'); return ok;
+}
 function pwChangedMail(x) { if (emailOn() && x.email) sendEmail({ to: x.email, subject: bi('Your ADI portal password was changed', 'Votre mot de passe ADI a été modifié'), text: 'Your password was just changed. If this was not you, contact ' + INBOX() + ' immediately.\n\nVotre mot de passe vient d’être modifié. Si ce n’est pas vous, contactez ' + INBOX() + ' immédiatement.' }); }
 
 /* ---------- rate limiting ---------- */
@@ -3180,19 +3188,19 @@ async function route(req, res) {
     const b = await body(req, 2000); if (!u.sms2Pending || !(u.sms2Pending.phone || u.sms2Pending.via === 'email')) return send(res, 400, { error: 'mfa_none' });
     if (!smsCodeOk(u, b.code)) return send(res, 400, { error: 'mfa_bad' });
     const rec = newRecovery(), n = Object.assign({}, u, { sms2: { on: true, phone: u.sms2Pending.phone || '', via: u.sms2Pending.via || 'sms', mail: u.sms2Pending.mail || '', rec: rec.map(recHash), at: now() } }); delete n.sms2Pending; await save('users', u.id, n); await audit(u, 'two-step verification enabled (' + (u.sms2Pending.via === 'email' ? 'e-mail' : 'phone') + ')');
-    return send(res, 200, { ok: true, recovery: rec });
+    return send(res, 200, { ok: true, recovery: rec, emailed: await recoveryMail(u, rec) });
   }
   if (u && p === '/api/mfa/confirm' && req.method === 'POST') {
     const b = await body(req, 2000); if (!u.totpPending) return send(res, 400, { error: 'mfa_none' });
     if (limited('mfacf:' + u.id, 10, 900e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
     const sec = mfaOpen(u.totpPending), st = totpCheck(sec, b.code, 0); if (!st) return send(res, 400, { error: 'mfa_bad' });
     const rec = newRecovery(), n = Object.assign({}, u, { totp: { on: true, secret: mfaSeal(sec), last: st, rec: rec.map(recHash), at: now() } }); delete n.totpPending; await save('users', u.id, n); await audit(u, 'two-step verification enabled');
-    return send(res, 200, { ok: true, recovery: rec });
+    return send(res, 200, { ok: true, recovery: rec, emailed: await recoveryMail(u, rec) });
   }
   if (u && p === '/api/mfa/recovery' && req.method === 'POST') {
     const b = await body(req, 2000); if (!mfaOn(u)) return send(res, 400, { error: 'mfa_none' }); if (!(await checkPw(b.password, u.pw))) return send(res, 400, { error: 'bad_login' });
     const v = await mfaVerify(u, b.code); if (!v) return send(res, 400, { error: 'mfa_bad' });
-    const rec = newRecovery(); await save('users', u.id, Object.assign({}, v, mfaKind(v) === 'sms' ? { sms2: Object.assign({}, v.sms2, { rec: rec.map(recHash) }) } : { totp: Object.assign({}, v.totp, { rec: rec.map(recHash) }) })); await audit(u, 'two-step recovery codes regenerated'); return send(res, 200, { ok: true, recovery: rec });
+    const rec = newRecovery(); await save('users', u.id, Object.assign({}, v, mfaKind(v) === 'sms' ? { sms2: Object.assign({}, v.sms2, { rec: rec.map(recHash) }) } : { totp: Object.assign({}, v.totp, { rec: rec.map(recHash) }) })); await audit(u, 'two-step recovery codes regenerated'); return send(res, 200, { ok: true, recovery: rec, emailed: await recoveryMail(u, rec) });
   }
   if (u && p === '/api/mfa/disable' && req.method === 'POST') {
     const b = await body(req, 2000); if (mfaRequired(u)) return send(res, 403, { error: 'mfa_required' });
