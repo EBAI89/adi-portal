@@ -1,7 +1,7 @@
 /* ADI portal service worker: shows portal alerts even when no portal page is open. */
 self.addEventListener('install', () => self.skipWaiting());
 /* Fast and resilient loading: the page shell and its versioned files are kept on the device, so a repeat visit opens at once and still opens on a weak or interrupted connection. */
-const SHELL = 'adi-shell-v2', FILES = 'adi-files-v2', EDGE = 'adi-edge-v1';
+const SHELL = 'adi-shell-v3', FILES = 'adi-files-v3', EDGE = 'adi-edge-v1';
 self.addEventListener('activate', e => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (![SHELL, FILES, EDGE].includes(k)) await caches.delete(k);
   await self.clients.claim();
@@ -11,7 +11,7 @@ const EDGE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloudfla
 async function storeShell(resp) {
   const html = await resp.clone().text(), urls = Array.from(new Set(Array.from(html.matchAll(/(?:src|href)="(\/[^"]*(?:\?v=|assets\/app\.js)[^"]*)"/g)).map(m => m[1])));
   const f = await caches.open(FILES);
-  await Promise.all(urls.map(async u => { if (!(await f.match(u))) { const x = await fetch(u); if (!x.ok) throw new Error('asset ' + u); await f.put(u, x); } }));
+  await Promise.allSettled(urls.map(async u => { if (!(await f.match(u))) { const x = await fetch(u); if (!x.ok) throw new Error('asset ' + u); await f.put(u, x); } }));   // best effort: a file that could not be saved now is fetched when first needed, and never blocks the new page
   const keep = new Set(urls), paths = new Set(urls.map(u => u.split('?')[0]));
   for (const k of await f.keys()) { const rel = k.url.replace(self.location.origin, ''); if (!keep.has(rel) && paths.has(rel.split('?')[0])) await f.delete(k); }
   await (await caches.open(SHELL)).put('/', resp);
@@ -19,7 +19,7 @@ async function storeShell(resp) {
 async function navigate(e) {
   const req = e.request, c = await caches.open(SHELL), hit = await c.match('/');
   const net = fetch(req).then(r => { if (r && r.ok) e.waitUntil(storeShell(r.clone()).catch(() => {})); return r; });   // the page is never held back by the background download
-  if (hit) { net.catch(() => {}); return hit; }                           // returning visitor: the saved page opens at once, then refreshes quietly
+  if (hit) { net.catch(() => {}); try { return await Promise.race([net, new Promise((_, no) => setTimeout(no, 2500))]); } catch (x) { return hit; } }   // returning visitor: the newest page when the network answers within 2.5 s, otherwise the saved page at once, refreshed quietly
   try { return await Promise.race([net, new Promise((_, no) => setTimeout(no, 8000))]); }
   catch (x) { return net; }
 }
