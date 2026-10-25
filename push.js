@@ -50,11 +50,25 @@
     try { if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 500]); } catch (e) {}
     try { unlock(); if (!ac || ac.state !== 'running') return; const t0 = ac.currentTime; [[880, 0], [1175, 0.18], [1568, 0.36]].forEach(([f, d]) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.35, t0 + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.32); o.connect(g); g.connect(ac.destination); o.start(t0 + d); o.stop(t0 + d + 0.34); }); } catch (e) {}
   }
+  /* While the portal is open. When alerts are on for this device the phone itself already shows the notification, so the phone's own sound,
+     vibration, silent and Do-Not-Disturb settings decide what you hear and feel: nothing more is played here. When alerts are not on, a
+     notification is still raised through the phone (same rules) if the browser allows it; the built-in chime is only the last resort. */
+  async function alertFresh(items) {
+    if (ST.on) return;
+    try {
+      if (SUP() && Notification.permission === 'granted') {
+        const reg = await navigator.serviceWorker.ready;
+        for (const n of items.slice(-3)) await reg.showNotification(n.title || 'American Ditek Institute', { body: n.body || '', tag: 'adi-' + (n.id || Date.now()), icon: '/mail-assets/adi-logo.png', badge: '/mail-assets/adi-logo.png', vibrate: [300, 120, 300, 120, 500], silent: false, renotify: true, timestamp: n.at || Date.now(), data: { url: '/#/notifs' } });
+        return;
+      }
+    } catch (e) { /* fall back below */ }
+    chime();
+  }
   setInterval(() => {
     const u = typeof me === 'function' && me(); if (!u || typeof S === 'undefined' || !S.notifs) { seen = null; return; }
     const ids = Object.values(S.notifs).filter(n => n.userId === u.id && !n.read).map(n => n.id);
     if (seen === null || seenFor !== u.id) { seen = new Set(ids); seenFor = u.id; return; }
-    const fresh = ids.filter(i => !seen.has(i)); ids.forEach(i => seen.add(i)); if (fresh.length) chime();
+    const fresh = ids.filter(i => !seen.has(i)); ids.forEach(i => seen.add(i)); if (fresh.length) alertFresh(fresh.map(i => S.notifs[i]).filter(Boolean));
   }, 2500);
   ACT.pushon = () => { enable(); }; ACT.pushoff = () => { disable(); }; ACT.pushtest = () => { test(); };
 
@@ -63,6 +77,7 @@
     const blocked = Notification.permission === 'denied';
     return `<div class="card gap"><h3>🔔 ${LBL('Alerts on this device', 'Alertes sur cet appareil')}</h3><p class="muted">${LBL('Receive a pop-up on this phone or computer for each portal notification (new applications, payments, inquiries, messages), even when the portal is not open.', 'Recevez une alerte sur ce téléphone ou cet ordinateur pour chaque notification du portail (candidatures, paiements, demandes, messages), même lorsque le portail n\'est pas ouvert.')}</p>
       ${blocked ? `<div class="note bad">${LBL('Notifications are blocked for this site. Allow them in the browser settings (lock icon next to the address), then reload.', 'Les notifications sont bloquées pour ce site. Autorisez-les dans les paramètres du navigateur (icône de cadenas près de l\'adresse), puis rechargez.')}</div>` : ''}
+      <p class="small muted">${LBL('Every alert plays your phone\'s notification sound and vibration. They follow the phone\'s own settings: ringer, vibrate-only, silent and Do Not Disturb, and the sound chosen for this browser\'s notifications.', 'Chaque alerte utilise le son et la vibration de notification de votre téléphone. Ils suivent les réglages du téléphone : sonnerie, vibreur, silencieux et Ne pas déranger, ainsi que le son choisi pour les notifications de ce navigateur.')}</p>
       <p class="small">${ST.on ? '✅ ' + LBL('On for this device', 'Activées sur cet appareil') : '⚪ ' + LBL('Off for this device', 'Désactivées sur cet appareil')}${ST.devices != null ? ' · ' + LBL(ST.devices + ' device(s) in total', ST.devices + ' appareil(s) au total') : ''}</p>
       <div class="row">${ST.on ? `<button class="btn ghost" data-a="pushtest" ${ST.busy ? 'disabled' : ''}>${LBL('Send a test alert', 'Envoyer une alerte de test')}</button><button class="btn ghost" data-a="pushoff" ${ST.busy ? 'disabled' : ''}>${LBL('Turn off', 'Désactiver')}</button>` : `<button class="btn gold" data-a="pushon" ${ST.busy || blocked ? 'disabled' : ''}>${LBL('Turn on alerts', 'Activer les alertes')}</button>`}</div></div>`;
   }
