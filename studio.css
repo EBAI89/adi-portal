@@ -24,3 +24,16 @@ table.nopage td:first-child,table.nopage th:first-child{width:34px}
 .td-note-ai{font-size:.86rem;color:var(--muted)}
 .td-sub{display:block;color:var(--muted);font-size:.8rem}
 @media (max-width:700px){.td-bulk{bottom:0;border-radius:14px 14px 0 0}.td-act .btn{flex:1}}
+/* academic group headings: Programme / Faculty or Field / Department or Specialty / Year (Level) · Semester · Academic year */
+.td-grp{margin-top:16px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card);box-shadow:0 8px 24px rgba(11,37,89,.05)}
+.td-gh{padding:14px 16px 12px;background:linear-gradient(135deg,var(--navy),#16397d);color:#fff;border-bottom:3px solid var(--gold)}
+.td-gl{display:grid;gap:3px}
+.td-l{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:.84rem;letter-spacing:.04em}
+.td-l span{min-width:104px;font-weight:600;letter-spacing:.14em;font-size:.7rem;color:var(--gold);text-transform:uppercase}
+.td-l b{font-weight:700;color:#fff}
+.td-gy{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;margin-top:10px;padding-top:9px;border-top:1px solid rgba(255,255,255,.25)}
+.td-gy b{font-size:1rem;font-family:var(--serif,inherit)}
+.td-gy .small,.td-gy .muted{color:rgba(255,255,255,.82)}
+.td-gy a{color:#fff;text-decoration:underline}
+.td-grp table{margin:0;border:0}
+@media (max-width:700px){.td-l span{min-width:0;width:100%}.td-gh{padding:12px}}
