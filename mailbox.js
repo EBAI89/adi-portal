@@ -287,12 +287,8 @@
         'Cette adresse est votre identité officielle à l\'ADI. Connectez-vous au portail avec elle et le mot de passe à usage unique, puis choisissez votre mot de passe. Ne communiquez pas le mot de passe à usage unique. Après activation, il n\'est plus imprimé.']
     ];
     blocks.forEach(pair => {
-      d.setFont('times', 'normal'); d.setFontSize(10.5); d.setTextColor(0);
-      d.splitTextToSize(pair[0], 176).forEach(line => { d.text(line, 18, y); y += 4.6; });
-      y += 1;
-      d.setFont('times', 'italic'); d.setFontSize(10); d.setTextColor(70, 80, 105);
-      d.splitTextToSize(pair[1], 176).forEach(line => { d.text(line, 18, y); y += 4.4; });
-      y += 4; d.setTextColor(0);
+      y = richPara(d, y, pair[0], { x: 18, w: 174, size: 10.5, lh: 5, gap: 1.8 });
+      y = richPara(d, y, pair[1], { x: 18, w: 174, size: 10, lh: 4.7, italic: true, color: [70, 80, 105], gap: 4 });
     });
     d.setDrawColor(11, 37, 89); d.setLineWidth(.4);
     d.rect(18, y, 174, m.otp ? 42 : 28);
@@ -381,22 +377,20 @@
       titleEn: T + (dept ? ' — ' + dept : ''), titleFr: TF + (dept ? ' — ' + dept : ''), dept, titleFr: TF, dateEn: fmt('en-GB'), dateFr: fmt('fr-FR'),
       en: [
         'Dear ' + (m.name || 'Colleague') + ',',
-        'On behalf of American Ditek Institute (ADI University), and further to the recommendation of the recruitment committee, it gives me great pleasure to confirm your appointment as ' + T + (dept ? ', to be assigned to ' + dl : '') + '. Your qualifications and experience impressed the committee, and we are confident that you will make a valued contribution to our academic community.',
+        'On behalf of American Ditek Institute (ADI University), and further to the recommendation of the recruitment committee, it gives me great pleasure to confirm your appointment as **' + T + '**' + (dept ? ', to be assigned to **' + dl + '**' : '') + '. We are confident that you will make a valued contribution to our academic community.',
         nat[0],
-        pr ? 'Probation and remuneration: You shall serve a probationary period of ' + pr[0] + ', expressly stipulated in writing by this letter in accordance with Article 28 of the Cameroon Labour Code (Law No. 92/007 of 14 August 1992), which limits probation, including any renewal, to six (6) months, or eight (8) months for management staff. During this period either party may end the engagement without notice or indemnity, unless otherwise agreed (Article 43). Upon successful completion of the probationary period and the confirmation of your appointment, your remuneration, salary scale and associated benefits shall be governed strictly by the terms of your formal Employment Contract.' : 'Remuneration: The duration, workload and remuneration of your engagement are governed strictly by the terms of the agreement issued by Human Resources, which should be read together with this letter.',
-        'The appointment is subject to the verification of your academic and professional credentials and to the regulations of the University in force. It is governed by the Cameroon Labour Code (Law No. 92/007 of 14 August 1992), any collective agreement applicable to the institution and the statutes of the University, interpreted consistently with the fundamental principles of the International Labour Organization, including equality of opportunity and non-discrimination, freedom of association, and the prohibition of forced and child labour. Either party may end the engagement only in accordance with the notice and procedure prescribed by law. Your personal data will be processed solely for employment purposes and kept confidential.',
-        'With this letter, ADI opens your institutional mailbox; its details are on the following page. Please activate it within seven days, use it for all official correspondence, and keep the one-time password strictly confidential.',
-        'Kindly confirm your acceptance in writing to Human Resources within seven days of receiving this letter, and sign your Employment Contract in two original copies. We warmly welcome you to ADI and look forward to a rewarding collaboration.',
+        pr ? 'Probation and remuneration: You shall serve a probationary period of **' + pr[0] + '**, expressly stipulated in writing by this letter in accordance with Article 28 of the Cameroon Labour Code (Law No. 92/007 of 14 August 1992), which limits probation, including any renewal, to six (6) months, or eight (8) months for management staff. During this period either party may end the engagement without notice or indemnity, unless otherwise agreed (Article 43). Upon successful completion of probation and confirmation of your appointment, your remuneration, salary scale and associated benefits shall be governed strictly by your formal Employment Contract.' : 'Remuneration: The duration, workload and remuneration of your engagement are governed strictly by the terms of the agreement issued by Human Resources, which should be read together with this letter.',
+        'The appointment is subject to verification of your academic and professional credentials. It is governed by the Cameroon Labour Code, any collective agreement applicable to the institution and the statutes of the University, read in line with the fundamental principles of the International Labour Organization (non-discrimination, freedom of association, no forced or child labour). Either party may end the engagement only in accordance with the notice and procedure prescribed by law. Your personal data will be kept confidential.',
+        'With this letter ADI opens your institutional mailbox (details at the end of this document). Please activate it within seven days, use it for all official correspondence and keep the one-time password confidential. Kindly confirm your acceptance in writing to Human Resources within seven days of receipt, and sign your Employment Contract in two original copies. We warmly welcome you to ADI.',
         'Yours sincerely,'
       ],
       fr: [
         'Chère Madame, Cher Monsieur,',
-        'Au nom de l\'American Ditek Institute (ADI University), et sur recommandation de la commission de recrutement, j\'ai le grand plaisir de vous confirmer votre nomination en qualité de ' + TF + (dept ? ', avec affectation à l\'entité suivante : ' + dept : '') + '. Votre parcours a retenu l\'attention de la commission et nous sommes convaincus que vous apporterez une contribution précieuse à notre communauté académique.',
+        'Au nom de l\'American Ditek Institute (ADI University), et sur recommandation de la commission de recrutement, j\'ai le grand plaisir de vous confirmer votre nomination en qualité de **' + TF + '**' + (dept ? ', avec affectation à l\'entité suivante : **' + dept + '**' : '') + '. Nous sommes convaincus que vous apporterez une contribution précieuse à notre communauté académique.',
         nat[1],
-        pr ? 'Période d\'essai et rémunération : Vous effectuerez une période d\'essai de ' + pr[1] + ', expressément stipulée par écrit dans la présente lettre conformément à l\'article 28 du Code du travail camerounais (loi n° 92/007 du 14 août 1992), qui limite l\'essai, renouvellement compris, à six (6) mois, ou huit (8) mois pour les cadres. Pendant cette période, chacune des parties peut mettre fin à l\'engagement sans préavis ni indemnité, sauf convention contraire (article 43). Après l\'accomplissement satisfaisant de cette période et la confirmation de votre nomination, votre rémunération, votre grille salariale et les avantages y afférents seront régis strictement par les termes de votre contrat de travail.' : 'Rémunération : La durée, la charge de travail et la rémunération de votre engagement sont régies strictement par les termes de la convention établie par les Ressources humaines, à lire avec la présente lettre.',
-        'La nomination est subordonnée à la vérification de vos titres académiques et professionnels et au respect des règlements en vigueur de l\'Université. Elle est régie par le Code du travail camerounais (loi n° 92/007 du 14 août 1992), toute convention collective applicable à l\'établissement et les statuts de l\'Université, interprétés conformément aux principes fondamentaux de l\'Organisation internationale du Travail, notamment l\'égalité des chances et la non-discrimination, la liberté syndicale et l\'interdiction du travail forcé et du travail des enfants. Chacune des parties ne peut mettre fin à l\'engagement que dans le respect du préavis et de la procédure prévus par la loi. Vos données personnelles seront traitées uniquement à des fins d\'emploi et demeureront confidentielles.',
-        'Avec la présente lettre, l\'ADI ouvre votre messagerie institutionnelle, dont les détails figurent à la page suivante. Veuillez l\'activer dans un délai de sept jours, l\'utiliser pour toute correspondance officielle et garder strictement confidentiel le mot de passe à usage unique.',
-        'Nous vous prions de bien vouloir confirmer votre acceptation par écrit aux Ressources humaines dans les sept jours suivant la réception de la présente, et de signer votre contrat de travail en deux exemplaires originaux. Nous vous souhaitons chaleureusement la bienvenue à l\'ADI et nous réjouissons d\'une collaboration fructueuse.',
+        pr ? 'Période d\'essai et rémunération : Vous effectuerez une période d\'essai de **' + pr[1] + '**, expressément stipulée par écrit dans la présente lettre conformément à l\'article 28 du Code du travail camerounais (loi n° 92/007 du 14 août 1992), qui limite l\'essai, renouvellement compris, à six (6) mois, ou huit (8) mois pour les cadres. Pendant cette période, chacune des parties peut mettre fin à l\'engagement sans préavis ni indemnité, sauf convention contraire (article 43). Après l\'accomplissement satisfaisant de l\'essai et la confirmation de votre nomination, votre rémunération, votre grille salariale et les avantages y afférents seront régis strictement par votre contrat de travail.' : 'Rémunération : La durée, la charge de travail et la rémunération de votre engagement sont régies strictement par les termes de la convention établie par les Ressources humaines, à lire avec la présente lettre.',
+        'La nomination est subordonnée à la vérification de vos titres académiques et professionnels. Elle est régie par le Code du travail camerounais, toute convention collective applicable à l\'établissement et les statuts de l\'Université, interprétés conformément aux principes fondamentaux de l\'Organisation internationale du Travail (non-discrimination, liberté syndicale, interdiction du travail forcé et du travail des enfants). Chacune des parties ne peut mettre fin à l\'engagement que dans le respect du préavis et de la procédure prévus par la loi. Vos données personnelles resteront confidentielles.',
+        'Avec la présente lettre, l\'ADI ouvre votre messagerie institutionnelle (détails à la fin de ce document). Veuillez l\'activer dans un délai de sept jours, l\'utiliser pour toute correspondance officielle et garder confidentiel le mot de passe à usage unique. Nous vous prions de confirmer votre acceptation par écrit aux Ressources humaines dans les sept jours suivant la réception, et de signer votre contrat de travail en deux exemplaires originaux. Nous vous souhaitons chaleureusement la bienvenue à l\'ADI.',
         'Veuillez agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.'
       ]
     };
@@ -408,27 +402,34 @@
     d.setFont('times', 'italic'); d.setFontSize(11); d.setTextColor(70, 80, 105);
     d.text(m.kind === 'student' ? 'Offre d\'admission provisoire — messagerie' : 'Lettre de nomination', 105, 54, { align: 'center' });
     d.setTextColor(0);
-    let y = 64;
-    const page = h => { if (y + h > 262) { d.addPage(); y = 26; } };
-    const para = (txt, size, lh, italic, rgb, gap) => { d.setFont('times', italic ? 'italic' : 'normal'); d.setFontSize(size); d.setTextColor(rgb[0], rgb[1], rgb[2]); d.splitTextToSize(txt, 176).forEach(line => { page(lh); d.text(line, 18, y); y += lh; }); y += gap; };
+    let y = 62;
+    const R = (txt, o) => { y = richPara(d, y, txt, Object.assign({ x: 18, w: 174, justify: true, size: 10.5, lh: 4.9, gap: 2.2 }, o || {})); };
     if (m.kind === 'student') {
-      para('Further to your admission to American Ditek Institute, the Registry has opened your institutional mailbox. The address and one-time password are set out on the following page and form part of this letter.', 11, 5, false, [0, 0, 0], 2);
-      para('Suite à votre admission à l\'American Ditek Institute, la scolarité a ouvert votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent à la page suivante et font partie de la présente lettre.', 11, 4.8, true, [70, 80, 105], 8);
+      R('Further to your admission to American Ditek Institute, the Registry has opened your institutional mailbox. The address and one-time password are set out on the following page and form part of this letter.', { gap: 2.5 });
+      R('Suite à votre admission à l\'American Ditek Institute, la scolarité a ouvert votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent à la page suivante et font partie de la présente lettre.', { italic: true, color: [70, 80, 105], size: 10, gap: 6 });
+      if (y > 236) { d.addPage(); y = 30; }
+      if (typeof pdfDirectorSign === 'function') y = pdfDirectorSign(d, y, 70, 'Directeur administratif');
     } else {
+      /* Full-block letter: every line starts at the left margin; justified Times text; the English version and the French version each stand on their own page and are signed. */
       const L = appointmentText(m);
-      d.setFont('times', 'normal'); d.setFontSize(10.5); d.setTextColor(0);
-      d.text('Yaoundé, ' + L.dateEn, 192, y, { align: 'right' }); y += 5;
-      if (m.ref) { d.setFontSize(9.5); d.setTextColor(90, 98, 120); d.text('Ref. / Réf. : ' + m.ref, 192, y, { align: 'right' }); y += 5; }
-      y += 3; d.setTextColor(0); d.setFont('times', 'bold'); d.setFontSize(10.5); d.text(String(m.name || ''), 18, y); y += 5.5;
-      if (L.dept) { d.setFont('times', 'normal'); d.setFontSize(10); d.text('Department / Département : ' + L.dept, 18, y); y += 5.5; }
-      para('Re: Offer of appointment as ' + L.titleEn, 10.5, 5, false, [11, 37, 89], 1.5);
-      L.en.forEach((p, i) => para(p, 10, 4.5, false, [0, 0, 0], i === L.en.length - 1 ? 3 : 1.8));
-      y += 1; para('Objet : Nomination en qualité de ' + L.titleFr, 9.8, 4.4, true, [70, 80, 105], 1.2);
-      L.fr.forEach((p, i) => para(p, 9.6, 4.2, true, [70, 80, 105], 1.4));
+      const letter = fr => {
+        const body = fr ? L.fr : L.en, ttl = fr ? L.titleFr : L.titleEn;
+        R((fr ? 'Yaoundé, le ' + L.dateFr : 'Yaoundé, ' + L.dateEn) + (m.ref ? '   ·   ' + (fr ? 'Réf. : ' : 'Ref.: ') + m.ref : ''), { justify: false, gap: 4 });
+        R('**' + String(m.name || '') + '**', { justify: false, size: 11, gap: .4 });
+        R(ttl, { justify: false, gap: 3.5 });
+        R(body[0], { justify: false, gap: 2.4 });
+        R(fr ? '**Objet : Nomination en qualité de ' + L.titleFr + '**' : '**Subject: Offer of appointment as ' + L.titleEn + '**', { justify: false, size: 10.5, gap: 2.4 });
+        body.slice(1, -1).forEach(p => R(p, { gap: 2.2 }));
+        if (y > 244) { d.addPage(); y = 28; }
+        R(body[body.length - 1], { justify: false, gap: 1 });
+        if (typeof pdfDirectorSign === 'function') y = pdfDirectorSign(d, y, 70, fr ? 'Directeur administratif' : 'Administrative Director / Directeur administratif');
+      };
+      letter(false);
+      d.addPage(); y = 26;
+      d.setFont('times', 'bold'); d.setFontSize(13); d.setTextColor(11, 37, 89); d.text('LETTRE DE NOMINATION', 105, y, { align: 'center' }); y += 5.5;
+      d.setFont('times', 'italic'); d.setFontSize(9.5); d.setTextColor(90, 98, 120); d.text('Version française de la lettre qui précède', 105, y, { align: 'center' }); d.setTextColor(0); y += 9;
+      letter(true);
     }
-    d.setTextColor(0); y += 8;
-    if (y > 218) { d.addPage(); y = 30; }
-    if (typeof pdfDirectorSign === 'function') y = pdfDirectorSign(d, y, 150, 'Directeur administratif');
     paintCredential(d, m);
     if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e) {} }
     const safe = String(m.email || 'mailbox').replace(/[^\w.@-]+/g, '_');
