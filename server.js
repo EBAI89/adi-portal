@@ -2407,7 +2407,7 @@ function buildPage() {
   page = page.replace(/(?<!<noscript>)<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2[^"]*">/g, '');
   page = page.replace(/<link href="(https:\/\/fonts\.googleapis\.com\/css2[^"]*)" rel="stylesheet">/, '<link rel="preload" as="style" href="$1" onload="this.onload=null;this.rel=\'stylesheet\'"><noscript><link rel="stylesheet" href="$1"></noscript>');   // fonts no longer hold up the first paint
   page = page.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>', (img ? '<script src="/assets/img.js?v=' + img.etag.replace(/"/g, '').slice(0, 10) + '"></script>' : ''));
-  page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css?v=' + v + '"><link rel="stylesheet" href="/mailbox.css?v=' + v + '"><link rel="stylesheet" href="/pager.css?v=' + v + '"><link rel="stylesheet" href="/studio.css?v=' + v + '"></head>').replace('</body>', '<script src="/minesup.js?v=' + v + '"></script><script src="/mailbox.js?v=' + v + '"></script><script src="/pager.js?v=' + v + '"></script><script src="/studio.js?v=' + v + '"></script><script src="/push.js?v=' + v + '"></script></body>');
+  page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css?v=' + v + '"><link rel="stylesheet" href="/mailbox.css?v=' + v + '"><link rel="stylesheet" href="/pager.css?v=' + v + '"><link rel="stylesheet" href="/studio.css?v=' + v + '"></head>').replace('</body>', '<script src="/minesup.js?v=' + v + '"></script><script src="/mailbox.js?v=' + v + '"></script><script src="/pager.js?v=' + v + '"></script><script src="/studio.js?v=' + v + '"></script><script src="/guard.js?v=' + v + '"></script><script src="/push.js?v=' + v + '"></script></body>');
     if (!PROD) {
       page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
     }
@@ -3008,7 +3008,7 @@ async function route(req, res) {
     const page = sideMod('adi-guide.js').docHtml({ lang: gpv[1], html: g.html, fmt: g.fmt, edit, print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null });
     res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })); return res.end(page);
   }
-  if ((p === '/minesup.js' || p === '/minesup.css' || p === '/mailbox.js' || p === '/mailbox.css' || p === '/pager.js' || p === '/pager.css' || p === '/studio.js' || p === '/studio.css' || p === '/push.js' || p === '/sw.js') && req.method === 'GET') {
+  if ((p === '/minesup.js' || p === '/minesup.css' || p === '/mailbox.js' || p === '/mailbox.css' || p === '/pager.js' || p === '/pager.css' || p === '/studio.js' || p === '/guard.js' || p === '/studio.css' || p === '/push.js' || p === '/sw.js') && req.method === 'GET') {
     const body = sideFile(p.slice(1));
     if (!body) return send(res, 404, { error: 'missing' });
     const mime = p.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8';
