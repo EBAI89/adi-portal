@@ -3,11 +3,12 @@
  * American Ditek Institute (ADI University) · www.adiuniversity.com */
 /* ---------- AI provider layer: Gemini (free tier), DeepSeek or Claude; the first key found is used unless AI_PROVIDER names one ---------- */
 globalThis.ADI_AI = (() => {
+  const clean = v => String(v || '').replace(/^[\s"']+|[\s"']+$/g, '').replace(/^(Bearer|key)\s*[:=]?\s*/i, '').replace(/\s+/g, '');
   const P = {
-    gemini: { key: () => process.env.GEMINI_API_KEY, url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-flash-latest', alt: ['gemini-3.8-flash', 'gemini-2.5-flash'], name: 'Google Gemini' },
-    openai: { key: () => process.env.OPENAI_API_KEY, url: (process.env.OPENAI_BASE_URL || 'https://api.openai.com') + '/v1/chat/completions', model: 'gpt-4o-mini', name: 'ChatGPT (OpenAI)' },
-    deepseek: { key: () => process.env.DEEPSEEK_API_KEY, url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat', name: 'DeepSeek' },
-    anthropic: { key: () => process.env.ANTHROPIC_API_KEY, name: 'Claude' }
+    gemini: { key: () => clean(process.env.GEMINI_API_KEY), url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-flash-latest', alt: ['gemini-3.8-flash', 'gemini-2.5-flash'], name: 'Google Gemini' },
+    openai: { key: () => clean(process.env.OPENAI_API_KEY), url: (process.env.OPENAI_BASE_URL || 'https://api.openai.com') + '/v1/chat/completions', model: 'gpt-4o-mini', name: 'ChatGPT (OpenAI)' },
+    deepseek: { key: () => clean(process.env.DEEPSEEK_API_KEY), url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat', name: 'DeepSeek' },
+    anthropic: { key: () => clean(process.env.ANTHROPIC_API_KEY), name: 'Claude' }
   };
   const ORDER = ['gemini', 'openai', 'deepseek', 'anthropic'];
   /* every provider that has a key, the one named in AI_PROVIDER first; if one fails (limit reached, outage) the next is tried */
@@ -28,12 +29,13 @@ globalThis.ADI_AI = (() => {
       for (let k = 0; k < tryModels.length; k++) { m = tryModels[k]; r = await fetch(p.url, { method: 'POST', signal: ac.signal, headers: { authorization: 'Bearer ' + p.key(), 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ model: m }, pv === 'openai' ? { max_completion_tokens: maxTokens || 900 } : { max_tokens: maxTokens || 900 }, { messages: (system ? [{ role: 'system', content: system }] : []).concat(messages) }, temperature != null && pv !== 'openai' ? { temperature } : {})) }); if (r.status !== 404) break; }
       if (!r.ok) fail('AI_ERROR', p.name + ' returned an error (' + r.status + ').', 502);
       j = await r.json(); return String(j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || '');
-    } catch (e) { if (e.aiCode) throw e; fail('AI_DOWN', 'The AI service could not be reached. Try again in a moment.', 502); } finally { clearTimeout(tm); }
+    } catch (e) { if (e.aiCode) throw e; const cause = String((e && e.cause && (e.cause.code || e.cause.message)) || (e && e.message) || 'unknown'); console.error('[ai] ' + pv + ' network error: ' + cause); const ex = new Error(p.name + ' could not be reached (' + cause.slice(0, 80) + ').'); ex.aiCode = 'AI_DOWN'; ex.status = 502; ex.net = cause; throw ex; } finally { clearTimeout(tm); }
   }
   async function llm(o) {
     const ch = chain(); if (!ch.length) fail('AI_NOKEY', 'No AI key is configured on the server.', 503);
-    let last; const fails = []; for (const pv of ch) { try { const out = await one(pv, o); if (out) return out; last = null; } catch (e) { last = e; const m = /\((\d{3})\)/.exec(e.message || ''); fails.push({ name: P[pv].name, code: m ? Number(m[1]) : 0 }); console.error('[ai] ' + pv + ' failed: ' + e.message); } }
-    if (fails.length) { const why = c => c === 402 ? 'no balance — top up the account' : c === 429 ? 'quota or free limit reached, or no credit' : c === 401 || c === 403 ? 'the key was refused — check it' : c === 404 ? 'model not found' : 'error ' + c; throw Object.assign(new Error('The AI could not answer. ' + fails.map(f => f.name + ': ' + why(f.code)).join('; ') + '.'), { aiCode: 'AI_ERROR', status: 502 }); }
+    let last; const fails = []; for (const pv of ch) { try { const out = await one(pv, o); if (out) return out; last = null; } catch (e) { last = e; const m = /\((\d{3})\)/.exec(e.message || ''); fails.push({ name: P[pv].name, code: m ? Number(m[1]) : 0, net: e.net }); console.error('[ai] ' + pv + ' failed: ' + e.message); } }
+    if (fails.length) { const why = c => c === 402 ? 'no balance — top up the account' : c === 429 ? 'quota or free limit reached, or no credit' : c === 401 || c === 403 ? 'the key was refused — check it' : c === 404 ? 'model not found' : 'error ' + c;
+    const why2 = f => f.net ? 'the request could not be sent (' + String(f.net).slice(0, 60) + ') — check that the key was pasted alone, with no spaces or quotes' : why(f.code); throw Object.assign(new Error('The AI could not answer. ' + fails.map(f => f.name + ': ' + why2(f)).join('; ') + '.'), { aiCode: 'AI_ERROR', status: 502 }); }
     throw last || Object.assign(new Error('The AI service returned an empty answer.'), { aiCode: 'AI_ERROR', status: 502 });
   }
   return { provider, chain, ready: () => !!provider(), name: () => (P[provider()] || {}).name || '', llm };
