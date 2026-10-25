@@ -115,7 +115,7 @@ module.exports = function makeMailbox(ctx) {
       kind: m.kind, role: m.role || '', name: m.name, userId: m.userId || '',
       matric: m.matric || '', hrId: m.hrId || '', hrRef: m.hrRef || '',
       personalEmail: m.personalEmail || '', phone: m.phone || '',
-      title: m.title || '', titleFr: m.titleFr || '', dept: m.dept || '', prob: m.prob || '',
+      title: m.title || '', titleFr: m.titleFr || '', dept: m.dept || '', prob: m.prob || '', contract: m.contract || '',
       status: m.status, ref: m.ref, issuedAt: m.issuedAt, issuedBy: m.issuedBy || '',
       issuedByName: m.issuedByName || '', setupAt: m.setupAt || null
     };
@@ -212,7 +212,7 @@ module.exports = function makeMailbox(ctx) {
       phone: clip(a.phone || user.phone || '', 40),
       title: titles[0] + (hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
       titleFr: titles[1] + (hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
-      ref: await nextRef(), dept: clip(((hra.vac && S.get('hrv', hra.vac)) || {}).field || '', 120), prob: '',
+      ref: await nextRef(), dept: clip(((hra.vac && S.get('hrv', hra.vac)) || {}).field || '', 120), prob: String(((hra.vac && S.get('hrv', hra.vac)) || {}).prob || ''), contract: String(((hra.vac && S.get('hrv', hra.vac)) || {}).contract || ''),
       issuedBy: actor && actor.id, issuedByName: actor && actor.name || 'Human Resources'
     }, otp);
     if (user.email === rec.email) {
