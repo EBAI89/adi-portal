@@ -381,8 +381,8 @@
         nat[0],
         pr ? 'Probation and remuneration: You shall serve a probationary period of **' + pr[0] + '**, expressly stipulated in writing by this letter in accordance with Article 28 of the Cameroon Labour Code (Law No. 92/007 of 14 August 1992), which limits probation, including any renewal, to six (6) months, or eight (8) months for management staff. During this period either party may end the engagement without notice or indemnity, unless otherwise agreed (Article 43). Upon successful completion of probation and confirmation of your appointment, your remuneration, salary scale and associated benefits shall be governed strictly by your formal Employment Contract.' : 'Remuneration: The duration, workload and remuneration of your engagement are governed strictly by the terms of the agreement issued by Human Resources, which should be read together with this letter.',
         'The appointment is subject to verification of your academic and professional credentials. It is governed by the Cameroon Labour Code, any collective agreement applicable to the institution and the statutes of the University, read in line with the fundamental principles of the International Labour Organization (non-discrimination, freedom of association, no forced or child labour). Either party may end the engagement only in accordance with the notice and procedure prescribed by law. Your personal data will be kept confidential.',
-        'With this letter ADI opens your institutional mailbox (details at the end of this document). Please activate it within seven days, use it for all official correspondence and keep the one-time password confidential. Kindly confirm your acceptance in writing to Human Resources within seven days of receipt. We warmly welcome you to ADI.',
-        'Yours sincerely,'
+        'With this letter ADI opens your institutional mailbox (details at the end of this document). Please activate it within seven days, use it for all official correspondence and keep the one-time password confidential. Kindly confirm your acceptance by signing and returning the enclosed Acceptance Slip to Human Resources within seven days of receipt. We look forward to welcoming you, and to a long and mutually rewarding association with ADI.',
+        'With sincere regards and every good wish for a successful tenure,'
       ],
       fr: [
         'Chère Madame, Cher Monsieur,',
@@ -390,8 +390,8 @@
         nat[1],
         pr ? 'Période d\'essai et rémunération : Vous effectuerez une période d\'essai de **' + pr[1] + '**, expressément stipulée par écrit dans la présente lettre conformément à l\'article 28 du Code du travail camerounais (loi n° 92/007 du 14 août 1992), qui limite l\'essai, renouvellement compris, à six (6) mois, ou huit (8) mois pour les cadres. Pendant cette période, chacune des parties peut mettre fin à l\'engagement sans préavis ni indemnité, sauf convention contraire (article 43). Après l\'accomplissement satisfaisant de l\'essai et la confirmation de votre nomination, votre rémunération, votre grille salariale et les avantages y afférents seront régis strictement par votre contrat de travail.' : 'Rémunération : La durée, la charge de travail et la rémunération de votre engagement sont régies strictement par les termes de la convention établie par les Ressources humaines, à lire avec la présente lettre.',
         'La nomination est subordonnée à la vérification de vos titres académiques et professionnels. Elle est régie par le Code du travail camerounais, toute convention collective applicable à l\'établissement et les statuts de l\'Université, interprétés conformément aux principes fondamentaux de l\'Organisation internationale du Travail (non-discrimination, liberté syndicale, interdiction du travail forcé et du travail des enfants). Chacune des parties ne peut mettre fin à l\'engagement que dans le respect du préavis et de la procédure prévus par la loi. Vos données personnelles resteront confidentielles.',
-        'Avec la présente lettre, l\'ADI ouvre votre messagerie institutionnelle (détails à la fin de ce document). Veuillez l\'activer dans un délai de sept jours, l\'utiliser pour toute correspondance officielle et garder confidentiel le mot de passe à usage unique. Nous vous prions de confirmer votre acceptation par écrit aux Ressources humaines dans les sept jours suivant la réception. Nous vous souhaitons chaleureusement la bienvenue à l\'ADI.',
-        'Veuillez agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.'
+        'Avec la présente lettre, l\'ADI ouvre votre messagerie institutionnelle (détails à la fin de ce document). Veuillez l\'activer dans un délai de sept jours, l\'utiliser pour toute correspondance officielle et garder confidentiel le mot de passe à usage unique. Nous vous prions de confirmer votre acceptation en signant et en retournant la fiche d\'acceptation ci-jointe aux Ressources humaines dans les sept jours suivant la réception. Nous nous réjouissons de vous accueillir et d\'entamer avec vous une collaboration durable et fructueuse au sein de l\'ADI.',
+        'Je vous prie d\'agréer, Madame, Monsieur, l\'expression de ma haute considération.'
       ]
     };
   }
@@ -429,6 +429,20 @@
       d.setFont('times', 'bold'); d.setFontSize(13); d.setTextColor(11, 37, 89); d.text('LETTRE DE NOMINATION', 105, y, { align: 'center' }); y += 5.5;
       d.setFont('times', 'italic'); d.setFontSize(9.5); d.setTextColor(90, 98, 120); d.text('Version française de la lettre qui précède', 105, y, { align: 'center' }); d.setTextColor(0); y += 9;
       letter(true);
+      /* Acceptance slip: one bilingual page to be signed and returned to Human Resources */
+      d.addPage(); y = 26;
+      d.setFont('times', 'bold'); d.setFontSize(14); d.setTextColor(11, 37, 89); d.text('ACCEPTANCE SLIP', 105, y, { align: 'center' }); y += 6;
+      d.setFontSize(11); d.text('FICHE D\'ACCEPTATION', 105, y, { align: 'center' }); y += 5;
+      d.setDrawColor(201, 162, 39); d.setLineWidth(.6); d.line(18, y, 192, y); d.setTextColor(0); y += 8;
+      R('To: **The Administrative Director, American Ditek Institute (ADI University)** — Human Resources', { justify: false, gap: 1 });
+      R('Reference: **' + String(m.ref || '—') + '**', { justify: false, gap: 4 });
+      R('I, the undersigned, **' + String(m.name || '') + '**, acknowledge receipt of the Letter of Appointment as **' + L.titleEn + '**. I have read and understood its terms, including the probationary period and the conditions of remuneration, and I hereby accept the appointment. I undertake to activate my institutional mailbox and to keep my credentials confidential.', { gap: 3 });
+      R('À l\'attention de : **Monsieur le Directeur administratif, American Ditek Institute (ADI University)** — Ressources humaines', { justify: false, italic: true, color: [70, 80, 105], size: 10, gap: 2 });
+      R('Je soussigné(e), **' + String(m.name || '') + '**, accuse réception de la lettre de nomination en qualité de **' + L.titleFr + '**. J\'ai pris connaissance de ses termes, y compris la période d\'essai et les conditions de rémunération, et j\'accepte par la présente cette nomination. Je m\'engage à activer ma messagerie institutionnelle et à garder mes identifiants confidentiels.', { italic: true, color: [70, 80, 105], size: 10, gap: 12 });
+      d.setFont('times', 'normal'); d.setFontSize(10.5); d.setDrawColor(60, 70, 95); d.setLineWidth(.25);
+      [['Place and date / Lieu et date', 18, 80], ['Signature (preceded by "Read and approved" / précédée de « Lu et approuvé »)', 100, 92]].forEach(([lab, x, w]) => { d.line(x, y + 22, x + w - 2, y + 22); d.setFontSize(9); d.text(lab, x, y + 27); });
+      y += 40; d.setFontSize(9); d.setTextColor(90, 98, 120);
+      d.text('Return the signed slip to Human Resources within seven (7) days of receipt. / Retourner la fiche signée aux Ressources humaines dans un délai de sept (7) jours.', 18, y, { maxWidth: 174 }); d.setTextColor(0);
     }
     paintCredential(d, m);
     if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e) {} }
