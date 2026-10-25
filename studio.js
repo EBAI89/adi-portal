@@ -55,7 +55,7 @@
     const q = ST.q.trim().toLowerCase();
     return Object.values(S.courses || {}).filter(c => {
       if (ST.level && c.level !== ST.level) return false;
-      if (ST.spec && c.specId !== ST.spec) return false;
+      if (ST.spec && (ST.spec === '__common' ? !!specOf(c) : c.specId !== ST.spec)) return false;
       if (ST.sem && String(c.sem) !== ST.sem) return false;
       if (ST.year && String(c.year || 1) !== ST.year) return false;
       if (q && !(String(c.code).toLowerCase().includes(q) || String(c.title).toLowerCase().includes(q))) return false;
@@ -71,11 +71,12 @@
   function opts(list, cur, blank) { return (blank != null ? '<option value="">' + esc(blank) + '</option>' : '') + list.map(u => '<option value="' + esc(u.id) + '"' + (u.id === cur ? ' selected' : '') + '>' + esc(u.name) + '</option>').join(''); }
   function viewDesk() {
     const u = me(); if (!u) return '';
+    if (u.mfaReq && !u.mfa) return `<div class="td-hero"><p class="td-kicker">ADI · ${LBL('Teaching and learning', 'Enseignement et apprentissage')}</p><h2>${LBL('Teaching desk', 'Bureau pédagogique')}</h2><div class="note warn" role="alert"><b>${LBL('Two-step verification required.', 'Vérification en deux étapes requise.')}</b> ${LBL('For security, the portal shows no course or student data until two-step verification is switched on for this account. Switch it on, then return to the Teaching desk.', 'Par sécurité, le portail n\'affiche aucune donnée de cours ou d\'étudiants tant que la vérification en deux étapes n\'est pas activée sur ce compte. Activez-la, puis revenez au Bureau pédagogique.')}</div><p><a class="btn gold" href="#/security">${LBL('Open Account security', 'Ouvrir la sécurité du compte')}</a></p></div>`;
     const all = Object.values(S.courses || {}), n = all.length, withLead = all.filter(c => c.lecturerId).length, withPlan = all.filter(c => planState(c.id) !== 'none').length, approved = all.filter(c => planState(c.id) === 'approved').length;
     const pct = x => n ? Math.round(100 * x / n) : 0, kpi = (v, label, p) => `<div class="td-kpi"><b>${v}</b><span>${label}</span>${p == null ? '' : `<div class="td-bar"><i style="width:${p}%"></i></div>`}</div>`;
     const L1 = lecs(), list = filtered(), selIn = list.filter(c => ST.sel.has(c.id)).length, selAll = ST.sel.size;
     const lvOpts = Object.keys(typeof LEVELS !== 'undefined' ? LEVELS : {}).map(k => `<option value="${esc(k)}"${ST.level === k ? ' selected' : ''}>${esc(lvlName(k))}</option>`).join('');
-    const spOpts = (() => { try { const by = {}, have = new Set(all.map(c => c.specId)); Object.values(SPEC || {}).forEach(sp => { if ((ST.level && sp.level !== ST.level) || !have.has(sp.id)) return; if (!by[sp.id]) by[sp.id] = sp; }); const arr = Object.values(by).sort((a, b) => (LV_ORDER.indexOf(a.level) - LV_ORDER.indexOf(b.level)) || String(a.name).localeCompare(String(b.name))); return arr.map(sp => `<option value="${esc(sp.id)}"${ST.spec === sp.id ? ' selected' : ''}>${esc((ST.level ? '' : progName(sp.level)[0] + ' · ') + sp.name)}</option>`).join(''); } catch (e) { return ''; } })();
+    const spOpts = (() => { try { const by = {}, have = new Set(all.map(c => c.specId)); Object.values(SPEC || {}).forEach(sp => { if ((ST.level && sp.level !== ST.level) || !have.has(sp.id)) return; if (!by[sp.id]) by[sp.id] = sp; }); const arr = Object.values(by).sort((a, b) => (LV_ORDER.indexOf(a.level) - LV_ORDER.indexOf(b.level)) || String(a.name).localeCompare(String(b.name))); const common = all.some(c => !specOf(c) && (!ST.level || c.level === ST.level)) ? `<option value="__common"${ST.spec === '__common' ? ' selected' : ''}>${LBL('Common courses (all specialties)', 'Cours communs (toutes spécialités)')}</option>` : ''; return common + arr.map(sp => `<option value="${esc(sp.id)}"${ST.spec === sp.id ? ' selected' : ''}>${esc((ST.level ? '' : progName(sp.level)[0] + ' · ') + sp.name)}</option>`).join(''); } catch (e) { return ''; } })();
     const sOpt = (arr, cur) => arr.map(a => `<option value="${esc(a[0])}"${cur === a[0] ? ' selected' : ''}>${esc(a[1])}</option>`).join('');
     const filters = `<div class="card gap"><div class="td-filters">
       <div class="fld"><label class="f">${LBL('Search code or title', 'Rechercher code ou intitulé')}</label><input id="td-q" data-td="q" value="${esc(ST.q)}" placeholder="CSC, accounting…"></div>
@@ -108,7 +109,7 @@
     const blocks = []; shown.forEach(c => { const k = gKey(c), b = blocks[blocks.length - 1]; if (b && b.k === k) b.cs.push(c); else blocks.push({ k, cs: [c] }); });
     const hdrs = ['', LBL('Course', 'Cours'), LBL('Lead lecturer', 'Responsable'), LBL('Co-lecturers', 'Co-enseignants'), LBL('Outline', 'Plan de cours'), LBL('AI studio', 'Studio IA')];
     const headOf = (c, k, onPage) => {
-      const pr = progName(c.level)[fr() ? 1 : 0], ho = ['MSC', 'BSC'].includes(c.level), gn = grpName(c), sn = specName(c), up = x => esc(String(x).toLocaleUpperCase(fr() ? 'fr' : 'en'));
+      const pr = progName(c.level)[fr() ? 1 : 0], ho = ['MSC', 'BSC'].includes(c.level), common = !specOf(c), gn = grpName(c) || (common ? (ho ? LBL('All faculties', 'Toutes les facultés') : LBL('All fields of study', 'Toutes les filières')) : LBL('Not assigned', 'Non renseigné')), sn = specName(c) || (common ? (ho ? LBL('Common courses', 'Cours communs') : LBL('Common core: all specialties', 'Tronc commun : toutes les spécialités')) : LBL('Not assigned', 'Non renseigné')), up = x => esc(String(x).toLocaleUpperCase(fr() ? 'fr' : 'en'));
       const line = (l, v) => v ? `<div class="td-l"><span>${l}</span><b>${v}</b></div>` : '';
       const yr = LBL('Year', 'Année') + ' ' + (Number(c.year) || 1) + ' (' + LBL('Level', 'Niveau') + ' ' + lvNo(c) + ')', sm = Number(c.sem) === 2 ? LBL('Second Semester', 'Second semestre') : LBL('First Semester', 'Premier semestre'), ay = ayTxt();
       const allIn = list.filter(x => gKey(x) === k).every(x => ST.sel.has(x.id));
