@@ -357,6 +357,45 @@
     };
   }
 
+  /* Appointment letter text, drawn up to the conventions of international universities: confirmation of appointment, nature of the engagement, duties, terms, mailbox, acceptance. */
+  function appointmentText(m) {
+    const T = String(m.title || '').trim() || 'Member of staff', TF = String(m.titleFr || m.title || '').trim() || 'membre du personnel';
+    const key = (m.title + ' ' + m.titleFr).toLowerCase();
+    const k = /intern|stagiaire/.test(key) ? 'intern' : /consult/.test(key) ? 'consultant' : /adjunct|visiting|vacataire|part-time|temps partiel/.test(key) ? 'visiting' : /teaching assistant|assistant d/.test(key) ? 'assistant' : /senior|maître/.test(key) ? 'senior' : (m.kind === 'lecturer' ? 'lecturer' : /administrator|administrateur/.test(key) || m.role === 'admin' ? 'administrator' : /technical|technique/.test(key) ? 'technical' : 'staff');
+    const fmt = (loc) => { try { return new Date(m.issuedAt || Date.now()).toLocaleDateString(loc, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return ''; } };
+    const nat = {
+      lecturer: ['This is a full-time academic appointment. You will teach the courses assigned to you, supervise and assess students\' work, take part in examinations and their moderation, and contribute to curriculum development, academic advising and the wider life of the University, in keeping with its statutes and the regulations of the Ministry of Higher Education.', 'Il s\'agit d\'une nomination académique à temps plein. Vous dispenserez les cours qui vous seront confiés, encadrerez et évaluerez les travaux des étudiants, participerez aux examens et à leur délibération, et contribuerez à l\'élaboration des programmes, à l\'orientation académique et à la vie de l\'Université, conformément à ses statuts et à la réglementation du Ministère de l\'Enseignement Supérieur.'],
+      senior: ['This is a full-time senior academic appointment. In addition to teaching and the supervision of students, you will provide academic leadership in your discipline: guiding colleagues, contributing to programme design and quality assurance, and advancing scholarship and service to the community, in keeping with the statutes of the University and the regulations of the Ministry of Higher Education.', 'Il s\'agit d\'une nomination académique senior à temps plein. Outre l\'enseignement et l\'encadrement des étudiants, vous assurerez un leadership académique dans votre discipline : accompagnement des collègues, conception des programmes, assurance qualité, recherche et service à la communauté, conformément aux statuts de l\'Université et à la réglementation du Ministère de l\'Enseignement Supérieur.'],
+      visiting: ['This is a part-time (visiting) appointment. You are engaged to teach the courses assigned to you in each semester, to assess your students fairly and to submit marks within the published deadlines. The appointment is for the period stated in your engagement agreement and carries no entitlement to continued engagement beyond it.', 'Il s\'agit d\'une nomination à temps partiel (enseignant invité ou vacataire). Vous êtes engagé(e) pour dispenser les cours qui vous seront confiés chaque semestre, évaluer équitablement vos étudiants et remettre les notes dans les délais publiés. La nomination vaut pour la période indiquée dans votre convention d\'engagement et n\'ouvre aucun droit à un engagement au-delà de celle-ci.'],
+      assistant: ['In this role you will support the teaching of the course lecturers under their supervision: conducting tutorials and practical sessions, assisting with continuous assessment and marking, and helping students with their studies. The appointment also offers you a valuable opportunity for professional development within our academic community.', 'Dans cette fonction, vous appuierez l\'enseignement des responsables de cours sous leur supervision : travaux dirigés et pratiques, aide à l\'évaluation continue et à la correction, et accompagnement des étudiants. Cette nomination constitue aussi une précieuse occasion de développement professionnel au sein de notre communauté académique.'],
+      administrator: ['In this senior administrative role you will lead the functions assigned to you, exercise the delegated authority that goes with them, and uphold the standards of governance, confidentiality and service expected of the University, reporting to the Administrative Director.', 'Dans cette fonction administrative de responsabilité, vous dirigerez les services qui vous sont confiés, exercerez l\'autorité déléguée qui s\'y attache et veillerez au respect des exigences de gouvernance, de confidentialité et de qualité de service de l\'Université, sous l\'autorité du Directeur administratif.'],
+      staff: ['You will carry out the duties of your post, as described to you by your head of department, with diligence, integrity and discretion, and you will observe the working hours, policies and regulations of the University.', 'Vous exercerez les fonctions de votre poste, telles que précisées par votre chef de service, avec diligence, intégrité et discrétion, et vous respecterez les horaires, politiques et règlements de l\'Université.'],
+      technical: ['You will provide the technical services of your post, maintain the equipment and systems in your care to a high standard, and support staff and students in their use, observing the safety rules, policies and regulations of the University.', 'Vous assurerez les services techniques de votre poste, entretiendrez avec soin les équipements et systèmes dont vous avez la charge et aiderez le personnel et les étudiants dans leur usage, dans le respect des règles de sécurité, des politiques et des règlements de l\'Université.'],
+      consultant: ['You are engaged as a consultant for the scope of work and period agreed with the University. You will work independently, to the standard expected of your profession, and will treat all University information as confidential.', 'Vous êtes engagé(e) en qualité de consultant(e) pour la mission et la durée convenues avec l\'Université. Vous travaillerez de manière autonome, selon les normes de votre profession, et traiterez toute information de l\'Université comme confidentielle.'],
+      intern: ['This is a fixed-term internship designed to give you structured professional experience. You will work under the guidance of a supervisor, who will set your tasks, review your progress and support your learning.', 'Il s\'agit d\'un stage de durée déterminée destiné à vous procurer une expérience professionnelle encadrée. Vous travaillerez sous la conduite d\'un superviseur, qui fixera vos tâches, suivra vos progrès et soutiendra votre apprentissage.']
+    }[k];
+    return {
+      titleEn: T, titleFr: TF, dateEn: fmt('en-GB'), dateFr: fmt('fr-FR'),
+      en: [
+        'Dear ' + (m.name || 'Colleague') + ',',
+        'On behalf of American Ditek Institute (ADI University), and further to the recommendation of the recruitment committee, it gives me great pleasure to confirm your appointment as ' + T + '. Your qualifications and experience impressed the committee, and we are confident that you will make a valued contribution to our academic community.',
+        nat[0],
+        'The terms of your engagement, including its duration, workload and remuneration, are set out in the contract issued by Human Resources, which should be read together with this letter. The appointment is subject to the verification of your academic and professional credentials and to the regulations of the University in force.',
+        'With this letter, ADI opens your institutional mailbox; its details are on the following page. Please activate it within seven days, use it for all official correspondence, and keep the one-time password strictly confidential.',
+        'Kindly confirm your acceptance in writing to Human Resources within seven days of receiving this letter. We warmly welcome you to ADI and look forward to a rewarding collaboration.',
+        'Yours sincerely,'
+      ],
+      fr: [
+        'Chère Madame, Cher Monsieur,',
+        'Au nom de l\'American Ditek Institute (ADI University), et sur recommandation de la commission de recrutement, j\'ai le grand plaisir de vous confirmer votre nomination en qualité de ' + TF + '. Votre parcours a retenu l\'attention de la commission et nous sommes convaincus que vous apporterez une contribution précieuse à notre communauté académique.',
+        nat[1],
+        'Les modalités de votre engagement, notamment sa durée, votre charge de travail et votre rémunération, figurent dans le contrat établi par les Ressources humaines, à lire avec la présente lettre. La nomination est subordonnée à la vérification de vos titres académiques et professionnels et au respect des règlements en vigueur de l\'Université.',
+        'Avec la présente lettre, l\'ADI ouvre votre messagerie institutionnelle, dont les détails figurent à la page suivante. Veuillez l\'activer dans un délai de sept jours, l\'utiliser pour toute correspondance officielle et garder strictement confidentiel le mot de passe à usage unique.',
+        'Nous vous prions de bien vouloir confirmer votre acceptation par écrit aux Ressources humaines dans les sept jours suivant la réception de la présente. Nous vous souhaitons chaleureusement la bienvenue à l\'ADI et nous réjouissons d\'une collaboration fructueuse.',
+        'Veuillez agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.'
+      ]
+    };
+  }
   async function appointmentPDF(m) {
     if (typeof PDFOK === 'function' && !PDFOK()) return noPdf();
     const title = m.kind === 'lecturer' ? 'LETTER OF APPOINTMENT' : (m.kind === 'student' ? 'OFFER OF PROVISIONAL ADMISSION' : 'LETTER OF APPOINTMENT');
@@ -365,17 +404,24 @@
     d.text(m.kind === 'student' ? 'Offre d\'admission provisoire — messagerie' : 'Lettre de nomination', 105, 54, { align: 'center' });
     d.setTextColor(0);
     let y = 64;
-    d.setFont('times', 'normal'); d.setFontSize(11);
-    const en = m.kind === 'student'
-      ? 'Further to your admission to American Ditek Institute, the Registry has opened your institutional mailbox. The address and one-time password are set out on the following page and form part of this letter.'
-      : 'Further to the recommendation of the recruitment committee, American Ditek Institute appoints you as ' + (m.title || 'a member of staff') + '. Your institutional mailbox is opened with this letter. Activate it within seven days.';
-    const fr = m.kind === 'student'
-      ? 'Suite à votre admission à l\'American Ditek Institute, la scolarité a ouvert votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent à la page suivante et font partie de la présente lettre.'
-      : 'Sur recommandation de la commission de recrutement, l\'American Ditek Institute vous nomme en qualité de ' + (m.titleFr || m.title || 'membre du personnel') + '. Votre messagerie institutionnelle est ouverte avec la présente lettre. Activez-la dans un délai de sept jours.';
-    d.splitTextToSize(en, 176).forEach(line => { d.text(line, 18, y); y += 5; });
-    y += 2; d.setFont('times', 'italic'); d.setTextColor(70, 80, 105);
-    d.splitTextToSize(fr, 176).forEach(line => { d.text(line, 18, y); y += 4.8; });
+    const page = h => { if (y + h > 262) { d.addPage(); y = 26; } };
+    const para = (txt, size, lh, italic, rgb, gap) => { d.setFont('times', italic ? 'italic' : 'normal'); d.setFontSize(size); d.setTextColor(rgb[0], rgb[1], rgb[2]); d.splitTextToSize(txt, 176).forEach(line => { page(lh); d.text(line, 18, y); y += lh; }); y += gap; };
+    if (m.kind === 'student') {
+      para('Further to your admission to American Ditek Institute, the Registry has opened your institutional mailbox. The address and one-time password are set out on the following page and form part of this letter.', 11, 5, false, [0, 0, 0], 2);
+      para('Suite à votre admission à l\'American Ditek Institute, la scolarité a ouvert votre messagerie institutionnelle. L\'adresse et le mot de passe à usage unique figurent à la page suivante et font partie de la présente lettre.', 11, 4.8, true, [70, 80, 105], 8);
+    } else {
+      const L = appointmentText(m);
+      d.setFont('times', 'normal'); d.setFontSize(10.5); d.setTextColor(0);
+      d.text('Yaoundé, ' + L.dateEn, 192, y, { align: 'right' }); y += 5;
+      if (m.ref) { d.setFontSize(9.5); d.setTextColor(90, 98, 120); d.text('Ref. / Réf. : ' + m.ref, 192, y, { align: 'right' }); y += 5; }
+      y += 3; d.setTextColor(0); d.setFont('times', 'bold'); d.setFontSize(10.5); d.text(String(m.name || ''), 18, y); y += 5.5;
+      para('Re: Offer of appointment as ' + L.titleEn, 10.5, 5, false, [11, 37, 89], 1.5);
+      L.en.forEach((p, i) => para(p, 10, 4.5, false, [0, 0, 0], i === L.en.length - 1 ? 3 : 1.8));
+      y += 1; para('Objet : Nomination en qualité de ' + L.titleFr, 9.8, 4.4, true, [70, 80, 105], 1.2);
+      L.fr.forEach((p, i) => para(p, 9.6, 4.2, true, [70, 80, 105], 1.4));
+    }
     d.setTextColor(0); y += 8;
+    if (y > 218) { d.addPage(); y = 30; }
     if (typeof pdfDirectorSign === 'function') y = pdfDirectorSign(d, y, 150, 'Directeur administratif');
     paintCredential(d, m);
     if (typeof pdfSealLast === 'function') { try { pdfSealLast(d); } catch (e) {} }
