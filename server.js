@@ -2925,6 +2925,7 @@ async function route(req, res) {
   if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|mail\/(setup|desk)|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
   if (p === '/partner-assets/ub-seal.jpg' && req.method === 'GET') { const buf = sideFile('ub-seal.jpg'); if (!buf) return send(res, 404, { error: 'missing' }); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf); }
+  if (p === '/partner-assets/ub-seal.png' && req.method === 'GET') { const buf = sideFile('ub-seal.png'); if (!buf) return send(res, 404, { error: 'missing' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf); }
   const mas = /^\/mail-assets\/(adi-logo|adi-seal)\.png$/.exec(p);
   if (mas && req.method === 'GET') { const buf = sideFile(mas[1] + '.png'); if (!buf) return send(res, 404, { error: 'missing' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf); }
   if (p === '/calendar.ics' && req.method === 'GET') {          // the public calendar: people can subscribe to it, and their phone calendar follows any change the university makes
