@@ -8,9 +8,11 @@ globalThis.ADI_AI = (() => {
     gemini: { key: () => clean(process.env.GEMINI_API_KEY), url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-flash-latest', alt: ['gemini-3.8-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash'], name: 'Google Gemini' },
     openai: { key: () => clean(process.env.OPENAI_API_KEY), url: (process.env.OPENAI_BASE_URL || 'https://api.openai.com') + '/v1/chat/completions', model: 'gpt-4o-mini', name: 'ChatGPT (OpenAI)' },
     deepseek: { key: () => clean(process.env.DEEPSEEK_API_KEY), url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat', name: 'DeepSeek' },
-    anthropic: { key: () => clean(process.env.ANTHROPIC_API_KEY), name: 'Claude' }
+    anthropic: { key: () => clean(process.env.ANTHROPIC_API_KEY), name: 'Claude' },
+    /* i10X (i10x.ai): another model for notes and handouts. It publishes no fixed endpoint, so it is used only when the account's key AND its OpenAI-compatible base address are both set (I10X_API_KEY, I10X_BASE_URL, optional I10X_MODEL). References are still rebuilt from the verified databases, never taken from any model. */
+    i10x: { key: () => (clean(process.env.I10X_API_KEY) && /^https:\/\//i.test(String(process.env.I10X_BASE_URL || '').trim())) ? clean(process.env.I10X_API_KEY) : '', url: String(process.env.I10X_BASE_URL || '').trim().replace(/\/+$/, '').replace(/\/chat\/completions$/, '') + '/chat/completions', model: clean(process.env.I10X_MODEL) || 'auto', name: 'i10X' }
   };
-  const ORDER = ['gemini', 'openai', 'deepseek', 'anthropic'];
+  const ORDER = ['gemini', 'openai', 'deepseek', 'anthropic', 'i10x'];
   /* every provider that has a key, the one named in AI_PROVIDER first; if one fails (limit reached, outage) the next is tried */
   const chain = () => { const w = String(process.env.AI_PROVIDER || '').toLowerCase(), all = ORDER.filter(k => P[k].key()); return P[w] && P[w].key() ? [w].concat(all.filter(k => k !== w)) : all; };
   const provider = () => chain()[0] || '';

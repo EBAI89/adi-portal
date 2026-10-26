@@ -111,7 +111,7 @@ module.exports = function makeStudio(ctx) {
   async function aiPlan(u, c, fr, extra) {
     const cf = core.clsCfg(((S.get('settings', 'main') || {}).cls));
     if (!cf.ai) fail(503, 'The AI tools are not switched on for this portal.', 'AI_OFF');
-    if (!ADI_AI.ready()) fail(503, 'The AI tools are switched on, but the server has no AI key yet. The administrator must add GEMINI_API_KEY (free), OPENAI_API_KEY, DEEPSEEK_API_KEY or ANTHROPIC_API_KEY in the hosting settings.', 'AI_NOKEY');
+    if (!ADI_AI.ready()) fail(503, 'The AI tools are switched on, but the server has no AI key yet. The administrator must add GEMINI_API_KEY (free), OPENAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY or I10X_API_KEY with I10X_BASE_URL in the hosting settings.', 'AI_NOKEY');
     if (cf.aiBlocked && cf.aiBlocked[u.id]) fail(403, 'The administration has not enabled the AI tools for your account.', 'AI_BLOCKED');
     if (limited('studioai:' + u.id, canAssign(u) || isMgr(u) ? 12 : 6, 60e3)) fail(429, 'Please wait a minute before generating again.', 'RATE');
     const h = hoursOf(c), lang = fr ? 'French' : 'English', lvl = levelName(c, false), prog = programmeName(c);
