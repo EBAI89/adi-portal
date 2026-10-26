@@ -1160,7 +1160,7 @@
   const opened = new Set(), keyOf = s => String(s || '').trim().slice(0, 60);
   let busy = false, obs = null, queued = 0;
   const lineH = el => { const c = getComputedStyle(el), l = parseFloat(c.lineHeight); return isFinite(l) ? l : parseFloat(c.fontSize) * 1.5; };
-  function label() { const m = document.createElement('span'); m.className = 'rm-more'; m.setAttribute('role', 'button'); m.tabIndex = 0; m.textContent = fr() ? 'Voir plus' : 'See more'; return m; }
+  function label() { const m = document.createElement('span'); m.className = 'rm-more'; m.setAttribute('role', 'button'); m.tabIndex = 0; m.textContent = fr() ? 'plus' : 'more'; return m; }
   function fit(el) {
     const full = el.dataset.full, max = lineH(el) * (el.classList.contains('rm-t') ? 2 : 3) + 2;
     el.textContent = full; el.dataset.w = String(el.clientWidth);
