@@ -1151,34 +1151,56 @@
   try { window.scrollTo(0, 0); } catch (e) {}
 })();
 
-/* ===== Long passages: after the text has been written, only the first three lines are shown, with a More... control that reveals the whole passage ===== */
+/* ===== Long passages, Facebook style: only the first lines are shown, ending in "… See more" right after the text.
+   Tap "See more" and the whole passage opens in place; tap the passage itself to fold it back. There is no "Less" link. ===== */
 (function () {
-  const fr = () => typeof LANG !== 'undefined' && LANG === 'fr';
-  const opened = new Set();
-  const SKIP = 'form,.modal,.modal-bg,[role="dialog"],.note,#chat,.chat,pre,table,button,textarea,nav,header.top,.ms-hint,.ms-cred,#sess-exp,#idle-warn';
-  const keyOf = el => (el.textContent || '').trim().slice(0, 60);
-  function lab(open) { return open ? (fr() ? 'Moins' : 'Less') : (fr() ? 'Plus…' : 'More…'); }
-  function wire(el) {
-    if (el.dataset.msMore) return; el.dataset.msMore = '1';
-    const k = keyOf(el), grp = el.closest('.adi-greet');
-    el.classList.add('ms-clamp');
-    if (opened.has(k)) { el.classList.remove('ms-clamp'); }
-    let b = el.nextElementSibling && el.nextElementSibling.classList.contains('ms-more') ? el.nextElementSibling : null;
-    if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'ms-more'; el.after(b); }
-    const sync = () => { const open = !el.classList.contains('ms-clamp'); b.textContent = lab(open); b.setAttribute('aria-expanded', String(open)); };
-    /* a passage that already fits in three lines needs no control */
-    requestAnimationFrame(() => { if (el.classList.contains('ms-clamp') && el.scrollHeight <= el.clientHeight + 2) { el.classList.remove('ms-clamp'); b.remove(); el.dataset.msMore = 'fit'; } else sync(); });
-    b.onclick = e => { e.preventDefault(); e.stopPropagation(); const open = el.classList.contains('ms-clamp'); el.classList.toggle('ms-clamp', !open); if (open) opened.add(k); else opened.delete(k); sync(); };
+  if (window.__RM_INSTALLED) return; window.__RM_INSTALLED = true;
+  const fr = () => (typeof LANG !== 'undefined' && LANG === 'fr') || document.documentElement.lang === 'fr';
+  const SKIP = 'form,.modal,.modal-bg,[role="dialog"],.note,#chat,.chat,pre,table,button,textarea,nav,header.top,.ms-hint,.ms-cred,#sess-exp,#idle-warn,#err-float,#gd-toast,[contenteditable]';
+  const opened = new Set(), keyOf = s => String(s || '').trim().slice(0, 60);
+  let busy = false, obs = null, queued = 0;
+  const lineH = el => { const c = getComputedStyle(el), l = parseFloat(c.lineHeight); return isFinite(l) ? l : parseFloat(c.fontSize) * 1.5; };
+  function label() { const m = document.createElement('span'); m.className = 'rm-more'; m.setAttribute('role', 'button'); m.tabIndex = 0; m.textContent = fr() ? 'Voir plus' : 'See more'; return m; }
+  function fit(el) {
+    const full = el.dataset.full, max = lineH(el) * (el.classList.contains('rm-t') ? 2 : 3) + 2;
+    el.textContent = full; el.dataset.w = String(el.clientWidth);
+    if (el.dataset.open) { el.dataset.rm = 'open'; return; }
+    if (el.clientWidth === 0 || el.scrollHeight <= max) { el.dataset.rm = 'fit'; return; }
+    const m = label(); let lo = 0, hi = full.length;
+    const put = n => { el.textContent = full.slice(0, n).replace(/\s+$/, '') + '… '; el.appendChild(m); };
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; put(mid); if (el.scrollHeight <= max) lo = mid; else hi = mid - 1; }
+    put(lo); el.dataset.rm = 'cut';
   }
-  function scan() {
-    if (window.adiTyping && window.adiTyping.active) return;
-    document.querySelectorAll('#app p, main p, .adi-greet .body').forEach(el => {
-      if (el.dataset.msMore || el.closest(SKIP) || el.classList.contains('ms-typing')) return;
-      if ((el.textContent || '').trim().length < 240) return;
-      wire(el);
-    });
+  function eligible(el) {
+    if (el.children.length && !el.querySelector(':scope > .rm-more')) return false;       // text-only passages (a passage with links or bold keeps its markup untouched)
+    if (el.closest(SKIP) || el.classList.contains('ms-typing') || (window.adiTyping && window.adiTyping.active)) return false;
+    return el.classList.contains('rm-t') || (el.textContent || '').trim().length >= 240;
   }
-  setInterval(scan, 700);
+  function run() {
+    busy = true;
+    try {
+      document.querySelectorAll('.rm-t, #app p, main p, .adi-greet .body').forEach(el => {
+        if (!el.dataset.rm) { if (!eligible(el)) return; el.dataset.full = el.textContent; if (opened.has(keyOf(el.dataset.full))) el.dataset.open = '1'; fit(el); }
+        else if ((el.dataset.rm === 'cut' || el.dataset.rm === 'fit') && el.dataset.full && el.clientWidth !== Number(el.dataset.w)) fit(el);   // only when the width changed (rotation, resize)
+      });
+    } finally { busy = false; if (obs) obs.takeRecords(); }
+  }
+  const soon = () => { if (busy || queued) return; queued = requestAnimationFrame(() => { queued = 0; run(); }); };
+  obs = new MutationObserver(() => { if (!busy) soon(); }); obs.observe(document.body, { childList: true, subtree: true });
+  addEventListener('resize', soon); setInterval(soon, 900);
+  function act(e) {
+    const m = e.target.closest && e.target.closest('.rm-more'), x = !m && e.type === 'click' && e.target.closest && e.target.closest('[data-rm="open"]');
+    if (m) { const el = m.parentNode; e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); el.dataset.open = '1'; opened.add(keyOf(el.dataset.full)); busy = true; fit(el); busy = false; obs.takeRecords(); return; }
+    if (x && !x.dataset.rmLock && !(window.getSelection && String(window.getSelection())) && !(e.target.closest && e.target.closest('a,button,input,select,textarea'))) {
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); delete x.dataset.open; opened.delete(keyOf(x.dataset.full)); busy = true; fit(x); busy = false; obs.takeRecords();
+    }
+  }
+  document.addEventListener('click', act, true);
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('rm-more')) act(e); }, true);
+  const st = document.createElement('style'); st.id = 'rm-base-css';
+  st.textContent = '.rm-more{color:var(--muted,#5b6b8c);font-weight:700;cursor:pointer;white-space:nowrap}.rm-more:hover,.rm-more:focus-visible{text-decoration:underline;outline:0}[data-rm="open"]{cursor:pointer}.adi-greet .rm-more,.adi-bye .rm-more{color:#C9A227}.phero .rm-more{color:#F1D77A}';
+  document.head.appendChild(st);
+  soon();
 })();
 
 /* ===== Errors: shown above the field concerned and echoed in a floating notice that stays on screen while the page is scrolled ===== */
