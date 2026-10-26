@@ -69,7 +69,7 @@
   const BLOCK = ['pointerdown', 'mousedown', 'touchstart', 'click', 'dblclick', 'auxclick', 'contextmenu'];
   BLOCK.forEach(type => document.addEventListener(type, ev => {
     const cur = current(); if (!cur) return;
-    const tg = ev.target; if (tg && tg.nodeType === 1 && (cur.panel.contains(tg) || (tg.closest && tg.closest('#gd-toast')))) return;
+    const tg = ev.target; if (tg && tg.nodeType === 1 && (tg.closest && tg.closest('a[data-dlgo]') || cur.panel.contains(tg) || (tg.closest && tg.closest('#gd-toast')))) return;
     ev.preventDefault(); ev.stopPropagation(); if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
     if (type === 'pointerdown' || type === 'mousedown' || type === 'touchstart' || type === 'click') alertUser(cur);
   }, { capture: true, passive: false }));
