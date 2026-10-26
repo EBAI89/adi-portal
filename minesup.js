@@ -1189,8 +1189,8 @@
   obs = new MutationObserver(() => { if (!busy) soon(); }); obs.observe(document.body, { childList: true, subtree: true });
   addEventListener('resize', soon); setInterval(soon, 900);
   function act(e) {
-    const m = e.target.closest && e.target.closest('.rm-more'), x = !m && e.type === 'click' && e.target.closest && e.target.closest('[data-rm="open"]');
-    if (m) { const el = m.parentNode; e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); el.dataset.open = '1'; opened.add(keyOf(el.dataset.full)); busy = true; fit(el); busy = false; obs.takeRecords(); return; }
+    const m = e.target.closest && (e.target.closest('.rm-more') || (e.type === 'click' && e.target.closest('[data-rm="cut"]') && !(window.getSelection && String(window.getSelection())) && !e.target.closest('a,button,input,select,textarea') ? e.target.closest('[data-rm="cut"]').querySelector(':scope > .rm-more') : null)), x = !m && e.type === 'click' && e.target.closest && e.target.closest('[data-rm="open"]');
+    if (m) { const el = m.parentNode; if (!m.isConnected) return; e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); el.dataset.open = '1'; opened.add(keyOf(el.dataset.full)); busy = true; fit(el); busy = false; obs.takeRecords(); return; }
     if (x && !x.dataset.rmLock && !(window.getSelection && String(window.getSelection())) && !(e.target.closest && e.target.closest('a,button,input,select,textarea'))) {
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); delete x.dataset.open; opened.delete(keyOf(x.dataset.full)); busy = true; fit(x); busy = false; obs.takeRecords();
     }
@@ -1198,7 +1198,7 @@
   document.addEventListener('click', act, true);
   document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('rm-more')) act(e); }, true);
   const st = document.createElement('style'); st.id = 'rm-base-css';
-  st.textContent = '.rm-more{color:var(--muted,#5b6b8c);font-weight:700;cursor:pointer;white-space:nowrap}.rm-more:hover,.rm-more:focus-visible{text-decoration:underline;outline:0}[data-rm="open"]{cursor:pointer}.adi-greet .rm-more,.adi-bye .rm-more{color:#C9A227}.phero .rm-more{color:#F1D77A}';
+  st.textContent = '.rm-more{color:var(--muted,#5b6b8c);font-weight:700;cursor:pointer;white-space:nowrap}.rm-more:hover,.rm-more:focus-visible{text-decoration:underline;outline:0}[data-rm="open"],[data-rm="cut"]{cursor:pointer}.adi-greet .rm-more,.adi-bye .rm-more{color:#C9A227}.phero .rm-more{color:#F1D77A}';
   document.head.appendChild(st);
   soon();
 })();
