@@ -2925,6 +2925,10 @@ async function route(req, res) {
   const url = new URL(req.url, 'http://x'); const p = url.pathname; const sinfo = {}; const u = userOf(req, sinfo);
   if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
   if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|mail\/(setup|desk)|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
+  if (p === '/api/docs/issue' || p === '/verify' || p === '/api/verify' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
+    global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core });
+    if (await global.__DOCREG.handle(req, res, u, url, p)) return;
+  }
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
   if (p === '/partner-assets/ub-seal.jpg' && req.method === 'GET') { const buf = sideFile('ub-seal.jpg'); if (!buf) return send(res, 404, { error: 'missing' }); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf); }
   if (p === '/partner-assets/ub-seal.png' && req.method === 'GET') { const buf = sideFile('ub-seal.png'); if (!buf) return send(res, 404, { error: 'missing' }); res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(buf); }
