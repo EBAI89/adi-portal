@@ -3903,6 +3903,38 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migBts1: true }));
     console.log('BTS courses catalogued: ' + n);
   }
+  if (!cur.migResults1) {
+    // Published examination results of 2024/2025 and 2025/2026 (first to fourth semester, with the resit sessions) transcribed from the result sheets.
+    // Students are matched on the matricule printed on the class lists (ADI/ACC/..., ADI/CGE/...); the Software Engineering sheets carry no names, so their
+    // matricules follow the order of the earlier ADIET24H numbers. Courses are matched on specialty, year, semester and title, or created as historical
+    // records (hist) that registration never offers. Strictly additive: a result, enrolment or course that already exists is left untouched.
+    const RI = __req('./adi-results-import.js'), PTS = { 'A': 4, 'B+': 3.5, 'B': 3, 'C+': 2.5, 'C': 2, 'D+': 1.5, 'D': 1, 'F': 0 };
+    const byAdi = {}; Object.values(S.all('students')).forEach(s => { if (s && s.adiNo) byAdi[s.adiNo] = s; });
+    let made = 0, mc = 0, en = 0, rs = 0, rt = 0, skip = 0;
+    for (const [sheet, ns] of Object.entries(RI.newStudents)) {
+      if (byAdi[sheet]) continue;
+      const pre = 'ADI26H'; let mx = 0; Object.values(S.all('students')).forEach(s => { if (s && String(s.matric || '').startsWith(pre)) mx = Math.max(mx, Number(String(s.matric).slice(pre.length)) || 0); });
+      const mat = pre + String(mx + 1).padStart(4, '0');
+      const doc = { adiNo: sheet, entryYear: ns.entryYear, exemptReg: true, gid: ns.gid, level: ns.level, matric: mat, name: ns.name, specId: ns.specId, status: 'registered' };
+      await save('students', mat, doc); byAdi[sheet] = S.get('students', mat); made++;
+    }
+    for (const c of RI.courses.concat(RI.mcourses || [])) { if (S.get('courses', c.id)) continue; await save('courses', c.id, Object.assign({}, c)); mc++; }   // mcourses: catalogue courses the results refer to, created only if this database lacks them
+    const stuOf = m => byAdi[m] || byAdi[RI.alias[m]] || null;
+    for (const r of RI.results) {
+      const st = stuOf(r.m), course = S.get('courses', r.c); if (!st || !course) { skip++; continue; }
+      const ayK = r.ay.replace('/', '-'), eid = st.matric + '_' + r.c + '_' + ayK, rid = eid;
+      if (!S.get('enroll', eid)) { await save('enroll', eid, { ay: r.ay, courseId: r.c, matric: st.matric, sem: r.s, year: r.y }); en++; }
+      if (S.get('results', rid)) { skip++; continue; }
+      const f = r.f, q = r.r, useR = q && (!f || q.tot > f.tot), b = useR ? q : f;
+      const doc = { matric: st.matric, courseId: r.c, ay: r.ay, ca: b.ca, exam: b.ex, total: b.tot, grade: b.gr, gp: PTS[b.gr], state: 'published', by: 'results-import', at: now(), src: 'sheet' };
+      if (f) doc.first = { ca: f.ca, exam: f.ex, total: f.tot, grade: f.gr, gp: PTS[f.gr] };
+      if (q) { doc.resit = { ca: q.ca, exam: q.ex, total: q.tot, grade: q.gr, gp: PTS[q.gr] }; doc.resitUsed = !!useR; rt++; }
+      await save('results', rid, doc); rs++;
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migResults1: true }));
+    await audit(null, 'Results import: ' + rs + ' results (' + rt + ' with a resit), ' + en + ' enrolments, ' + mc + ' historical courses, ' + made + ' students created, ' + skip + ' skipped');
+    console.log('Results import: ' + rs + ' results, ' + rt + ' resits, ' + en + ' enrolments, ' + mc + ' courses, ' + made + ' students, ' + skip + ' skipped');
+  }
   // Students' guide: both editions live in the database (guides + blobs). The text is an editable document (the super administrator can change content and
   // formatting); the PDF shipped with the portal is stored as the downloadable edition until the text is edited. Shipped updates replace an edition only if it was never edited.
   {
