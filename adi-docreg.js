@@ -90,12 +90,31 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
     return shell(h + form('', ''));
   }
 
+  // structured result for the portal's own verification page
+  function detail(s, c) {
+    s = plain(s, 40).toUpperCase(); c = plain(c, 20).toUpperCase();
+    const rec = S.get(COL, s); if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return { valid: false };
+    const T = TYPES[rec.type] || TYPES.GN, st = rec.matric ? S.get('students', rec.matric) : null;
+    const out = { valid: true, serial: rec.id, type: rec.type, typeEn: T[0], typeFr: T[1], issued: rec.at, pages: rec.pages || 0, ay: rec.ay || '', sem: rec.sem || '', subject: rec.subject || '' };
+    if (st) {
+      const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
+      out.student = { name: st.name, matric: st.matric, programme: sp.name || st.specId || '', level: st.level || '', school: grp.en || '' };
+      if (rec.type === 'TR' || rec.type === 'SR') {
+        const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
+        rows.forEach(r => { cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; });
+        out.results = rows; out.totals = { attempted: cr, earned: earn, gpa: cr ? Math.round(wp / cr * 100) / 100 : null };
+      }
+    }
+    return out;
+  }
+
   async function handle(req, res, u, url, p) {
     if (p === '/api/docs/issue' && req.method === 'POST') { const r = await issue(u, await body(req, 4000)); send(res, r.code, r.out); return true; }
     if (p === '/verify' || p.startsWith('/verify/') || p === '/api/verify') {
       if (limited('verify:' + ip(req), 80, 3600e3)) { res.writeHead(429, { 'Content-Type': 'text/plain' }); res.end('Too many requests'); return true; }
       const q = url.searchParams, s = p.startsWith('/verify/') ? decodeURIComponent(p.slice(8)) : (q.get('s') || ''), c = q.get('c') || '';
-      if (p === '/api/verify') { const rec = S.get(COL, plain(s, 40).toUpperCase()); const ok = !!(rec && same(codeOf(rec.id, rec.digest), plain(c, 20).toUpperCase())); send(res, 200, ok ? { valid: true, serial: rec.id, type: rec.type, issued: rec.at, matric: rec.matric, name: rec.name } : { valid: false }); return true; }
+      if (p === '/api/verify') { send(res, 200, detail(s, c)); return true; }
+      if (p !== '/verify' && !q.get('plain') && s) { res.writeHead(302, { Location: '/#/verify/' + encodeURIComponent(s) + '?c=' + encodeURIComponent(c), 'Cache-Control': 'no-store' }); res.end(); return true; }   // the portal page does the checking
       const html = page(s, c);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'" });
       res.end(html); return true;
