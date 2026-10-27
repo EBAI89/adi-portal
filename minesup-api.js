@@ -176,6 +176,7 @@ async function apply(ctx, u, id, o, n) {
       : bi('Update on your MINESUP application', 'Mise à jour de votre demande MINESUP');
   const collect = status === 'approved' ? ' — ' + bi('We are pleased to inform you that your application has been approved. The document will be issued to you in person by the Registrar\'s Office; it cannot be downloaded online. You will be notified of the day, date and time of collection.', 'Nous avons le plaisir de vous informer que votre demande a été approuvée. Le document vous sera remis en personne par le service de la scolarité ; il ne peut pas être téléchargé en ligne. Vous serez informé(e) du jour, de la date et de l\'heure de retrait.') : '';
   await notifyUser(o.userId, title, (o.ref || '') + (remark ? ' — ' + bi('Remark', 'Observation') + ': ' + remark : '') + collect);
+  if (status === 'rejected' && o.status !== 'rejected' && ctx.rejectionLetter) await ctx.rejectionLetter('msapp', doc, u);
 }
 
 

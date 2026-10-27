@@ -535,17 +535,17 @@ function html(subject, text, cta) {
   ${cta ? `<p style="margin:24px 0 14px"><a href="${esc(cta)}" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;background:#0B2559;color:#fff;border-bottom:3px solid #C9A227;padding:12px 22px;border-radius:2px;text-decoration:none;font-weight:bold;display:inline-block">Open the ADI portal · Ouvrir le portail ADI</a></p>` : ''}</div>
   <div style="background:#F2F4F9;border-top:1px solid #D9DFEC;padding:16px 32px;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;line-height:1.7;color:#4A5675">P.O. Box 31460 Yaoundé · <a href="https://www.adiuniversity.com" style="color:#2447B8">www.adiuniversity.com</a><br>WhatsApp — Yaoundé: <a href="https://wa.me/237651187835" style="color:#2447B8">+237 651 187 835</a> (English) · <a href="https://wa.me/237657936576" style="color:#2447B8">+237 657 936 576</a> (Français) · Buea: <a href="https://wa.me/237651044896" style="color:#2447B8">+237 651 044 896</a><br>Facebook: <a href="https://www.facebook.com/ADIUNIVERSITY" style="color:#2447B8">American Ditek Institute</a> (English) · <a href="https://www.facebook.com/share/1DxLMFTsd8/" style="color:#2447B8">Université ADI – Institut américain Ditek</a> (Français)<br>This message was sent by the ADI portal on behalf of the University administration. Please quote your reference when you write to us.<br>Ce message a été envoyé par le portail ADI au nom de l'administration de l'Université. Veuillez rappeler votre référence lorsque vous nous écrivez.</div></div>`;
 }
-async function sendEmail({ to, subject, text, replyTo }) {
+async function sendEmail({ to, subject, text, replyTo, attachments }) {
   const p = (E.EMAIL_PROVIDER || 'log').toLowerCase(); if (!to) return;
   const from = E.EMAIL_FROM || 'ADI University <no-reply@adiuniversity.com>';
   const body = html(subject, text, E.PUBLIC_URL);
   try {
     if (p === 'resend') {
-      const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + E.RESEND_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: [to], subject, html: body, text, reply_to: replyTo || undefined }) });
+      const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + E.RESEND_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: [to], subject, html: body, text, reply_to: replyTo || undefined, attachments: attachments && attachments.length ? attachments.map(a => ({ filename: a.name, content: a.b64 })) : undefined }) });
       if (!r.ok) throw new Error('resend ' + r.status + ' ' + (await r.text()).slice(0, 200));
     } else if (p === 'brevo') {
       const m = from.match(/^(.*)<(.+)>$/); const sender = m ? { name: m[1].trim(), email: m[2].trim() } : { email: from };
-      const r = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': String(E.BREVO_API_KEY || '').replace(/[\s"']/g, ''), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: body, textContent: text, replyTo: replyTo ? { email: replyTo } : undefined }) });
+      const r = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': String(E.BREVO_API_KEY || '').replace(/[\s"']/g, ''), 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: body, textContent: text, replyTo: replyTo ? { email: replyTo } : undefined, attachment: attachments && attachments.length ? attachments.map(a => ({ name: a.name, content: a.b64 })) : undefined }) });
       if (!r.ok) throw new Error('brevo ' + r.status + ' ' + (await r.text()).slice(0, 200));
     } else log('EMAIL to', to, '|', subject, '|', String(text).slice(0, 160));
     return true;
@@ -2487,6 +2487,33 @@ function noticeLetterAuto(u, title, body, lang) {
   const b = String(body || '').trim(); if (/\n\s*— — —\s*\n/.test(b) && !lang) return b.split(/\n\s*— — —\s*\n/).map((x, k) => noticeLetterAuto(u, title, x, k ? 'fr' : 'en')).join('\n\n— — —\n\n'); if (/^(Dear |Madame|Monsieur|# )/.test(b)) return b; const fr = lang ? lang === 'fr' : (u && u.lang === 'fr'), name = u && u.name ? String(u.name).trim() : '';
   return (fr ? 'Madame, Monsieur' + (name ? ' ' + name : '') + ',' : 'Dear ' + (name || 'Sir or Madam') + ',') + '\n\n' + b + '\n\n' + (fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,') + '\n\n--\n' + (fr ? 'L\'Administration' : 'The Administration') + '\n' + (fr ? 'American Ditek Institute (Université ADI)' : 'American Ditek Institute (ADI University)');
 }
+
+/* Rejection letters: the letter is filed for the person, e-mailed to every super administrator with the PDF attached (a copy of what the person receives),
+   and stays available to the super administrator under "My downloads > All users". */
+const docFiles = () => (global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit }));
+async function rejectionLetter(kind, rec, by, extra) {
+  try {
+    const owner = S.get('users', rec.userId); if (!owner) return;
+    const fr = owner.lang === 'fr', ref = rec.ref || rec.id || '', remark = String(rec.remark || rec.note || '').trim();
+    const L = {
+      msapp: ['Notice of rejection - MINESUP application', 'Notification de rejet - demande MINESUP', 'Your application for a MINESUP HND/BTS transcript or diploma could not be approved after examination by the Registrar\'s Office.', 'Votre demande de relevé ou de diplôme MINESUP HND/BTS n\'a pu être approuvée après examen par le service de la scolarité.'],
+      trreq: ['Notice of rejection - transcript request', 'Notification de rejet - demande de relevé de notes', 'Your transcript request could not be processed after examination by the Registrar\'s Office.', 'Votre demande de relevé de notes n\'a pu être traitée après examen par le service de la scolarité.'],
+      payment: ['Notice - payment not accepted', 'Avis - paiement non accepté', 'A payment you declared was not accepted by the Finance Office.', 'Un paiement que vous avez déclaré n\'a pas été accepté par le service des finances.']
+    }[kind]; if (!L) return;
+    const date = new Date(now()).toISOString().slice(0, 10), title = L[0] + ' / ' + L[1];
+    const sections = [{ h: 'Applicant / Demandeur', t: (owner.name || '') + (rec.matric ? '  -  ' + rec.matric : '') + '  -  ' + (owner.email || '') }, { h: 'Decision', t: L[2] }, { h: 'Decision (francais)', t: L[3] }];
+    if (extra) sections.push({ h: 'Details / Details', t: extra });
+    if (remark) sections.push({ h: 'Reason given by the university / Motif communique', t: remark });
+    sections.push({ h: 'What next? / Que faire ?', t: 'Please correct the point mentioned above and submit again in the portal, or contact the Registrar\'s Office / Finance Office. We remain at your disposal.\nVeuillez corriger le point mentionne ci-dessus et soumettre a nouveau dans le portail, ou contacter le service de la scolarite / des finances. Nous restons a votre disposition.' });
+    const name = 'ADI-' + (kind === 'payment' ? 'payment-notice' : 'rejection-letter') + '-' + String(ref).replace(/[^\w-]+/g, '_') + '-' + date + '.pdf';
+    const f = await docFiles().letter({ owner, cat: kind === 'payment' ? 'payment' : 'rejection', name, title: title + (ref ? ' (' + ref + ')' : ''), ref, matric: rec.matric || '', by, sections, meta: ['Reference: ' + ref, 'Date: ' + date, 'Issued by: ' + ((by && by.name) || 'ADI portal')] });
+    const att = [{ name: f.name, b64: f.buf.toString('base64') }];
+    const adm = new Set(Object.values(S.all('users')).filter(x => x && x.role === 'super_admin' && x.status === 'active').flatMap(x => noticeEmails(x))); if (E.SUPER_ADMIN_EMAIL) adm.add(String(E.SUPER_ADMIN_EMAIL).trim().toLowerCase());
+    const txt = 'Copy for the super administrator / Copie pour le super administrateur\n\n' + title + '\nApplicant: ' + (owner.name || '') + (rec.matric ? ' (' + rec.matric + ')' : '') + '\nReference: ' + ref + (remark ? '\nReason: ' + remark : '') + '\n\nThe letter is attached and is also kept in the portal under My downloads (All users).';
+    for (const to of adm) sendEmail({ to, subject: '[Copy] ' + L[0] + ' - ' + (owner.name || ''), text: txt, attachments: att });
+    for (const to of noticeEmails(owner)) sendEmail({ to, subject: fr ? L[1] : L[0], text: (fr ? L[3] : L[2]) + (remark ? '\n\n' + (fr ? 'Motif : ' : 'Reason: ') + remark : '') + '\n\n' + (fr ? 'La lettre est jointe et reste disponible dans le portail (Mes téléchargements).' : 'The letter is attached and stays available in the portal (My downloads).'), attachments: att });
+  } catch (e) { console.error('[rejection letter]', e && e.message || e); }
+}
 async function notifyUser(userId, title, body, o = {}) {
   const u = S.get('users', userId); if (!u) return;
   await save('notifs', uid('n'), { userId, title: String(title).slice(0, 200), body: String(body).slice(0, 800), at: now(), read: false, _nm: 1, link: o.link ? String(o.link).slice(0, 120) : undefined });
@@ -2734,6 +2761,7 @@ async function applyWrite(u, c, id, o, n) {
       const en = what + ' was not accepted: ' + (code === 'other' ? msg : t[0] + (msg ? ' — ' + msg : '')) + '. ' + (code === 'incomplete' ? 'Amount received: ' + xaf(received) + '. Please pay the balance of ' + xaf(left) + ' in the portal.' : 'Please pay again in the portal with the correct transaction ID.');
       const fr = what + ' n’a pas été accepté : ' + (code === 'other' ? msg : t[1] + (msg ? ' — ' + msg : '')) + '. ' + (code === 'incomplete' ? 'Montant reçu : ' + xaf(received) + '. Veuillez régler le solde de ' + xaf(left) + ' dans le portail.' : 'Veuillez payer à nouveau dans le portail avec le bon identifiant de transaction.');
       await notifyUser(o.userId, bi('Payment rejected', 'Paiement rejeté'), en + ' / ' + fr, { sms: true, smsText: 'ADI: ' + en.slice(0, 150) + ' / ' + fr.slice(0, 150) });
+      await rejectionLetter('payment', Object.assign({}, n, { matric: o.matric }), u, en + '\n' + fr);
       return;
     }
   }
@@ -2812,7 +2840,7 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'apps' && n && n.status === 'admitted' && (!o || o.status !== 'admitted') && MB) {
     try { await MB.issueFromAdmission(u, n); } catch (e) { console.error('[mail] admission', e && e.message || e); }
   }
-  if (c === 'msapp') { await sideMod('minesup-api.js').apply({ S, R, logic, save, audit, now, usersWith, notifyUser, bi }, u, id, o, n); return; }
+  if (c === 'msapp') { await sideMod('minesup-api.js').apply({ S, R, logic, save, audit, now, usersWith, notifyUser, bi, rejectionLetter }, u, id, o, n); return; }
   if (n === null) return remove(c, id);
   if (c === 'notices' && !o) {
     const aud = ['all', 'student', 'lecturer', 'applicant', 'admin', 'accountant'].includes(n.aud) ? n.aud : 'all', title = polishTitle(clipT(n.title, 160)), text = polishText(clipT(n.body, 4000)); if (!title || !text) throw ['incomplete'];
@@ -2827,6 +2855,7 @@ async function applyWrite(u, c, id, o, n) {
     })().catch(e => console.log('[notice board] ' + e.message)); return;
   }
   await save(c, id, n);
+  if (c === 'trreq' && o && n.status === 'rejected' && o.status !== 'rejected') { await audit(u, 'transcript request rejected ' + (n.ref || id)); await rejectionLetter('trreq', n, u); }
 }
 
 /* ---------- MoMo ---------- */
@@ -2925,6 +2954,10 @@ async function route(req, res) {
   const url = new URL(req.url, 'http://x'); const p = url.pathname; const sinfo = {}; const u = userOf(req, sinfo);
   if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
   if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|mail\/(setup|desk)|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
+  if (p === '/api/files' || p === '/api/files/save' || p.startsWith('/api/files/')) {       // document archive: every PDF built for a person is kept and can be opened again
+    global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit });
+    if (await global.__DOCFILES.handle(req, res, u, url, p)) return;
+  }
   if (p === '/api/docs/issue' || p === '/verify' || p === '/api/verify' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
     global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core });
     if (await global.__DOCREG.handle(req, res, u, url, p)) return;
