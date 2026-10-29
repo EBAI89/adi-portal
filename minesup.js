@@ -697,7 +697,7 @@
       ${lock('Signature', 'Signature', a.signName)} ${lock('Declared at', 'Déclaré à', (a.place || '') + ' · ' + (a.declDate || ''))}
     </div>${a.delivery === 'school' ? `<p><b>${esc(a.destName || '')}</b> — ${esc(a.destAddr || '')}</p>` : ''}</div>`;
     h += `<div class="card gap"><h3>${LBL('Attachments', 'Pièces jointes')}</h3>${fileBox('ms:' + a.id, { edit: false, types: true })}</div>`;
-    h += `<p><button class="btn gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download stamped form', 'Télécharger le formulaire cacheté')}</button></p>${can('send_notices') || can('manage_students') || can('manage_transcripts') ? ' ' + window.rlButton('msapp', a.id) : ''}</p>${window.rlTimeline(a)}`;
+    h += `<p><button class="btn gold" data-a="mspdf" data-id="${esc(a.id)}">${LBL('Download stamped form', 'Télécharger le formulaire cacheté')}</button> <button class="btn" data-a="msfile" data-m="${esc(a.matric || '')}">${LBL('Open the filed transcript', 'Ouvrir le relevé déposé')}</button></p>${can('send_notices') || can('manage_students') || can('manage_transcripts') ? ' ' + window.rlButton('msapp', a.id) : ''}</p>${window.rlTimeline(a)}`;
     if (a.status === 'submitted') {
       h += `<div class="card ms-pop"><h3>${LBL('Decision', 'Décision')}</h3>
         ${inp('msad.title', both('Name and title of the endorsing officer', 'Nom et qualité du signataire'))}
@@ -861,6 +861,7 @@
     const name = 'ADI-MINESUP-' + String(a.ref || a.id).replace(/[^\w-]+/g, '_') + '.pdf';
     return savePDF(name, d);
   }
+  ACT.msfile = el => { FORMS.dl = { cat: 'transcript', q: el.dataset.m || '', all: true }; if (typeof ARCH !== 'undefined') ARCH.loaded = false; location.hash = '#/downloads'; };
   ACT.mspdf = el => { const a = S.msapp[el.dataset.id]; if (!a) return; downloadApp(a); };
   window.__msBuild = buildPdf;
 
