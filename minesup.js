@@ -410,6 +410,7 @@
       return head() + criteria() + msNoCard(true);
     }
     if (!c.msOk) { if (!FORMS.msc) FORMS.msc = { matric: '' }; return head() + criteria() + msNoCard(false); }
+    if (c.doc && c.doc.length) return head() + docCard(c) + (c.cleared ? '' : feePanel(c));
     if (!c.cleared) return head() + feePanel(c);
     return '';
   }
@@ -434,6 +435,14 @@
       }
     }
     return h + `</div>`;
+  }
+  // The ministry's own scanned transcript, filed unchanged by the administration: opens only when the clearance is complete
+  function docCard(c) {
+    const d = c.doc[0], f = c.fee || {}, ok = !!c.cleared, tick = (v, a, b) => '<li>' + (v ? '✅ ' : '⬜ ') + LBL(a, b) + '</li>';
+    return '<div class="card gap ms-pop"><h3>📄 ' + LBL('Your MINESUP transcript is ready', 'Votre relevé de notes MINESUP est prêt') + '</h3><p><b>' + esc(d.title || d.name) + '</b></p>' +
+      (ok ? '<div class="note">' + LBL('All requirements are met. You may now open and download your transcript. The file is the original document issued by MINESUP, unchanged.', 'Toutes les conditions sont remplies. Vous pouvez ouvrir et télécharger votre relevé. Le fichier est le document original délivré par le MINESUP, non modifié.') + '</div><p><a class="btn gold" href="/api/files/' + esc(d.id) + '" target="_blank" rel="noopener">' + LBL('Open', 'Ouvrir') + '</a> <button class="btn" data-a="dldl" data-id="' + esc(d.id) + '" data-n="' + esc(d.name) + '">⬇ ' + LBL('Download', 'Télécharger') + '</button></p>'
+        : '<div class="note">' + LBL('Your transcript has been uploaded by the administration. It unlocks as soon as the following are complete and confirmed:', 'Votre relevé a été déposé par l\'administration. Il se débloque dès que les éléments suivants sont complétés et confirmés :') + '</div><ul style="list-style:none;padding:0;line-height:1.9">' +
+          tick(c.service, 'Service fee of 2,000 XAF confirmed', 'Frais de service de 2 000 FCFA confirmés') + tick(c.msOk, 'MINESUP matricule verified', 'Matricule MINESUP vérifié') + tick((f.balance || 0) <= 0 && c.tuition, 'Tuition balance paid and confirmed' + ((f.balance || 0) > 0 ? ' (' + money(f.balance) + ' outstanding)' : ''), 'Solde de scolarité payé et confirmé' + ((f.balance || 0) > 0 ? ' (' + money(f.balance) + ' restant)' : '')) + '</ul>') + '</div>';
   }
   ACT.mspay = async el => {
     const c = clearFor(me()) || {}, f = c.fee || {}, pay = f.pay, w = FORMS.msp || {};

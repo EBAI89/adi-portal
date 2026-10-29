@@ -46,10 +46,10 @@ function miniPdf(o) {
 }
 
 module.exports = function makeFiles(ctx) {
-  const { S, now, limited, send, body, audit } = ctx;
+  const { S, now, limited, send, body, audit } = ctx, MS = ctx.ms || null;
   const COL = 'docfiles';
   const isStaff = u => u && !['student', 'applicant'].includes(u.role);
-  const meta = r => ({ id: r.id, name: r.name, cat: r.cat, title: r.title, ref: r.ref, serial: r.serial, matric: r.matric, ownerId: r.ownerId, ownerName: r.ownerName, by: r.byName, at: r.at, last: r.last, size: r.size, pages: r.pages });
+  const meta = r => ({ id: r.id, name: r.name, cat: r.cat, title: r.title, ref: r.ref, serial: r.serial, matric: r.matric, ownerId: r.ownerId, ownerName: r.ownerName, gate: r.gate || '', by: r.byName, at: r.at, last: r.last, size: r.size, pages: r.pages });
 
   async function save(u, b) {
     if (!u || u.status !== 'active') return { code: 401, out: { error: 'sign in' } };
@@ -67,7 +67,7 @@ module.exports = function makeFiles(ctx) {
     const cat = CATS.includes(b.cat) ? b.cat : 'other';
     if (cat === 'transcript' && u.role !== 'super_admin') return { code: 403, out: { error: 'The transcript is filed by the super administrator only.' } };
     const hash = crypto.createHash('sha256').update(buf).digest('hex');
-    const mine = Object.values(S.all(COL)).filter(r => r.ownerId === owner.id);
+    const mine = Object.values(S.all(COL)).filter(r => r.ownerId === owner.id && !r.gate);
     let rec = mine.find(r => r.hash === hash);
     if (rec) { rec.last = now(); await S.put(COL, rec.id, rec); return { code: 200, out: { id: rec.id, again: true } }; }
     if (mine.length >= PER_USER) { const old = mine.sort((a, b2) => a.at - b2.at)[0]; try { await S.delBlob('docf_' + old.id); await S.del(COL, old.id); } catch (e) {} }
@@ -77,6 +77,26 @@ module.exports = function makeFiles(ctx) {
     return { code: 200, out: { id } };
   }
 
+
+  /* The ministry's scanned transcript: stored exactly as received (the bytes are never changed) and tied to the student's record, not to one login. */
+  async function ministry(u, b) {
+    if (!u || u.status !== 'active' || u.role !== 'super_admin') return { code: 403, out: { error: 'Only the super administrator files the ministry transcript.' } };
+    const st = MS && MS.student(String(b.matric || '').trim()); if (!st) return { code: 404, out: { error: 'Unknown student record.' } };
+    const buf = Buffer.from(String(b.b64 || ''), 'base64');
+    if (buf.length < 200 || buf.length > MAX) return { code: 413, out: { error: 'File size not accepted' } };
+    if (buf.slice(0, 5).toString('latin1') !== '%PDF-') return { code: 400, out: { error: 'Only PDF files are accepted' } };
+    const hash = crypto.createHash('sha256').update(buf).digest('hex');
+    let rec = Object.values(S.all(COL)).find(r => r.gate === 'ministry' && r.matric === st.matric && r.hash === hash);
+    if (rec) return { code: 200, out: { id: rec.id, again: true, sha256: hash, size: buf.length, name: st.name } };
+    const id = 'f' + now().toString(36) + crypto.randomBytes(4).toString('hex');
+    rec = { id, hash, name: plain(b.name, 120).replace(/[\\/:*?"<>|]+/g, '_') || 'MINESUP-transcript.pdf', cat: 'transcript', gate: 'ministry', title: plain(b.title, 140) || ('MINESUP transcript — ' + st.name), ref: '', serial: plain(st.msNo, 24), matric: st.matric, ownerId: '', ownerName: st.name || '', byId: u.id, byName: u.name || u.email || '', at: now(), last: now(), size: buf.length, pages: Math.min(500, Number(b.pages) || 0) };
+    await S.putBlob('docf_' + id, buf); await S.put(COL, id, rec);
+    try { await audit(u, 'ministry transcript filed ' + st.matric + ' ' + hash.slice(0, 12)); } catch (e) {}
+    try { await MS.notifyLinked(st.matric, 'Your MINESUP transcript is available', 'Your scanned MINESUP transcript has been uploaded. Complete the service fee and your tuition balance, then open MINESUP > Transcript to download it.'); } catch (e) {}
+    return { code: 200, out: { id, sha256: hash, size: buf.length, name: st.name } };
+  }
+  const forMatric = matric => Object.values(S.all(COL)).filter(r => r.gate === 'ministry' && r.matric === matric).sort((a, b) => b.at - a.at).map(r => ({ id: r.id, name: r.name, title: r.title, at: r.at, size: r.size }));
+  const sees = (u, r) => !!u && (r.ownerId === u.id || u.role === 'super_admin' || (r.gate === 'ministry' && MS && MS.match(u, r.matric)));
 
   /* A letter built by the portal itself (rejection letter, payment notice): filed for the person, and returned so that it can be e-mailed. */
   async function letter(o) {
@@ -89,32 +109,38 @@ module.exports = function makeFiles(ctx) {
   function list(u, q) {
     if (!u || u.status !== 'active') return { code: 401, out: { error: 'sign in' } };
     const cat = q.get('cat') || '', s = String(q.get('q') || '').toLowerCase().trim(), all = u.role === 'super_admin' && q.get('all') === '1';
-    let rows = Object.values(S.all(COL)).filter(r => all || r.ownerId === u.id);
+    let rows = Object.values(S.all(COL)).filter(r => all || sees(u, r));
     if (cat && CATS.includes(cat)) rows = rows.filter(r => r.cat === cat);
     if (s) rows = rows.filter(r => (r.name + ' ' + r.title + ' ' + r.ref + ' ' + r.serial + ' ' + r.matric + ' ' + r.ownerName).toLowerCase().includes(s));
-    const counts = {}; Object.values(S.all(COL)).filter(r => all || r.ownerId === u.id).forEach(r => { counts[r.cat] = (counts[r.cat] || 0) + 1; });
+    const counts = {}; Object.values(S.all(COL)).filter(r => all || sees(u, r)).forEach(r => { counts[r.cat] = (counts[r.cat] || 0) + 1; });
     rows.sort((a, b) => b.at - a.at);
-    return { code: 200, out: { files: rows.slice(0, 400).map(meta), total: rows.length, counts } };
+    return { code: 200, out: { files: rows.slice(0, 400).map(r => { const m = meta(r); if (r.gate === 'ministry' && u.role !== 'super_admin' && MS) { const g = MS.gate(u, r.matric); m.locked = !g.ok; } return m; }), total: rows.length, counts } };
   }
 
   async function handle(req, res, u, url, p) {
     if (p === '/api/files/save' && req.method === 'POST') { const r = await save(u, await body(req, 9 * 1024 * 1024)); send(res, r.code, r.out); return true; }
+    if (p === '/api/files/ministry' && req.method === 'POST') { const r = await ministry(u, await body(req, 9 * 1024 * 1024)); send(res, r.code, r.out); return true; }
     if (p === '/api/files' && req.method === 'GET') { const r = list(u, url.searchParams); send(res, r.code, r.out); return true; }
     const m = /^\/api\/files\/(f[0-9a-z]+)(\/delete)?$/.exec(p);
     if (m) {
       if (!u || u.status !== 'active') { send(res, 401, { error: 'sign in' }); return true; }
       const rec = S.get(COL, m[1]);
-      if (!rec || (rec.ownerId !== u.id && u.role !== 'super_admin')) { send(res, 404, { error: 'Not found' }); return true; }
+      if (!rec || !sees(u, rec)) { send(res, 404, { error: 'Not found' }); return true; }
+      if (rec.gate === 'ministry' && u.role !== 'super_admin') {
+        if (m[2]) { send(res, 403, { error: 'forbidden' }); return true; }
+        const g = MS ? MS.gate(u, rec.matric) : { ok: false };
+        if (!g.ok) { send(res, 402, { error: 'locked', reason: !g.service ? 'service' : !g.linked ? 'link' : (g.balance > 0 || !g.tuition) ? 'tuition' : 'fees', balance: g.balance || 0, awaiting: g.awaiting || 0 }); return true; }
+      }
       if (m[2] && req.method === 'POST') { await S.delBlob('docf_' + rec.id); await S.del(COL, rec.id); try { await audit(u, 'archived file removed ' + rec.name); } catch (e) {} send(res, 200, { ok: true }); return true; }
       if (req.method !== 'GET') { send(res, 405, { error: 'method' }); return true; }
       const buf = await S.getBlob('docf_' + rec.id);
       if (!buf) { send(res, 404, { error: 'File missing' }); return true; }
-      if (rec.ownerId !== u.id) { try { await audit(u, 'archived file opened ' + rec.name + ' (' + rec.ownerName + ')'); } catch (e) {} }
+      if (rec.ownerId !== u.id && u.role === 'super_admin') { try { await audit(u, 'archived file opened ' + rec.name + ' (' + rec.ownerName + ')'); } catch (e) {} }
       const dl = url.searchParams.get('dl') === '1', safe = rec.name.replace(/[^\w.\-]+/g, '_');
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Content-Disposition': (dl ? 'attachment' : 'inline') + '; filename="' + safe + '"', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       res.end(buf); return true;
     }
     return false;
   }
-  return { handle, letter };
+  return { handle, letter, forMatric };
 };

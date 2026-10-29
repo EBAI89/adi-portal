@@ -2490,7 +2490,19 @@ function noticeLetterAuto(u, title, body, lang) {
 
 /* Rejection letters: the letter is filed for the person, e-mailed to every super administrator with the PDF attached (a copy of what the person receives),
    and stays available to the super administrator under "My downloads > All users". */
-const docFiles = () => (global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit }));
+/* The scanned MINESUP transcript (the ministry's own document) is filed unchanged by the super administrator against the student's record. The student sees it, and may download it,
+   only when the same clearance that opens the MINESUP application is complete: service fee confirmed, MINESUP matricule verified, no fee due and the tuition balance paid and confirmed. */
+const msBridge = {
+  match: (u, matric) => !!u && !!matric && (u.msMatric === matric || (u.role === 'student' && ((R.myStudent(u)) || {}).matric === matric)),
+  gate: (u, matric) => {
+    const ms = sideMod('minesup-api.js'), st = S.get('students', matric); if (!st) return { ok: false, why: 'student' };
+    logic.load(S); const fb = logic.core.feeBook(JSON.parse(JSON.stringify(st))), svc = !!logic.serviceOk(S, u.id), msOk = !!ms.msVerified(S, u, st), levelOk = ms.LEVELS.includes(st.level), due = logic.feesDue(S, st), tuition = !!ms.tuitionComplete(logic, S, st);
+    return { ok: !!(svc && msOk && levelOk && !due && tuition), service: svc, linked: msOk, due: due ? due.k : '', tuition, balance: fb.balance, awaiting: fb.tuitionPend };
+  },
+  student: matric => S.get('students', matric) || null,
+  notifyLinked: async (matric, title, text) => { for (const x of Object.values(S.all('users'))) if (x && x.status === 'active' && (x.msMatric === matric)) { try { await notifyUser(x.id, title, text); } catch (e) {} } }
+};
+const docFiles = () => (global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit, ms: msBridge }));
 async function rejectionLetter(kind, rec, by, extra) {
   try {
     const owner = S.get('users', rec.userId); if (!owner) return;
@@ -2955,7 +2967,7 @@ async function route(req, res) {
   if (u && p.startsWith('/api/') && req.headers['x-adi-active'] === '1' && p !== '/api/logout') res.setHeader('Set-Cookie', cookie(makeToken(u, sinfo.iat), 1));   // sliding idle window: renewed only by real user activity
   if (u && mfaPending(u) && p.startsWith('/api/') && !/^\/api\/(mfa\/|mail\/(setup|desk)|logout|password|health|sync|rates|session\/ping)/.test(p)) return send(res, 403, { error: 'mfa_setup' });
   if (p === '/api/files' || p === '/api/files/save' || p.startsWith('/api/files/')) {       // document archive: every PDF built for a person is kept and can be opened again
-    global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit });
+    docFiles();
     if (await global.__DOCFILES.handle(req, res, u, url, p)) return;
   }
   if (p === '/api/docs/issue' || p === '/verify' || p === '/api/verify' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
@@ -3096,7 +3108,7 @@ async function route(req, res) {
       const st = u.role === 'student' ? R.myStudent(u) : (u.msMatric ? S.get('students', u.msMatric) : null);
       const levelOk = !!st && ms.LEVELS.includes(st.level), due = st ? logic.feesDue(S, st) : null, tuition = !!st && ms.tuitionComplete(logic, S, st);
       const msOk = ms.msVerified(S, u, st);
-      return { service: svc, student: view(st), msNo: msOk ? ms.normNo(u.msNo) : '', msOk, levelOk, due, tuition, cleared: !!(svc && st && msOk && levelOk && !due && tuition), fee: st ? feeState(st) : null };
+      return { service: svc, student: view(st), msNo: msOk ? ms.normNo(u.msNo) : '', msOk, levelOk, due, tuition, cleared: !!(svc && st && msOk && levelOk && !due && tuition), fee: st ? feeState(st) : null, doc: st && msOk ? docFiles().forMatric(st.matric) : null };
     };
     const feeState = st => {
       logic.load(S); const fb = logic.core.feeBook(JSON.parse(JSON.stringify(st))), ay = logic.AY(), due = logic.feesDue(S, st);
