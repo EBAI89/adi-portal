@@ -136,6 +136,7 @@ module.exports = function makeFiles(ctx) {
       if (req.method !== 'GET') { send(res, 405, { error: 'method' }); return true; }
       const buf = await S.getBlob('docf_' + rec.id);
       if (!buf) { send(res, 404, { error: 'File missing' }); return true; }
+      if (rec.gate === 'ministry' && u.role !== 'super_admin' && MS && MS.notifySuper && !(rec.lastNote && rec.lastNote[u.id] > now() - 600e3)) { rec.lastNote = Object.assign({}, rec.lastNote, { [u.id]: now() }); try { await S.put(COL, rec.id, rec); } catch (e) {} MS.notifySuper(u, rec); }
       if (rec.ownerId !== u.id && u.role === 'super_admin') { try { await audit(u, 'archived file opened ' + rec.name + ' (' + rec.ownerName + ')'); } catch (e) {} }
       const dl = url.searchParams.get('dl') === '1', safe = rec.name.replace(/[^\w.\-]+/g, '_');
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Content-Disposition': (dl ? 'attachment' : 'inline') + '; filename="' + safe + '"', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });

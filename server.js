@@ -2500,6 +2500,15 @@ const msBridge = {
     return { ok: !!(svc && msOk && levelOk && !due && tuition), service: svc, linked: msOk, due: due ? due.k : '', tuition, balance: fb.balance, awaiting: fb.tuitionPend };
   },
   student: matric => S.get('students', matric) || null,
+  notifySuper: async (u, rec) => {      // e-mail to every super administrator when a student opens or downloads the ministry transcript
+    try {
+      const st = S.get('students', rec.matric) || {}, adm = new Set(Object.values(S.all('users')).filter(x => x && x.role === 'super_admin' && x.status === 'active').flatMap(x => noticeEmails(x))); if (E.SUPER_ADMIN_EMAIL) adm.add(String(E.SUPER_ADMIN_EMAIL).trim().toLowerCase());
+      const when = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Douala' }), who = (st.name || u.name || u.email || '') + ' (' + rec.matric + ')';
+      const txt = 'MINESUP transcript downloaded / Relevé MINESUP téléchargé\n\nStudent / Étudiant: ' + who + '\nAccount / Compte: ' + (u.email || '') + '\nDocument: ' + rec.name + (rec.serial ? ' · ' + rec.serial : '') + '\nDate: ' + when + ' (Yaoundé)\n\nThe service fee, the MINESUP check and the tuition balance were all confirmed before the file was released. / Les frais de service, la vérification MINESUP et le solde de scolarité étaient confirmés avant la remise du fichier.';
+      for (const to of adm) sendEmail({ to, subject: 'MINESUP transcript downloaded - ' + (st.name || rec.matric), text: txt });
+      await audit(u, 'MINESUP transcript downloaded by student ' + rec.matric);
+    } catch (e) { console.error('[transcript notice]', e && e.message || e); }
+  },
   notifyLinked: async (matric, title, text) => { for (const x of Object.values(S.all('users'))) if (x && x.status === 'active' && (x.msMatric === matric)) { try { await notifyUser(x.id, title, text); } catch (e) {} } }
 };
 const docFiles = () => (global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit, ms: msBridge }));
