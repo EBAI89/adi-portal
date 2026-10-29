@@ -49,7 +49,7 @@ module.exports = function makeFiles(ctx) {
   const { S, now, limited, send, body, audit } = ctx, MS = ctx.ms || null;
   const COL = 'docfiles';
   const isStaff = u => u && !['student', 'applicant'].includes(u.role);
-  const meta = r => ({ id: r.id, name: r.name, cat: r.cat, title: r.title, ref: r.ref, serial: r.serial, matric: r.matric, ownerId: r.ownerId, ownerName: r.ownerName, gate: r.gate || '', by: r.byName, at: r.at, last: r.last, size: r.size, pages: r.pages });
+  const meta = r => ({ id: r.id, name: r.name, cat: r.cat, title: r.title, ref: r.ref, serial: r.serial, matric: r.matric, ownerId: r.ownerId, ownerName: r.ownerName, gate: r.gate || '', by: r.byName, at: r.at, last: r.last, size: r.size, pages: r.pages, dl: (r.dl || []).length, dlLast: (r.dl || []).slice(-8).reverse() });
 
   async function save(u, b) {
     if (!u || u.status !== 'active') return { code: 401, out: { error: 'sign in' } };
@@ -114,7 +114,7 @@ module.exports = function makeFiles(ctx) {
     if (s) rows = rows.filter(r => (r.name + ' ' + r.title + ' ' + r.ref + ' ' + r.serial + ' ' + r.matric + ' ' + r.ownerName).toLowerCase().includes(s));
     const counts = {}; Object.values(S.all(COL)).filter(r => all || sees(u, r)).forEach(r => { counts[r.cat] = (counts[r.cat] || 0) + 1; });
     rows.sort((a, b) => b.at - a.at);
-    return { code: 200, out: { files: rows.slice(0, 400).map(r => { const m = meta(r); if (r.gate === 'ministry' && u.role !== 'super_admin' && MS) { const g = MS.gate(u, r.matric); m.locked = !g.ok; } return m; }), total: rows.length, counts } };
+    return { code: 200, out: { files: rows.slice(0, 400).map(r => { const m = meta(r); if (u.role !== 'super_admin') { delete m.dl; delete m.dlLast; } if (r.gate === 'ministry' && u.role !== 'super_admin' && MS) { const g = MS.gate(u, r.matric); m.locked = !g.ok; } return m; }), total: rows.length, counts } };
   }
 
   async function handle(req, res, u, url, p) {
@@ -136,7 +136,13 @@ module.exports = function makeFiles(ctx) {
       if (req.method !== 'GET') { send(res, 405, { error: 'method' }); return true; }
       const buf = await S.getBlob('docf_' + rec.id);
       if (!buf) { send(res, 404, { error: 'File missing' }); return true; }
-      if (rec.gate === 'ministry' && u.role !== 'super_admin' && MS && MS.notifySuper && !(rec.lastNote && rec.lastNote[u.id] > now() - 600e3)) { rec.lastNote = Object.assign({}, rec.lastNote, { [u.id]: now() }); try { await S.put(COL, rec.id, rec); } catch (e) {} MS.notifySuper(u, rec); }
+      if (rec.gate === 'ministry' && u.role !== 'super_admin') {     // every student opening is logged for the super administrators; the e-mail is sent once per 10 minutes
+        const quiet = !!(rec.lastNote && rec.lastNote[u.id] > now() - 600e3);
+        rec.dl = (rec.dl || []).concat([{ uid: u.id, name: u.name || '', email: u.email || '', at: now(), dl: url.searchParams.get('dl') === '1' ? 1 : 0 }]).slice(-60);
+        if (!quiet) rec.lastNote = Object.assign({}, rec.lastNote, { [u.id]: now() });
+        try { await S.put(COL, rec.id, rec); } catch (e) {}
+        if (!quiet && MS && MS.notifySuper) MS.notifySuper(u, rec);
+      }
       if (rec.ownerId !== u.id && u.role === 'super_admin') { try { await audit(u, 'archived file opened ' + rec.name + ' (' + rec.ownerName + ')'); } catch (e) {} }
       const dl = url.searchParams.get('dl') === '1', safe = rec.name.replace(/[^\w.\-]+/g, '_');
       res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': buf.length, 'Content-Disposition': (dl ? 'attachment' : 'inline') + '; filename="' + safe + '"', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
