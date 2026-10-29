@@ -123,9 +123,10 @@ module.exports = function makeFiles(ctx) {
     if (p === '/api/files' && req.method === 'GET') { const r = list(u, url.searchParams); send(res, r.code, r.out); return true; }
     const m = /^\/api\/files\/(f[0-9a-z]+)(\/delete)?$/.exec(p);
     if (m) {
-      if (!u || u.status !== 'active') { send(res, 401, { error: 'sign in' }); return true; }
       const rec = S.get(COL, m[1]);
-      if (!rec || !sees(u, rec)) { send(res, 404, { error: 'Not found' }); return true; }
+      if (!rec) return false;          // not an archived PDF: ids of attachments (payment screenshots) are handled by the attachment routes
+      if (!u || u.status !== 'active') { send(res, 401, { error: 'sign in' }); return true; }
+      if (!sees(u, rec)) { send(res, 404, { error: 'Not found' }); return true; }
       if (rec.gate === 'ministry' && u.role !== 'super_admin') {
         if (m[2]) { send(res, 403, { error: 'forbidden' }); return true; }
         const g = MS ? MS.gate(u, rec.matric) : { ok: false };
