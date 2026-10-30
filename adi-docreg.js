@@ -97,7 +97,11 @@ module.exports = function makeDocReg(ctx) {
       add('pob', cmpText(claim.pob, ow.pob)); add('gender', !String(claim.gender || '').trim() ? 'blank' : !ow.gender ? 'unknown' : String(claim.gender).trim().toUpperCase()[0] === ow.gender ? 'match' : 'mismatch');
       add('programme', Math.max(cmpText(claim.programme, ow.programme) === 'match' ? 1 : 0, cmpText(claim.programme, ow.programmeFr) === 'match' ? 1 : 0) ? 'match' : cmpText(claim.programme, ow.programme));
       add('school', cmpText(claim.school, ow.school) === 'mismatch' && cmpText(claim.school, ow.schoolFr) !== 'mismatch' ? cmpText(claim.school, ow.schoolFr) : cmpText(claim.school, ow.school)); add('specialty', cmpText(claim.specialty, ow.specialty));
-    } else add('name', cmpText(claim.name, rec.subject || rec.name || ''));
+    } else {
+      const subj = String(rec.subject || rec.name || ''), who = subj.split(/\s+[—–-]\s+/)[0], amt = (subj.match(/[—–-]\s*([\d.,\s]+)\s*[A-Za-z]{2,4}\s*$/) || [])[1];
+      add('name', cmpName(claim.name, who));
+      const ca = String(claim.amount || '').replace(/\D/g, ''), ra = String(amt || '').replace(/\D/g, ''); add('amount', !ca ? 'blank' : !ra ? 'unknown' : ca === ra ? 'match' : 'mismatch');
+    }
     const given = f.filter(x => x.st !== 'blank'), bad = given.filter(x => x.st === 'mismatch').length, part = given.filter(x => x.st === 'partial').length, ok = given.filter(x => x.st === 'match').length;
     const nm = (f.find(x => x.k === 'name') || {}).st;
     const verdict = !given.length ? 'none' : bad ? 'mismatch' : part ? 'review' : (nm === 'match' && (ok >= 2 || !ow)) ? 'confirmed' : 'insufficient';
@@ -106,14 +110,17 @@ module.exports = function makeDocReg(ctx) {
   async function check(ipAddr, s, c, claim) {
     s = plain(s, 40).toUpperCase(); c = plain(c, 20).toUpperCase(); const rec = S.get(COL, s);
     if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return { valid: false };
-    const cl = {}; ['name', 'matric', 'dob', 'pob', 'gender', 'programme', 'school', 'specialty'].forEach(k => { cl[k] = plain((claim || {})[k], 120); });
+    const cl = {}; ['name', 'matric', 'dob', 'pob', 'gender', 'programme', 'school', 'specialty', 'amount'].forEach(k => { cl[k] = plain((claim || {})[k], 120); });
     const st = rec.matric ? S.get('students', rec.matric) : null, ow = st ? owner(st) : null, r = compare(rec, ow || (rec.name && rec.matric ? { name: rec.name, matric: rec.matric, dob: '', pob: '', gender: '', programme: '', programmeFr: '', school: '', schoolFr: '', specialty: '' } : null), cl);
     if (r.verdict === 'mismatch') {
       rec.mm = (rec.mm || 0) + 1; rec.mmAt = now(); const alert = !rec.mmAlert || now() - rec.mmAlert > 3600e3; if (alert) rec.mmAlert = now(); await S.put(COL, rec.id, rec);
       try { await audit(null, 'verification identity mismatch on ' + rec.id + ' (' + r.fields.filter(x => x.st === 'mismatch').map(x => x.k).join(', ') + ') — possible impersonation or copied serial number'); } catch (e) {}
       if (alert && ctx.notifyUser && ctx.usersWith) { try { for (const a of ctx.usersWith('__super')) await ctx.notifyUser(a.id, 'Possible impersonation detected', 'A verification of document ' + rec.id + ' found that the identity presented does not match the register (' + r.fields.filter(x => x.st === 'mismatch').map(x => x.k).join(', ') + '). The serial number may have been copied.'); } catch (e) {} }
     }
-    return { valid: true, verdict: r.verdict, fields: r.fields };
+    const det = detail(s, c), mask = n => String(n || '').split(/\s+/).filter(Boolean).map(w => w[0] + '*'.repeat(Math.max(2, Math.min(6, w.length - 1)))).join(' ');
+    // one verdict: the document is shown as authentic only when the register entry AND the identity presented agree; on a mismatch the holder's particulars are withheld
+    const doc = r.verdict === 'mismatch' ? { valid: true, serial: det.serial, type: det.type, typeEn: det.typeEn, typeFr: det.typeFr, issued: det.issued, pages: det.pages, holderMask: mask(ow ? ow.name : String(rec.subject || rec.name || '').split(/\s+[—–-]\s+/)[0]) } : det;
+    return { valid: true, status: r.verdict === 'none' ? 'registered' : r.verdict, verdict: r.verdict, fields: r.fields, doc };
   }
 
   const CSS = `*{box-sizing:border-box}body{margin:0;background:#eef1f8;color:#16213e;font:15px/1.5 Georgia,'Times New Roman',serif}
