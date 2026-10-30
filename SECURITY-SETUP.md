@@ -32,3 +32,6 @@ Staff may now choose **"By SMS to my phone"** on *Account security*. At every si
 *Account security* also offers **"By e-mail (free)"**: at each sign-in a 6-digit code (valid 5 minutes) is e-mailed to the account address. It needs only the e-mail provider (Brevo), no SMS credentials. Recovery codes are issued at activation.
 
 **Update (v2.61.1):** the SMS option is no longer offered on the set-up screen; choose e-mail or the authenticator app. SMS support stays dormant in the server and can be re-enabled later.
+
+## Verification: holder identity cross-check (v2.151.0)
+The public verification page (`#/verify/<serial>?c=<code>`) now shows the genuine holder of the document as held by the University: name, matricule, date and place of birth, sex, nationality, programme, faculty/school, department/specialty and the passport photograph. An **Identity cross-check** compares the particulars printed on the document presented (or stated by the person presenting it) with the register, field by field. Any mismatch is reported as a possible impersonation or copied serial number, recorded in the audit log, and the super administrators are alerted (at most once an hour per document). Set `DOCREG_PHOTO=0` in Render to hide the photograph on the public page.
