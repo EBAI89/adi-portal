@@ -56,6 +56,66 @@ module.exports = function makeDocReg(ctx) {
   }
   const fmtD = t => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Africa/Douala' });
 
+
+  // ---- the genuine owner of a document: identity and bio data as held by the University (never supplied by the client)
+  const LV = (core && core.LEVELS) || {};
+  function owner(st) {
+    if (!st) return null;
+    const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
+    let app = null;
+    if (st.userId) { const mine = Object.values(S.all('apps')).filter(a => a && a.userId === st.userId && a.p); app = mine.find(a => a.status === 'admitted' && a.p.dob) || mine.find(a => a.p.dob) || mine[0] || null; }
+    const p = (app && app.p) || {}, us = st.userId ? S.get('users', st.userId) : null, ph = st.photo || (app && app.photo) || (us && us.photo) || '';
+    const lv = LV[st.level] || {};
+    return {
+      name: st.name, matric: st.matric, level: st.level || '', programme: (lv.en || st.level || ''), programmeFr: (lv.fr || lv.en || st.level || ''), school: grp.en || '', schoolFr: grp.fr || grp.en || '', specialty: sp.name || '',
+      dob: /^\d{4}-\d{2}-\d{2}$/.test(String(p.dob || '')) ? p.dob : '', pob: plain(p.pob, 60), gender: /^[MF]$/i.test(String(p.gender || '')) ? String(p.gender).toUpperCase() : '', nat: plain(p.nat, 40),
+      photo: process.env.DOCREG_PHOTO !== '0' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(String(ph)) && String(ph).length <= 150000 ? String(ph) : ''
+    };
+  }
+  // ---- identity cross-check: what the person presenting the document claims, compared field by field with the register
+  const norm = x => String(x == null ? '' : x).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const toks = x => norm(x).split(' ').filter(Boolean);
+  function cmpName(a, b) {
+    const A = [...new Set(toks(a))], B = [...new Set(toks(b))]; if (!B.length) return 'unknown'; if (!A.length) return 'blank';
+    const n = A.filter(t => B.includes(t)).length, m = Math.max(A.length, B.length);
+    if (n === A.length && n === B.length) return 'match'; if (n >= 2 && n / m >= 0.67) return 'partial'; return 'mismatch';
+  }
+  function cmpText(a, b) {
+    const x = norm(a), y = norm(b); if (!y) return 'unknown'; if (!x) return 'blank'; if (x === y || x.includes(y) || y.includes(x)) return 'match';
+    const A = [...new Set(toks(a))], B = [...new Set(toks(b))], n = A.filter(t => B.includes(t)).length; return n / Math.max(A.length, B.length) >= 0.6 ? 'partial' : 'mismatch';
+  }
+  function isoDate(v) {
+    v = String(v || '').trim(); let m = /^(\d{4})[-\/. ](\d{1,2})[-\/. ](\d{1,2})$/.exec(v); if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+    m = /^(\d{1,2})[-\/. ](\d{1,2})[-\/. ](\d{4})$/.exec(v); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : '';
+  }
+  const cmpExact = (a, b) => { const x = norm(a).replace(/ /g, ''), y = norm(b).replace(/ /g, ''); return !y ? 'unknown' : !x ? 'blank' : x === y ? 'match' : 'mismatch'; };
+  function compare(rec, ow, claim) {
+    claim = claim || {}; const f = [], add = (k, st) => f.push({ k, st });
+    if (ow) {
+      add('name', cmpName(claim.name, ow.name)); add('matric', cmpExact(claim.matric, ow.matric));
+      const cd = isoDate(claim.dob); add('dob', !String(claim.dob || '').trim() ? 'blank' : !ow.dob ? 'unknown' : !cd ? 'mismatch' : cd === ow.dob ? 'match' : 'mismatch');
+      add('pob', cmpText(claim.pob, ow.pob)); add('gender', !String(claim.gender || '').trim() ? 'blank' : !ow.gender ? 'unknown' : String(claim.gender).trim().toUpperCase()[0] === ow.gender ? 'match' : 'mismatch');
+      add('programme', Math.max(cmpText(claim.programme, ow.programme) === 'match' ? 1 : 0, cmpText(claim.programme, ow.programmeFr) === 'match' ? 1 : 0) ? 'match' : cmpText(claim.programme, ow.programme));
+      add('school', cmpText(claim.school, ow.school) === 'mismatch' && cmpText(claim.school, ow.schoolFr) !== 'mismatch' ? cmpText(claim.school, ow.schoolFr) : cmpText(claim.school, ow.school)); add('specialty', cmpText(claim.specialty, ow.specialty));
+    } else add('name', cmpText(claim.name, rec.subject || rec.name || ''));
+    const given = f.filter(x => x.st !== 'blank'), bad = given.filter(x => x.st === 'mismatch').length, part = given.filter(x => x.st === 'partial').length, ok = given.filter(x => x.st === 'match').length;
+    const nm = (f.find(x => x.k === 'name') || {}).st;
+    const verdict = !given.length ? 'none' : bad ? 'mismatch' : part ? 'review' : (nm === 'match' && (ok >= 2 || !ow)) ? 'confirmed' : 'insufficient';
+    return { fields: f, verdict };
+  }
+  async function check(ipAddr, s, c, claim) {
+    s = plain(s, 40).toUpperCase(); c = plain(c, 20).toUpperCase(); const rec = S.get(COL, s);
+    if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return { valid: false };
+    const cl = {}; ['name', 'matric', 'dob', 'pob', 'gender', 'programme', 'school', 'specialty'].forEach(k => { cl[k] = plain((claim || {})[k], 120); });
+    const st = rec.matric ? S.get('students', rec.matric) : null, ow = st ? owner(st) : null, r = compare(rec, ow || (rec.name && rec.matric ? { name: rec.name, matric: rec.matric, dob: '', pob: '', gender: '', programme: '', programmeFr: '', school: '', schoolFr: '', specialty: '' } : null), cl);
+    if (r.verdict === 'mismatch') {
+      rec.mm = (rec.mm || 0) + 1; rec.mmAt = now(); const alert = !rec.mmAlert || now() - rec.mmAlert > 3600e3; if (alert) rec.mmAlert = now(); await S.put(COL, rec.id, rec);
+      try { await audit(null, 'verification identity mismatch on ' + rec.id + ' (' + r.fields.filter(x => x.st === 'mismatch').map(x => x.k).join(', ') + ') — possible impersonation or copied serial number'); } catch (e) {}
+      if (alert && ctx.notifyUser && ctx.usersWith) { try { for (const a of ctx.usersWith('__super')) await ctx.notifyUser(a.id, 'Possible impersonation detected', 'A verification of document ' + rec.id + ' found that the identity presented does not match the register (' + r.fields.filter(x => x.st === 'mismatch').map(x => x.k).join(', ') + '). The serial number may have been copied.'); } catch (e) {} }
+    }
+    return { valid: true, verdict: r.verdict, fields: r.fields };
+  }
+
   const CSS = `*{box-sizing:border-box}body{margin:0;background:#eef1f8;color:#16213e;font:15px/1.5 Georgia,'Times New Roman',serif}
 .top{background:#0b2559;color:#fff;padding:18px 20px;border-bottom:4px solid #c9a227}.top h1{margin:0;font-size:19px;letter-spacing:.4px}.top p{margin:2px 0 0;font-size:12.5px;opacity:.85;font-style:italic}
 .wrap{max-width:860px;margin:18px auto;padding:0 14px}.card{background:#fff;border:1px solid #d5dbea;border-top:3px solid #c9a227;border-radius:4px;padding:18px 20px;margin-bottom:14px}
@@ -80,7 +140,8 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
       (st ? '<dt>Student · Étudiant</dt><dd>' + esc(st.name) + '</dd><dt>Matricule</dt><dd>' + esc(st.matric) + '</dd>' : (rec.subject ? '<dt>Subject · Objet</dt><dd>' + esc(rec.subject) + '</dd>' : '')) + '</dl></div>';
     if (st && (rec.type === 'TR' || rec.type === 'SR')) {
       const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
-      h = h.replace('</dl></div>', '<dt>Programme</dt><dd>' + esc(sp.name || st.specId || '—') + (st.level ? ' (' + esc(st.level) + ')' : '') + '</dd>' + (grp.en ? '<dt>School · Faculté</dt><dd>' + esc(grp.en) + '</dd>' : '') + '</dl></div>');
+      const ow = owner(st), gl = ow.gender === 'F' ? 'Female · Féminin' : ow.gender === 'M' ? 'Male · Masculin' : '';
+      h = h.replace('</dl></div>', '<dt>Programme</dt><dd>' + esc(ow.programme || '—') + '</dd>' + (ow.school ? '<dt>School · Faculté</dt><dd>' + esc(ow.school) + '</dd>' : '') + (ow.specialty ? '<dt>Department / Specialty · Spécialité</dt><dd>' + esc(ow.specialty) + '</dd>' : '') + (ow.dob ? '<dt>Date of birth · Né(e) le</dt><dd>' + esc(fmtD(Date.parse(ow.dob + 'T12:00:00Z'))) + '</dd>' : '') + (ow.pob ? '<dt>Place of birth · Lieu</dt><dd>' + esc(ow.pob) + '</dd>' : '') + (gl ? '<dt>Sex · Sexe</dt><dd>' + gl + '</dd>' : '') + (ow.nat ? '<dt>Nationality · Nationalité</dt><dd>' + esc(ow.nat) + '</dd>' : '') + '</dl>' + (ow.photo ? '<p><img alt="Holder photograph" src="' + ow.photo + '" style="width:110px;height:130px;object-fit:cover;border:1px solid #d5dbea;margin-top:10px"></p>' : '') + '<p class="note">Compare these particulars, and the photograph, with the identity of the person presenting the document. · Comparez ces données, et la photographie, avec l\'identité de la personne qui présente le document.</p></div>');
       const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0, cur = '';
       let t = '<div class="card"><h2 style="margin-top:0">Results on file at ADI University · Résultats détenus par ADI University</h2><table><tr><th>Code</th><th>Course · Cours</th><th class="n">CV</th><th class="n">Mark</th><th>Grade</th><th class="n">GP</th></tr>';
       rows.forEach(r => { const k = r.ay + ' · S' + r.sem; if (k !== cur) { cur = k; t += '<tr><td colspan="6" style="background:#e9eef8;font-weight:bold">' + esc(k) + '</td></tr>'; } cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; t += '<tr><td>' + esc(r.code) + '</td><td>' + esc(r.title) + '</td><td class="n">' + r.cv + '</td><td class="n">' + esc(r.total) + (r.resit ? ' #' : '') + '</td><td>' + esc(r.grade) + '</td><td class="n">' + r.gp.toFixed(1) + '</td></tr>'; });
@@ -98,7 +159,7 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
     const out = { valid: true, serial: rec.id, type: rec.type, typeEn: T[0], typeFr: T[1], issued: rec.at, pages: rec.pages || 0, ay: rec.ay || '', sem: rec.sem || '', subject: rec.subject || '' };
     if (st) {
       const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
-      out.student = { name: st.name, matric: st.matric, programme: sp.name || st.specId || '', level: st.level || '', school: grp.en || '' };
+      const ow = owner(st); out.student = Object.assign({ programme: sp.name || st.specId || '', level: st.level || '' }, ow, { programmeName: ow.programme, specialty: ow.specialty || sp.name || '' });
       if (rec.type === 'TR' || rec.type === 'SR') {
         const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
         rows.forEach(r => { cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; });
@@ -110,13 +171,18 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
 
   async function handle(req, res, u, url, p) {
     if (p === '/api/docs/issue' && req.method === 'POST') { const r = await issue(u, await body(req, 4000)); send(res, r.code, r.out); return true; }
-    if (p === '/verify' || p.startsWith('/verify/') || p === '/api/verify') {
+    if (p === '/verify' || p.startsWith('/verify/') || p === '/api/verify' || p === '/api/verify/check') {
       if (limited('verify:' + ip(req), 80, 3600e3)) { res.writeHead(429, { 'Content-Type': 'text/plain' }); res.end('Too many requests'); return true; }
       const q = url.searchParams, s = p.startsWith('/verify/') ? decodeURIComponent(p.slice(8)) : (q.get('s') || ''), c = q.get('c') || '';
+      if (p === '/api/verify/check') {
+        if (req.method !== 'POST') { send(res, 405, { error: 'POST' }); return true; }
+        if (limited('vcheck:' + ip(req), 40, 3600e3)) { send(res, 429, { error: 'Too many checks' }); return true; }
+        const b = await body(req, 4000); send(res, 200, await check(ip(req), b.s, b.c, b.claim)); return true;
+      }
       if (p === '/api/verify') { send(res, 200, detail(s, c)); return true; }
       if (p !== '/verify' && !q.get('plain') && s) { res.writeHead(302, { Location: '/#/verify/' + encodeURIComponent(s) + '?c=' + encodeURIComponent(c), 'Cache-Control': 'no-store' }); res.end(); return true; }   // the portal page does the checking
       const html = page(s, c);
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'" });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'" });
       res.end(html); return true;
     }
     return false;

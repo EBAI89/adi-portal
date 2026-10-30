@@ -2979,8 +2979,8 @@ async function route(req, res) {
     docFiles();
     if (await global.__DOCFILES.handle(req, res, u, url, p)) return;
   }
-  if (p === '/api/docs/issue' || p === '/verify' || p === '/api/verify' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
-    global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core });
+  if (p === '/api/docs/issue' || p === '/verify' || p === '/api/verify' || p === '/api/verify/check' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
+    global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core, notifyUser, usersWith });
     if (await global.__DOCREG.handle(req, res, u, url, p)) return;
   }
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });
