@@ -41,3 +41,6 @@ The verification page now validates the serial number, the code and the holder i
 
 ## Receipts carry the programme; the verification form follows the document (v2.153.0)
 A payment receipt registered in the authenticity register now records the payment (receipt number, amount, purpose, academic year, status) and the programme the payer is registered for or has been admitted to (programme, faculty/school, specialty, level, matricule), read from the portal records. Open a receipt again and download it once to bring an older receipt up to date. The verification page asks only for the particulars that apply to the document: a receipt asks for the payer, programme and amount; a transcript or statement for the student bio data; a timetable or other general document for none (its serial number and code alone authenticate it). The particulars are never pre-filled from the register, since the check would then prove nothing.
+
+## Verification page: the button always leads somewhere (v2.154.0)
+Tapping "Verify and compare with the register" now consults the register, brings the verdict to the top of the screen, and, when no particulars have been entered, explains what to enter and places the cursor in the first field. The result tables fit a phone screen.
