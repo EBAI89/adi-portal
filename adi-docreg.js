@@ -31,6 +31,11 @@ module.exports = function makeDocReg(ctx) {
     const matric = plain(b.matric, 24).toUpperCase(), st = matric ? S.get('students', matric) : null;
     if (type === 'TR' && !(u.role === 'super_admin' && st)) return { code: 403, out: { error: 'The transcript is issued by the super administrator only.' } };
     if (st && !isStaff(u) && st.userId !== u.id && u.matric !== st.matric) return { code: 403, out: { error: 'forbidden' } };
+    let pay = null;
+    if (type === 'RC' && b.pay) {
+      pay = S.get('payments', plain(b.pay, 60));
+      if (pay && !isStaff(u) && pay.userId !== u.id && !(pay.matric && u.matric === pay.matric)) return { code: 403, out: { error: 'forbidden' } };
+    }
     const key = crypto.createHash('sha256').update([type, matric, plain(b.ay, 12), plain(b.sem, 4), digest].join('|')).digest('hex').slice(0, 24);
     let rec = Object.values(S.all(COL)).find(r => r.key === key);
     if (!rec) {
@@ -38,6 +43,7 @@ module.exports = function makeDocReg(ctx) {
       rec = { id: serial, key, type, title: plain(b.title, 120), matric: st ? st.matric : '', name: st ? st.name : '', ay: plain(b.ay, 12), sem: plain(b.sem, 4), pages: Math.min(500, Number(b.pages) || 0), digest, at: now(), by: u.id, role: u.role, n: 0 };
       if (b.subject) rec.subject = plain(b.subject, 100);
     }
+    if (pay && !rec.rc) applyPay(rec, pay);
     rec.n = (rec.n || 0) + 1; rec.last = now(); await S.put(COL, rec.id, rec);
     if (type === 'TR') { try { await audit(u, 'transcript issued ' + rec.id + ' ' + rec.matric); } catch (e) {} }
     return { code: 200, out: { serial: rec.id, code: codeOf(rec.id, rec.digest), at: rec.at } };
@@ -67,10 +73,33 @@ module.exports = function makeDocReg(ctx) {
     const p = (app && app.p) || {}, us = st.userId ? S.get('users', st.userId) : null, ph = st.photo || (app && app.photo) || (us && us.photo) || '';
     const lv = LV[st.level] || {};
     return {
-      name: st.name, matric: st.matric, level: st.level || '', programme: (lv.en || st.level || ''), programmeFr: (lv.fr || lv.en || st.level || ''), school: grp.en || '', schoolFr: grp.fr || grp.en || '', specialty: sp.name || '',
+      name: st.name, matric: st.matric || '', level: st.level || '', programme: (lv.en || st.level || ''), programmeFr: (lv.fr || lv.en || st.level || ''), school: grp.en || '', schoolFr: grp.fr || grp.en || '', specialty: sp.name || '',
       dob: /^\d{4}-\d{2}-\d{2}$/.test(String(p.dob || '')) ? p.dob : '', pob: plain(p.pob, 60), gender: /^[MF]$/i.test(String(p.gender || '')) ? String(p.gender).toUpperCase() : '', nat: plain(p.nat, 40),
       photo: process.env.DOCREG_PHOTO !== '0' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(String(ph)) && String(ph).length <= 150000 ? String(ph) : ''
     };
+  }
+  // ---- a payment receipt carries the payment itself and the programme the payer is registered for (read from the portal's own records, never from the browser)
+  function applyPay(rec, pay) {
+    rec.rc = { payer: plain(pay.payerName, 120), amount: Number(pay.amount) || 0, label: plain(pay.label || pay.kind, 120), ay: plain(pay.ay, 12), receiptNo: plain(pay.receiptNo, 40), status: plain(pay.status, 20), paidAt: pay.at || 0 };
+    rec.uid = pay.userId || '';
+    let st = pay.matric ? S.get('students', String(pay.matric).toUpperCase()) : null;
+    if (!st && pay.userId) st = Object.values(S.all('students')).find(x => x && x.userId === pay.userId) || null;
+    if (st) { rec.matric = st.matric; rec.name = st.name; rec.prog = { specId: st.specId || '', level: st.level || '', gid: st.gid || '' }; return; }
+    const apps = pay.userId ? Object.values(S.all('apps')).filter(a => a && a.userId === pay.userId && a.decision && a.decision.specId) : [];
+    const a = apps.find(x => x.status === 'admitted') || apps[0];
+    if (a) { const sp = (core && core.SPEC && core.SPEC[a.decision.specId]) || {}; rec.prog = { specId: a.decision.specId, level: a.decision.level || a.level || sp.level || '', gid: sp.gid || '' }; }
+  }
+  // who a document belongs to: the enrolled student, or — for a receipt paid before enrolment — the applicant and the programme offered
+  function ownerOf(rec) {
+    const st = rec.matric ? S.get('students', rec.matric) : null; if (st) return owner(st);
+    if (rec.prog && rec.rc) return owner({ name: rec.rc.payer || rec.name, matric: '', level: rec.prog.level, specId: rec.prog.specId, gid: rec.prog.gid, userId: rec.uid });
+    return null;
+  }
+  // the particulars that apply to this document: they drive the verification form, so only relevant fields are asked for
+  function idFields(rec, ow) {
+    if (rec.type === 'RC') return ow ? ['name', 'matric', 'programme', 'school', 'specialty', 'amount'] : ['name', 'amount'];
+    if (!ow) return [];
+    return rec.type === 'FB' ? ['name', 'matric', 'programme', 'school', 'specialty'] : ['name', 'matric', 'dob', 'programme', 'school', 'specialty'];
   }
   // ---- identity cross-check: what the person presenting the document claims, compared field by field with the register
   const norm = x => String(x == null ? '' : x).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -97,8 +126,9 @@ module.exports = function makeDocReg(ctx) {
       add('pob', cmpText(claim.pob, ow.pob)); add('gender', !String(claim.gender || '').trim() ? 'blank' : !ow.gender ? 'unknown' : String(claim.gender).trim().toUpperCase()[0] === ow.gender ? 'match' : 'mismatch');
       add('programme', Math.max(cmpText(claim.programme, ow.programme) === 'match' ? 1 : 0, cmpText(claim.programme, ow.programmeFr) === 'match' ? 1 : 0) ? 'match' : cmpText(claim.programme, ow.programme));
       add('school', cmpText(claim.school, ow.school) === 'mismatch' && cmpText(claim.school, ow.schoolFr) !== 'mismatch' ? cmpText(claim.school, ow.schoolFr) : cmpText(claim.school, ow.school)); add('specialty', cmpText(claim.specialty, ow.specialty));
+      if (rec.rc) { const ca = String(claim.amount || '').replace(/\D/g, ''); add('amount', !ca ? 'blank' : !rec.rc.amount ? 'unknown' : ca === String(rec.rc.amount) ? 'match' : 'mismatch'); }
     } else {
-      const subj = String(rec.subject || rec.name || ''), who = subj.split(/\s+[—–-]\s+/)[0], amt = (subj.match(/[—–-]\s*([\d.,\s]+)\s*[A-Za-z]{2,4}\s*$/) || [])[1];
+      const subj = String(rec.subject || rec.name || ''), who = rec.rc ? rec.rc.payer : subj.split(/\s+[—–-]\s+/)[0], amt = rec.rc ? String(rec.rc.amount) : (subj.match(/[—–-]\s*([\d.,\s]+)\s*[A-Za-z]{2,4}\s*$/) || [])[1];
       add('name', cmpName(claim.name, who));
       const ca = String(claim.amount || '').replace(/\D/g, ''), ra = String(amt || '').replace(/\D/g, ''); add('amount', !ca ? 'blank' : !ra ? 'unknown' : ca === ra ? 'match' : 'mismatch');
     }
@@ -111,7 +141,9 @@ module.exports = function makeDocReg(ctx) {
     s = plain(s, 40).toUpperCase(); c = plain(c, 20).toUpperCase(); const rec = S.get(COL, s);
     if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return { valid: false };
     const cl = {}; ['name', 'matric', 'dob', 'pob', 'gender', 'programme', 'school', 'specialty', 'amount'].forEach(k => { cl[k] = plain((claim || {})[k], 120); });
-    const st = rec.matric ? S.get('students', rec.matric) : null, ow = st ? owner(st) : null, r = compare(rec, ow || (rec.name && rec.matric ? { name: rec.name, matric: rec.matric, dob: '', pob: '', gender: '', programme: '', programmeFr: '', school: '', schoolFr: '', specialty: '' } : null), cl);
+    const ow0 = ownerOf(rec), ow = ow0 || null, idf = idFields(rec, ow0);
+    if (!idf.length) return { valid: true, status: 'confirmed', verdict: 'confirmed', fields: [], idFields: [], doc: detail(s, c) };   // a document not issued to a named person is authenticated by its serial number and code alone
+    const r = compare(rec, ow || (rec.name && rec.matric ? { name: rec.name, matric: rec.matric, dob: '', pob: '', gender: '', programme: '', programmeFr: '', school: '', schoolFr: '', specialty: '' } : null), cl);
     if (r.verdict === 'mismatch') {
       rec.mm = (rec.mm || 0) + 1; rec.mmAt = now(); const alert = !rec.mmAlert || now() - rec.mmAlert > 3600e3; if (alert) rec.mmAlert = now(); await S.put(COL, rec.id, rec);
       try { await audit(null, 'verification identity mismatch on ' + rec.id + ' (' + r.fields.filter(x => x.st === 'mismatch').map(x => x.k).join(', ') + ') — possible impersonation or copied serial number'); } catch (e) {}
@@ -119,8 +151,8 @@ module.exports = function makeDocReg(ctx) {
     }
     const det = detail(s, c), mask = n => String(n || '').split(/\s+/).filter(Boolean).map(w => w[0] + '*'.repeat(Math.max(2, Math.min(6, w.length - 1)))).join(' ');
     // one verdict: the document is shown as authentic only when the register entry AND the identity presented agree; on a mismatch the holder's particulars are withheld
-    const doc = r.verdict === 'mismatch' ? { valid: true, serial: det.serial, type: det.type, typeEn: det.typeEn, typeFr: det.typeFr, issued: det.issued, pages: det.pages, holderMask: mask(ow ? ow.name : String(rec.subject || rec.name || '').split(/\s+[—–-]\s+/)[0]) } : det;
-    return { valid: true, status: r.verdict === 'none' ? 'registered' : r.verdict, verdict: r.verdict, fields: r.fields, doc };
+    const doc = r.verdict === 'mismatch' ? { valid: true, serial: det.serial, type: det.type, typeEn: det.typeEn, typeFr: det.typeFr, issued: det.issued, pages: det.pages, holderMask: mask(ow ? ow.name : (rec.rc ? rec.rc.payer : String(rec.subject || rec.name || '').split(/\s+[—–-]\s+/)[0])), idFields: idf } : det;
+    return { valid: true, status: r.verdict === 'none' ? 'registered' : r.verdict, verdict: r.verdict, fields: r.fields, idFields: idf, doc };
   }
 
   const CSS = `*{box-sizing:border-box}body{margin:0;background:#eef1f8;color:#16213e;font:15px/1.5 Georgia,'Times New Roman',serif}
@@ -140,7 +172,7 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
     if (!s) return shell('<div class="card"><p class="st" style="color:#0b2559">Verify a document · Vérifier un document</p><p>Enter the serial number and the verification code printed on the document, or scan its QR code. · Saisissez le numéro de série et le code de vérification imprimés sur le document, ou scannez son code QR.</p></div>' + form('', ''));
     const rec = S.get(COL, s);
     if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return shell('<div class="card bad"><p class="st">NOT VERIFIED · NON VÉRIFIÉ</p><p>No document matches this serial number and code. Treat the document as <b>not authentic</b> and contact the University. · Aucun document ne correspond à ce numéro et à ce code. Considérez le document comme <b>non authentique</b> et contactez l’Université.</p></div>' + form(s, c));
-    const T = TYPES[rec.type] || TYPES.GN, st = rec.matric ? S.get('students', rec.matric) : null;
+    const T = TYPES[rec.type] || TYPES.GN, st = (rec.matric ? S.get('students', rec.matric) : null) || ownerOf(rec);
     let h = '<div class="card ok"><p class="st">AUTHENTIC · AUTHENTIQUE</p><p>This document was issued by ADI University and is registered in its official register. · Ce document a été délivré par ADI University et figure dans son registre officiel.</p><dl>' +
       '<dt>Document</dt><dd>' + esc(T[0]) + ' / ' + esc(T[1]) + '</dd><dt>Serial · Numéro</dt><dd>' + esc(rec.id) + '</dd><dt>Issued · Délivré le</dt><dd>' + esc(fmtD(rec.at)) + '</dd>' +
       (rec.pages ? '<dt>Pages</dt><dd>' + rec.pages + '</dd>' : '') + (rec.ay ? '<dt>Session</dt><dd>' + esc(rec.ay) + (rec.sem ? ' · S' + esc(rec.sem) : '') + '</dd>' : '') +
@@ -162,17 +194,15 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
   function detail(s, c) {
     s = plain(s, 40).toUpperCase(); c = plain(c, 20).toUpperCase();
     const rec = S.get(COL, s); if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return { valid: false };
-    const T = TYPES[rec.type] || TYPES.GN, st = rec.matric ? S.get('students', rec.matric) : null;
-    const out = { valid: true, serial: rec.id, type: rec.type, typeEn: T[0], typeFr: T[1], issued: rec.at, pages: rec.pages || 0, ay: rec.ay || '', sem: rec.sem || '', subject: rec.subject || '' };
-    if (st) {
-      const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
-      const ow = owner(st); out.student = Object.assign({ programme: sp.name || st.specId || '', level: st.level || '' }, ow, { programmeName: ow.programme, specialty: ow.specialty || sp.name || '' });
-      if (rec.type === 'TR' || rec.type === 'SR') {
-        const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
-        rows.forEach(r => { cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; });
-        out.results = rows; out.totals = { attempted: cr, earned: earn, gpa: cr ? Math.round(wp / cr * 100) / 100 : null };
-      }
+    const T = TYPES[rec.type] || TYPES.GN, st = rec.matric ? S.get('students', rec.matric) : null, ow0 = ownerOf(rec);
+    const out = { idFields: idFields(rec, ow0), valid: true, serial: rec.id, type: rec.type, typeEn: T[0], typeFr: T[1], issued: rec.at, pages: rec.pages || 0, ay: rec.ay || '', sem: rec.sem || '', subject: rec.subject || '' };
+    if (ow0) { out.student = Object.assign({ programme: ow0.specialty, level: ow0.level }, ow0, { programmeName: ow0.programme, specialty: ow0.specialty }); }
+    if (st && (rec.type === 'TR' || rec.type === 'SR')) {
+      const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
+      rows.forEach(r => { cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; });
+      out.results = rows; out.totals = { attempted: cr, earned: earn, gpa: cr ? Math.round(wp / cr * 100) / 100 : null };
     }
+    if (rec.rc) out.pay = { payer: rec.rc.payer, amount: rec.rc.amount, label: rec.rc.label, ay: rec.rc.ay, receiptNo: rec.rc.receiptNo, status: rec.rc.status, paidAt: rec.rc.paidAt };
     return out;
   }
 
