@@ -2314,7 +2314,7 @@ async function checkPw(pw, stored) {
 }
 const sign = v => crypto.createHmac('sha256', SECRET).update(v).digest('base64url');
 const pwTag = u => crypto.createHash('sha256').update(String(u.pw)).digest('base64url').slice(0, 10);
-const IDLE_SRV = 6 * 60e3, ABS_SRV = 8 * 3600e3;   // idle window (5 min client-side + 1 min grace) and absolute session lifetime
+const IDLE_SRV = 16 * 60e3, ABS_SRV = 8 * 3600e3;   // idle window (15 min client-side + 1 min grace) and absolute session lifetime
 function makeToken(u, iat) { iat = iat || now(); const v = u.id + '.' + (now() + IDLE_SRV) + '.' + iat + '.' + pwTag(u); return v + '.' + sign(v); }
 function readToken(t, info) {
   const p = String(t || '').split('.'); if (p.length !== 5) return null; const v = p.slice(0, 4).join('.');
