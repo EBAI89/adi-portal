@@ -2640,6 +2640,33 @@ function noticePlan(b) {
   for (const rec of aud) { const all = noticeEmails(rec.u), to = all.filter(e => isAdiAddr(e) ? ch.adi : ch.personal); if (!to.length && !ch.inapp) { skipped.push(rec.u.name); continue; } const lt = noticeLetter(tpl, vars, rec); if (!lt) return { err: 'empty' }; addresses += to.length; items.push({ rec, to, lt }); if (!to.length) skipped.push(rec.u.name + ' (no e-mail address selected)'); }
   return { tpl, vars, ch, items, skipped, addresses, total: aud.length };
 }
+/* ---------- assigning courses to lecturers: the super administrator (or an administrator holding the permission) chooses the courses a lecturer teaches ---------- */
+const canAssign = u => !!u && u.status === 'active' && (u.role === 'super_admin' || (logic.perms(S)[u.role] || []).includes('course_assign'));
+async function courseAssignRoute(req, res, u, p) {
+  if (!canAssign(u)) return send(res, 403, { error: 'FORBIDDEN' });
+  if (limited('cassign:' + u.id, 60, 3600e3)) return send(res, 429, { error: 'rate' });
+  const b = await body(req, 60000), lec = S.get('users', String(b.lecturerId || ''));
+  if (!lec || lec.role !== 'lecturer' || lec.status !== 'active') return send(res, 400, { error: 'lecturer' });
+  const want = new Set((Array.isArray(b.courseIds) ? b.courseIds : []).slice(0, 600).map(x => String(x))); const courses = S.all('courses');
+  for (const id of want) if (!courses[id]) return send(res, 400, { error: 'course', id });
+  const added = [], removed = [], teaches = c => c.lecturerId === lec.id || ((S.get('cassign', c.id) || {}).co || []).includes(lec.id);
+  const logIt = (rec, what, c) => { rec.log = (rec.log || []).concat([{ at: now(), by: u.name, what, lecturer: lec.name }]).slice(-20); };
+  for (const c of Object.values(courses)) {
+    if (!c || !c.id) continue; const has = teaches(c), wants = want.has(c.id); if (has === wants) continue;
+    let rec = Object.assign({ id: c.id, courseId: c.id, lead: c.lecturerId || '', co: [] }, S.get('cassign', c.id) || {}); rec.co = Array.isArray(rec.co) ? rec.co.slice() : [];
+    let lead = c.lecturerId || '';
+    if (wants) { if (!lead) lead = lec.id; else if (!rec.co.includes(lec.id)) rec.co.push(lec.id); logIt(rec, 'assigned', c); added.push(c); }
+    else { if (lead === lec.id) lead = rec.co.shift() || ''; else rec.co = rec.co.filter(x => x !== lec.id); logIt(rec, 'withdrawn', c); removed.push(c); }
+    rec.lead = lead; await save('cassign', c.id, rec); if (lead !== (c.lecturerId || '')) await save('courses', c.id, Object.assign({}, c, { lecturerId: lead }));
+  }
+  if (added.length || removed.length) {
+    await audit(u, 'courses assigned to ' + lec.name + ': +' + added.length + ' / -' + removed.length);
+    const fr = lec.lang === 'fr', ln = c => '• ' + c.code + ' — ' + c.title + (c.credits ? ' (' + c.credits + (fr ? ' crédits' : ' credits') + ')' : '');
+    const text = (added.length ? (fr ? 'Les cours suivants vous ont été confiés par l\'Administration :\n' : 'The Administration has assigned the following courses to you:\n') + added.map(ln).join('\n') : '') + (added.length && removed.length ? '\n\n' : '') + (removed.length ? (fr ? 'Vous n\'êtes plus chargé(e) des cours suivants :\n' : 'You are no longer assigned to the following courses:\n') + removed.map(ln).join('\n') : '') + '\n\n' + (fr ? 'Vous retrouverez vos cours, listes de classe et plans de cours dans le portail ADI.' : 'You will find your courses, class lists and course plans in the ADI portal.');
+    try { await notifyUser(lec.id, bi('Your teaching assignment', 'Votre charge d\'enseignement'), text); } catch (e) { console.log('[assign] ' + e.message); }
+  }
+  return send(res, 200, { ok: true, added: added.length, removed: removed.length, total: Object.values(S.all('courses')).filter(teaches).length });
+}
 async function noticeRoute(req, res, u, p) {
   if (p === '/api/notice/record') {   // status letter to the person behind one MINESUP application or transcript request
     const b = await body(req, 8000), isMs = b.kind === 'msapp', rec = S.get(isMs ? 'msapp' : 'trreq', String(b.id || '')); if (!['msapp', 'trreq'].includes(b.kind) || !rec) return send(res, 404, { error: 'NOT_FOUND' });
@@ -3192,6 +3219,7 @@ async function route(req, res) {
   if (p.startsWith('/api/cls/') && await CLS.handle(req, res, u, p, url)) return;
   if (p.startsWith('/api/hr/') && await HR.handle(req, res, u, p, url)) return;
   if (u && p.startsWith('/api/notice/') && req.method === 'POST') return noticeRoute(req, res, u, p);
+  if (u && p === '/api/course/assign' && req.method === 'POST') return courseAssignRoute(req, res, u, p);
   if (p.startsWith('/api/mail') && MB && await MB.handle(req, res, u, p)) return;
   if (p.startsWith('/api/studio/') && STUDIO && await STUDIO.handle(req, res, u, p)) return;
   if (p.startsWith('/api/push/') && PUSH && await PUSH.handle(req, res, u, p)) return;
