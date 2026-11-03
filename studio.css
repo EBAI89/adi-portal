@@ -64,3 +64,6 @@ table.nopage td:first-child,table.nopage th:first-child{width:34px}
 @media (max-width:900px){.td-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:520px){.td-steps{grid-template-columns:1fr}}
 .td-sec input,.td-step input{width:100%;box-sizing:border-box}
+/* dark theme: readable text colours for the studio headings and figures */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .td-kicker,:root:not([data-theme="light"]) .td-tk{color:var(--warn,#F4C763)}:root:not([data-theme="light"]) .td-hero h2,:root:not([data-theme="light"]) .td-kpi b,:root:not([data-theme="light"]) .td-navh h3,:root:not([data-theme="light"]) .td-crumb,:root:not([data-theme="light"]) .td-tile b,:root:not([data-theme="light"]) .td-tgo{color:var(--ink,#E7ECF8)}}
+:root[data-theme="dark"] .td-kicker,:root[data-theme="dark"] .td-tk{color:var(--warn,#F4C763)}:root[data-theme="dark"] .td-hero h2,:root[data-theme="dark"] .td-kpi b,:root[data-theme="dark"] .td-navh h3,:root[data-theme="dark"] .td-crumb,:root[data-theme="dark"] .td-tile b,:root[data-theme="dark"] .td-tgo{color:var(--ink,#E7ECF8)}

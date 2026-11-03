@@ -245,3 +245,6 @@ body.sgopen{overflow:hidden}
 .rl-t-cal span{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85}.rl-t-cal b{font-size:1.9rem}.rl-t-cal i{font-style:normal;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--gold,#d4a62a)}
 .rl-t-body h4{margin:2px 0 4px;font-size:1.1rem}.rl-t-body p{margin:2px 0}
 @media(max-width:480px){.rl-ticket{grid-template-columns:1fr}.rl-t-cal{justify-self:start;grid-template-columns:auto auto auto;gap:8px;align-items:baseline}}
+/* dark theme: readable text colours for headings that use the navy and crimson brand colours */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ms-kicker{color:var(--warn,#F4C763)}:root:not([data-theme="light"]) .sged-fmt summary{color:var(--ink,#E7ECF8)}}
+:root[data-theme="dark"] .ms-kicker{color:var(--warn,#F4C763)}:root[data-theme="dark"] .sged-fmt summary{color:var(--ink,#E7ECF8)}
