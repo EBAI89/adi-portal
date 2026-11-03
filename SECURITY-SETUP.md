@@ -56,3 +56,6 @@ The Payments page opens with an "Awaiting your decision" card listing every pend
 
 ## Payments: the "Awaiting confirmation" box is tappable (v2.157.1)
 Tapping the Awaiting confirmation box filters the list to pending payments and moves to the decision card with the Confirm and Reject buttons.
+
+## Idle sign-out: 15 minutes (v2.158.0)
+A signed-in session that is left idle is closed after 15 minutes (it was 5). A reminder with a 60-second countdown appears at 14 minutes; any tap, key press or touch keeps the session open. The server-side session window is 16 minutes (15 plus one minute of grace). The 8-hour absolute limit is unchanged.
