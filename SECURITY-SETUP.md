@@ -50,3 +50,6 @@ The six programmes of the Departments of Management (MGT), Human Resource Manage
 
 ## Dark theme and blocked alerts (v2.156.0)
 The mailbox address, the kicker lines and the studio figures use the readable theme colours in the dark theme (they were dark blue and crimson on a dark card). When the browser blocks notifications, the alerts card now gives three steps (including the Android Chrome setting) and a "check again" button.
+
+## Payments: confirm and reject are always in view (v2.157.0)
+The Payments page opens with an "Awaiting your decision" card listing every pending payment with its proof and the Confirm / Reject buttons. In the table, the buttons now sit under the status (they were in a last column that a tablet screen hid).
