@@ -59,3 +59,6 @@ Tapping the Awaiting confirmation box filters the list to pending payments and m
 
 ## Idle sign-out: 15 minutes (v2.158.0)
 A signed-in session that is left idle is closed after 15 minutes (it was 5). A reminder with a 60-second countdown appears at 14 minutes; any tap, key press or touch keeps the session open. The server-side session window is 16 minutes (15 plus one minute of grace). The 8-hour absolute limit is unchanged.
+
+## Assign courses to lecturers (v2.159.0)
+Courses > "Assign courses to a lecturer" (`#/courses/assign`): the super administrator, or an administrator holding the `course_assign` permission, chooses a lecturer and ticks the courses he or she can teach (filter by programme, specialty or keyword). The first lecturer assigned to a course is its lecturer in charge; later ones are co-lecturers (class lists, course plans and the virtual classroom already honour both). Withdrawing a course promotes the first co-lecturer. Every change is logged on the course record and in the audit log, and the lecturer receives an official letter at the ADI and personal addresses.
