@@ -3810,6 +3810,28 @@ async function ensureMinCourses() {
     await save('settings', 'main', Object.assign(stg, { migHb25b: true }));
     console.log('Handbook 2025 (departments) courses loaded: ' + n);
   }
+  if (!cur.migCur26) {
+    // Departments of Management (MGT), Human Resource Management (HRM) and Project Management (PJM): the six programmes take the course codes, levels,
+    // semesters and credits of the Departments' curriculum reference. A course with its own class history (registration, result, timetable, exam,
+    // lecturer) is never removed; unused courses of the same programmes that the reference does not list are retired.
+    const { CURRICULUM } = __req('./adi-curriculum.js'), byName = {};
+    Object.values(logic.core.SPEC).forEach(sp => { if (sp.level === 'BSC' || sp.level === 'MSC') byName[sp.level + '|' + sp.name] = sp; });
+    const used = new Set(); for (const col of ['enroll', 'results', 'tt', 'exams', 'cassign']) for (const d of Object.values(S.all(col))) if (d && d.courseId) used.add(d.courseId);
+    let added = 0, changed = 0, removed = 0, kept = 0;
+    for (const P of CURRICULUM) {
+      const sp = byName[P.level + '|' + P.name]; if (!sp) { console.warn('Curriculum programme not in catalogue: ' + P.name); continue; }
+      const want = new Set();
+      for (const [year, sem, code, title, credits, st, cat] of P.rows) {
+        const id = ('hb25-' + code + '-' + slug(sp.id)).slice(0, 90); want.add(id);
+        const old = S.get('courses', id), n = Object.assign({ pre: '', lecturerId: '', hrs: { l: 0, t: 0, p: 0 } }, old || {}, { id, code, title, credits, level: P.level, specId: sp.id, year, sem, cat, status: st === 'U' ? 'R' : 'C', compulsory: true, prov: false, src: 'adi', hb: '2025', cur: '2026' });
+        if (!old) added++; else if (['code', 'title', 'credits', 'year', 'sem', 'cat', 'status'].some(k => old[k] !== n[k])) changed++;
+        await save('courses', id, n);
+      }
+      for (const c of Object.values(S.all('courses'))) if (c && c.specId === sp.id && c.src === 'adi' && c.hb === '2025' && !want.has(c.id)) { if (used.has(c.id) || c.lecturerId) { kept++; continue; } await remove('courses', c.id); removed++; }
+    }
+    await save('settings', 'main', Object.assign({}, S.get('settings', 'main') || {}, { migCur26: true }));
+    console.log('Curriculum (MGT, HRM, PJM) applied: ' + added + ' added, ' + changed + ' corrected, ' + removed + ' retired, ' + kept + ' kept (in use)');
+  }
   if (!cur.migMinV6) {
     // MINESUP HND programmes added (Sector 3 vol. 4 and vol. 6, Sector 4 vol. 7). Strictly additive: only the new specialties' courses are created;
     // existing courses, Form B and the registration configuration are not read or changed.
