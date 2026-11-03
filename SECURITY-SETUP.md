@@ -62,3 +62,6 @@ A signed-in session that is left idle is closed after 15 minutes (it was 5). A r
 
 ## Assign courses to lecturers (v2.159.0)
 Courses > "Assign courses to a lecturer" (`#/courses/assign`): the super administrator, or an administrator holding the `course_assign` permission, chooses a lecturer and ticks the courses he or she can teach (filter by programme, specialty or keyword). The first lecturer assigned to a course is its lecturer in charge; later ones are co-lecturers (class lists, course plans and the virtual classroom already honour both). Withdrawing a course promotes the first co-lecturer. Every change is logged on the course record and in the audit log, and the lecturer receives an official letter at the ADI and personal addresses.
+
+## Notifications open the exact application (v2.160.0)
+A "New application" notification now opens that application straight away (the file opens on the Applications page, then the address returns to the list). New notifications carry a direct link; notifications sent earlier are matched to the application by the applicant name. The notification link is also kept when a notification is sent to every holder of a permission.

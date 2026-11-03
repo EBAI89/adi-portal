@@ -2853,9 +2853,10 @@ async function applyWrite(u, c, id, o, n) {
   if (c === 'notifs' && !o) {
     const title = String(n.title || '').slice(0, 200), text = String(n.body || '').slice(0, 800);
     if (/^(Payment (confirmed|rejected|to verify)|Paiement (confirmé|rejeté|à vérifier))/.test(title) || n.toPerm === 'manage_tickets') return;
-    if (n.toPerm) { const list = usersWith(n.toPerm); for (const x of list) await notifyUser(x.id, title, text); return; }
+    const lk = /^#?\/?[a-z0-9-]+(\/[\w.\-]+)*$/i.test(String(n.link || '')) && String(n.link).length <= 120 ? String(n.link) : undefined;
+    if (n.toPerm) { const list = usersWith(n.toPerm); for (const x of list) await notifyUser(x.id, title, text, { link: lk }); return; }
     if (!S.get('users', n.userId)) throw ['user'];
-    await notifyUser(n.userId, title, text, { sms: /admitted|admis|ready for collection|prêt à retirer/i.test(title + ' ' + text) }); return;
+    await notifyUser(n.userId, title, text, { link: lk, sms: /admitted|admis|ready for collection|prêt à retirer/i.test(title + ' ' + text) }); return;
   }
   if (c === 'tickets' && !o) {
     n = { userId: u ? u.id : null, name: String(u ? u.name : n.name || '').slice(0, 120), email: String(u ? u.email : n.email || '').slice(0, 160), subject: String(n.subject || '').slice(0, 200), msg: String(n.msg || '').slice(0, 4000), status: 'open', at: now(), to: INBOX() };
