@@ -646,6 +646,48 @@ document.getElementById('confirmModal').addEventListener('click',function(e){if(
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeConfirm();});
 
 renderPeople();
+
+/* ── Auto-select from portal deep-link ─────────────── */
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var portalId = params.get('id');
+  var portalName = params.get('name');
+  var portalEmail = params.get('email');
+  var portalPhone = params.get('phone');
+  if (!portalId && !portalName) return;
+
+  // Try to find existing person by portal app id or by name
+  var found = PEOPLE.find(function(p){ return p.id === portalId || p.name === portalName; });
+
+  if (!found && portalName) {
+    // Inject a transient record for this applicant
+    var transient = {
+      id: portalId || 'APP-PORTAL',
+      name: portalName,
+      role: 'Applicant (HR)',
+      dept: params.get('dept') || 'Pending Assignment',
+      personalEmail: portalEmail || '',
+      phone: portalPhone || '',
+      color: '#B3131E',
+      adiEmail: null,
+      _transient: true
+    };
+    PEOPLE.unshift(transient);
+    filtered = PEOPLE.slice();
+    renderPeople();
+    found = transient;
+  }
+
+  if (found) {
+    // Scroll to and select the person
+    setTimeout(function(){
+      selectPerson(found);
+      // Scroll the selected row into view
+      var sel = document.querySelector('.user-row.selected');
+      if (sel) sel.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 200);
+  }
+})();
 </script>
 </body>
 </html>
