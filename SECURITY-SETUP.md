@@ -65,3 +65,8 @@ Courses > "Assign courses to a lecturer" (`#/courses/assign`): the super adminis
 
 ## Notifications open the exact application (v2.160.0)
 A "New application" notification now opens that application straight away (the file opens on the Applications page, then the address returns to the list). New notifications carry a direct link; notifications sent earlier are matched to the application by the applicant name. The notification link is also kept when a notification is sent to every holder of a permission.
+
+## Virtual classes: timetable, automatic attendance and e-mail notices (v2.161.0)
+- **Follows the timetable.** A virtual class is scheduled by choosing one of the course's upcoming timetable sessions (day and hours come from the timetable, in Cameroon time). The same timetable session cannot be scheduled twice; a free date can no longer be typed (only the super administrator or a classroom manager can add an extra session).
+- **Students are notified by e-mail** (official letter, ADI and personal addresses, in the student's language) as well as in the portal when a class is scheduled, rescheduled or cancelled.
+- **Attendance is automatic.** Students who join the live class are marked present (no code or fingerprint). The lecturer's teaching hours are credited automatically when the class ends, and only if at least one student was present; otherwise the record is flagged NO_QUORUM and no hours are credited. A class left open is closed by the system 20 minutes after its scheduled end. The physical-class opening of the same timetable session is blocked, so hours are never counted twice. The records join the tamper-evident attendance log and pass the integrity check.
