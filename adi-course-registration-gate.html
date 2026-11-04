@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ADI University — Course Registration Gate v1.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=Public+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   ADI Design System v3 — Design Tokens
+═══════════════════════════════════════════════════════════ */
+:root{
+  --navy:#0B2559;--royal:#2447B8;--crimson:#B3131E;--gold:#C9A227;
+  --gold-soft:#F4E9C1;--gold-line:#E5C76A;
+  --bg:#FFFFFF;--paper:#F5F6F9;--card:#FFFFFF;
+  --ink:#101828;--muted:#475467;--rule:#98A2B3;--line:#D3D8E2;--soft:#F0F2F7;
+  --ok:#136F3F;--okbg:#DDF3E6;
+  --warn:#8A5A00;--warnbg:#FFF0CC;
+  --bad:#9B1420;--badbg:#FBE0E2;
+  --info:#1B3F9A;--infobg:#E1E9FB;
+  --head:'Bitter',Georgia,serif;--body:'Public Sans',system-ui,sans-serif;
+  --r:4px;--r2:8px;
+  --shadow:0 1px 4px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#07111E;--paper:#07111E;--card:#0F1E36;--ink:#E7ECF8;--muted:#9AA7C7;
+  --line:#1E2E50;--soft:#172040;--gold-soft:#2E2309;--gold-line:#7A6418;--rule:#2E3F6A;
+  --ok:#7FE0A8;--okbg:#0C2919;--warn:#F4C763;--warnbg:#2C2007;
+  --bad:#FF9AA3;--badbg:#35090E;--info:#9DB8FF;--infobg:#0E1E45;
+}}
+:root[data-theme="dark"]{
+  --bg:#07111E;--paper:#07111E;--card:#0F1E36;--ink:#E7ECF8;--muted:#9AA7C7;
+  --line:#1E2E50;--soft:#172040;--gold-soft:#2E2309;--gold-line:#7A6418;--rule:#2E3F6A;
+  --ok:#7FE0A8;--okbg:#0C2919;--warn:#F4C763;--warnbg:#2C2007;
+  --bad:#FF9AA3;--badbg:#35090E;--info:#9DB8FF;--infobg:#0E1E45;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%;-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{min-height:100%;background:var(--paper);color:var(--ink);
+  font:400 15px/1.65 var(--body);-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--head);font-weight:600;letter-spacing:-.012em;line-height:1.15}
+h1{font-size:clamp(1.65rem,4vw,2.3rem)}
+h2{font-size:1.3rem}
+h3{font-size:1.05rem}
+.wrap{max-width:940px;margin:0 auto;padding:0 18px}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar{background:var(--navy);border-bottom:3px solid var(--gold);
+  position:sticky;top:0;z-index:40;box-shadow:0 2px 12px rgba(0,0,0,.35)}
+.topbar .wrap{display:flex;align-items:center;gap:14px;min-height:62px}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:#fff}
+.brand .crest{width:40px;height:40px;border-radius:50%;background:var(--gold);
+  display:grid;place-items:center;font-size:1.25rem;flex:0 0 40px}
+.brand .nm{font:600 .95rem var(--head)}
+.brand .nm small{display:block;font:500 .57rem var(--body);letter-spacing:.12em;
+  text-transform:uppercase;opacity:.72;margin-top:1px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.btn-sm{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);
+  color:#fff;border-radius:var(--r);padding:6px 13px;cursor:pointer;
+  font:600 .78rem var(--body);white-space:nowrap}
+.btn-sm:hover{background:rgba(255,255,255,.2)}
+
+/* ── Page hero ───────────────────────────────────────────── */
+.phero{background:var(--card);border-bottom:1px solid var(--line);padding:30px 0 26px}
+.eyebrow{font:700 .68rem var(--body);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--gold);margin-bottom:7px}
+.lead{color:var(--muted);font-size:.93rem;max-width:64ch;margin-top:7px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;
+  font:700 .66rem var(--body);letter-spacing:.05em;text-transform:uppercase}
+.b-ok{background:var(--okbg);color:var(--ok)}
+.b-warn{background:var(--warnbg);color:var(--warn)}
+.b-info{background:var(--infobg);color:var(--info)}
+.b-bad{background:var(--badbg);color:var(--bad)}
+.badge-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+
+/* ── Main layout ─────────────────────────────────────────── */
+main{padding:28px 0 56px}
+
+/* ── Section header ──────────────────────────────────────── */
+.section-head{position:relative;padding-top:20px;margin-bottom:18px}
+.section-head::before{content:"";position:absolute;top:0;left:0;
+  width:48px;height:4px;background:var(--gold);border-radius:2px}
+
+/* ── Gate status panel ───────────────────────────────────── */
+#gate-banner-host{margin-bottom:28px}
+
+/* ── Live demo portal shell ──────────────────────────────── */
+.portal-shell{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);
+  overflow:hidden;box-shadow:var(--shadow);margin-bottom:28px}
+.portal-top{background:var(--navy);border-bottom:3px solid var(--gold);
+  padding:0 20px;min-height:50px;display:flex;align-items:center;gap:12px}
+.portal-top .pt-title{font:600 .95rem var(--head);color:#fff}
+.portal-top .pt-pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);
+  color:#fff;border-radius:99px;padding:3px 10px;font:500 .72rem var(--body)}
+.portal-body{padding:22px}
+
+/* ── Requirement card ────────────────────────────────────── */
+.req-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px}
+@media(max-width:620px){.req-grid{grid-template-columns:1fr}}
+.req-card{background:var(--soft);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px;position:relative;overflow:hidden}
+.req-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
+.req-card.pending::before{background:var(--crimson)}
+.req-card.confirmed::before{background:var(--ok)}
+.req-card .rc-label{font:700 .68rem var(--body);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:5px}
+.req-card .rc-name{font:600 .95rem var(--head);margin-bottom:3px}
+.req-card .rc-amount{font:700 1.2rem var(--head);letter-spacing:-.02em}
+.req-card .rc-amount.pending{color:var(--crimson)}
+.req-card .rc-amount.confirmed{color:var(--ok)}
+.req-card .rc-status{font:600 .74rem var(--body);margin-top:6px;display:flex;align-items:center;gap:5px}
+
+/* ── Course list ─────────────────────────────────────────── */
+.course-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px}
+@media(max-width:580px){.course-grid{grid-template-columns:1fr}}
+.course-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:12px 14px;position:relative;transition:box-shadow .15s,border-color .15s}
+.course-card.locked{opacity:.5;pointer-events:none}
+.course-card.unlocked{border-color:var(--gold-line)}
+.course-card.unlocked:hover{box-shadow:0 0 0 3px rgba(201,162,39,.2)}
+.cc-code{font:700 .68rem var(--body);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:3px}
+.cc-name{font:600 .92rem var(--head);margin-bottom:4px}
+.cc-meta{font-size:.78rem;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.cc-enroll{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.btn-enroll{padding:7px 14px;border-radius:var(--r);font:600 .8rem var(--body);
+  cursor:pointer;border:1.5px solid;min-height:34px;white-space:nowrap;transition:filter .15s}
+.btn-enroll:not([disabled]){background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn-enroll:not([disabled]):hover{filter:brightness(1.12)}
+.btn-enroll[disabled]{background:var(--soft);color:var(--rule);border-color:var(--line);cursor:not-allowed}
+.lock-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(var(--paper-rgb,245,246,249),.7);pointer-events:none;font-size:1.3rem}
+
+/* ── Control panel (demo) ────────────────────────────────── */
+.demo-controls{background:var(--infobg);border:1px solid var(--info);border-radius:var(--r);
+  padding:16px 18px;margin-bottom:28px}
+.demo-controls h3{color:var(--info);margin-bottom:10px;font-size:.93rem}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r);
+  padding:9px 18px;min-height:40px;font:600 .84rem var(--body);cursor:pointer;
+  border:1.5px solid;text-decoration:none;transition:filter .15s,background .1s}
+.btn:hover{filter:brightness(1.1)}
+.btn-primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn-gold{background:var(--gold);color:#1F1700;border-color:var(--gold)}
+.btn-ghost{background:transparent;color:var(--royal);border-color:var(--royal)}
+.btn-ghost:hover{background:var(--soft);filter:none}
+.btn-danger{background:transparent;color:var(--crimson);border-color:var(--crimson)}
+.btn-sm-ctrl{padding:6px 13px;min-height:34px;font-size:.8rem}
+
+/* ── Integration guide ───────────────────────────────────── */
+.guide-card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--navy);
+  border-radius:var(--r);padding:22px 24px;margin-bottom:28px}
+.guide-step{display:flex;gap:14px;padding:13px 0;border-bottom:1px solid var(--soft)}
+.guide-step:last-child{border-bottom:none}
+.gs-num{flex:0 0 32px;width:32px;height:32px;border-radius:50%;background:var(--navy);
+  color:#fff;display:grid;place-items:center;font:700 .9rem var(--head);margin-top:1px}
+.gs-body .gs-title{font-weight:700;font-size:.92rem;margin-bottom:3px}
+.gs-body .gs-desc{font-size:.84rem;color:var(--muted);line-height:1.6}
+pre.code{background:var(--soft);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px 14px;font:400 .78rem/1.6 ui-monospace,'Cascadia Code',monospace;
+  overflow-x:auto;white-space:pre;margin:8px 0;color:var(--ink)}
+pre.code .kw{color:var(--royal);font-weight:700}
+pre.code .str{color:var(--ok)}
+pre.code .cm{color:var(--rule)}
+pre.code .fn{color:var(--warn)}
+pre.code .num{color:var(--crimson)}
+code{background:var(--soft);padding:1px 5px;border-radius:3px;font-size:.85em;
+  font-family:ui-monospace,monospace}
+
+/* ── flow diagram ────────────────────────────────────────── */
+.flow{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:4px 0 12px;margin-bottom:4px}
+.flow-step{display:flex;flex-direction:column;align-items:center;gap:0;min-width:120px;flex:1}
+.flow-box{background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);
+  padding:10px 12px;text-align:center;font-size:.8rem;font-weight:600;width:110px;position:relative}
+.flow-box.active{border-color:var(--gold);background:var(--gold-soft)}
+.flow-box.ok{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.flow-box.lock{border-color:var(--crimson);background:var(--badbg);color:var(--crimson)}
+.flow-box .fb-icon{font-size:1.1rem;margin-bottom:3px}
+.flow-arrow{flex:1;min-width:16px;display:flex;align-items:center;justify-content:center;
+  color:var(--rule);font-size:1.1rem;padding-top:24px}
+
+/* ── note blocks ─────────────────────────────────────────── */
+.note{border-left:4px solid var(--gold);background:var(--gold-soft);
+  padding:10px 14px;border-radius:0 var(--r) var(--r) 0;font-size:.86rem;margin:10px 0}
+.note.ok{border-color:var(--ok);background:var(--okbg)}
+.note.info{border-color:var(--info);background:var(--infobg)}
+.note.bad{border-color:var(--crimson);background:var(--badbg)}
+
+/* ── totals bar ──────────────────────────────────────────── */
+.totals-bar{background:var(--navy);color:#fff;border-radius:var(--r);
+  padding:12px 18px;display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.totals-bar .tb-label{font-size:.78rem;opacity:.7;margin-bottom:2px}
+.totals-bar .tb-amt{font:700 1.1rem var(--head);letter-spacing:-.01em}
+
+/* ── footer ──────────────────────────────────────────────── */
+footer{background:var(--navy);color:#C9D4F2;padding:24px 0;border-top:4px solid var(--gold);font-size:.84rem}
+footer .wrap{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ═══════ Top Bar ══════════════════════════════════════════ -->
+<header>
+  <div class="topbar">
+    <div class="wrap">
+      <a href="https://www.adiuniversity.com" class="brand" target="_blank" rel="noopener">
+        <div class="crest" aria-hidden="true">🎓</div>
+        <div class="nm">American Ditek Institute<small>ADI University · Yaoundé</small></div>
+      </a>
+      <div class="nav-right">
+        <button class="btn-sm" id="themeToggle">🌙 Dark</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════ Hero ═════════════════════════════════════════════ -->
+<div class="phero">
+  <div class="wrap">
+    <p class="eyebrow">Student Academic Services · Enrolment</p>
+    <h1>Course Registration Gate</h1>
+    <p class="lead">
+      Course enrolment is conditionally unlocked only upon full verification of the Registration
+      Fee (50,000&nbsp;XAF) and Platform Charge (500&nbsp;XAF) by the ADI University Finance Office.
+      No manual intervention required — the portal enforces this automatically.
+    </p>
+    <div class="badge-row">
+      <span class="badge b-warn" id="hero-badge">🔒 Enrolment Locked</span>
+      <span class="badge b-info">MTN MoMo</span>
+      <span class="badge b-info">Finance-Confirmed</span>
+      <span class="badge b-info">Auto-Enforced</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ Main ═════════════════════════════════════════════ -->
+<main>
+<div class="wrap">
+
+  <!-- Payment flow diagram -->
+  <div class="section-head"><h2>Prerequisite Payment Flow</h2></div>
+
+  <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:28px;overflow:hidden">
+    <div class="flow" role="list" aria-label="Payment to enrolment flow">
+      <div class="flow-step" role="listitem">
+        <div class="flow-box">
+          <div class="fb-icon">📱</div>
+          Student sends<br>MoMo payment
+        </div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-step" role="listitem">
+        <div class="flow-box active">
+          <div class="fb-icon">🏦</div>
+          Submits Txn ID<br>on portal
+        </div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-step" role="listitem">
+        <div class="flow-box active">
+          <div class="fb-icon">🏛️</div>
+          Finance Office<br>confirms
+        </div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-step" role="listitem">
+        <div class="flow-box ok" id="flow-gate">
+          <div class="fb-icon">✅</div>
+          Gate unlocks<br>automatically
+        </div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-step" role="listitem">
+        <div class="flow-box ok">
+          <div class="fb-icon">📋</div>
+          Student registers<br>courses
+        </div>
+      </div>
+    </div>
+    <div class="note info" style="margin:0">
+      <strong>Automated enforcement</strong> — the portal polls for Finance Office confirmations every
+      30 seconds. The gate opens the moment both payments are verified, with no page reload required.
+    </div>
+  </div>
+
+  <!-- ── Live Demo ───────────────────────────────────────── -->
+  <div class="section-head"><h2>Live Interactive Preview</h2></div>
+
+  <!-- Demo controls -->
+  <div class="demo-controls" role="region" aria-label="Demo control panel">
+    <h3>🧪 Finance Office Simulation Panel</h3>
+    <div class="ctrl-row">
+      <button class="btn btn-primary btn-sm-ctrl" onclick="confirmFee('registration')">
+        ✓ Confirm Registration (50,000 XAF)
+      </button>
+      <button class="btn btn-primary btn-sm-ctrl" onclick="confirmFee('platform')">
+        ✓ Confirm Platform Charge (500 XAF)
+      </button>
+      <button class="btn btn-gold btn-sm-ctrl" onclick="confirmBoth()">
+        ✓ Confirm Both — Unlock Enrolment
+      </button>
+      <button class="btn btn-danger btn-sm-ctrl" onclick="resetAll()">
+        ↺ Reset (Lock Gate)
+      </button>
+    </div>
+  </div>
+
+  <!-- Portal shell mock -->
+  <div class="portal-shell" role="main" aria-label="ADI Student Portal — Course Registration">
+    <div class="portal-top">
+      <div class="pt-title">📋 Course Registration — Semester 1 · 2024–2025</div>
+      <div class="pt-pill" id="portal-pill">HND Software Engineering</div>
+    </div>
+    <div class="portal-body">
+
+      <!-- Gate status banner (injected by JS) -->
+      <div id="gate-banner-host" data-adi-course-gate="banner" aria-live="polite"></div>
+
+      <!-- Payment requirement cards -->
+      <h3 style="margin-bottom:12px">Mandatory Prerequisite Payments</h3>
+      <div class="req-grid">
+
+        <div class="req-card pending" id="rc-registration" role="status">
+          <div class="rc-label">Fee Type</div>
+          <div class="rc-name">Registration Fee</div>
+          <div class="rc-amount pending" id="rc-reg-amount">50,000 XAF</div>
+          <div class="rc-status" id="rc-reg-status" style="color:var(--crimson)">
+            <span>✗</span> <span>Pending confirmation</span>
+          </div>
+        </div>
+
+        <div class="req-card pending" id="rc-platform" role="status">
+          <div class="rc-label">Fee Type</div>
+          <div class="rc-name">Platform Charge</div>
+          <div class="rc-amount pending" id="rc-plat-amount">500 XAF</div>
+          <div class="rc-status" id="rc-plat-status" style="color:var(--crimson)">
+            <span>✗</span> <span>Pending confirmation</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Totals bar -->
+      <div class="totals-bar" id="totals-bar">
+        <div>
+          <div class="tb-label">Total Required</div>
+          <div class="tb-amt">50,500 XAF</div>
+        </div>
+        <div style="text-align:right">
+          <div class="tb-label">MoMo Account</div>
+          <div class="tb-amt" style="font-size:.88rem">+237 678 305 489</div>
+        </div>
+      </div>
+
+      <!-- Course list -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <h3>Available Courses — Semester 1</h3>
+        <span style="font-size:.8rem;color:var(--muted)" id="enroll-count">0 of 6 enrolled</span>
+      </div>
+
+      <div class="course-grid" id="course-grid">
+        <!-- Injected by JS -->
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Integration guide -->
+  <div class="section-head"><h2>Integration — Portal Source Code</h2></div>
+
+  <div class="guide-card">
+    <p style="font-size:.86rem;color:var(--muted);margin-bottom:16px">
+      Four steps to wire the Course Registration Gate into the ADI portal.
+      No backend changes are required for the front-end lock;
+      the finance-confirmation endpoint call shown in Step 3 is the only server-side touch.
+    </p>
+
+    <div class="guide-step">
+      <div class="gs-num">1</div>
+      <div class="gs-body">
+        <div class="gs-title">Paste both patch scripts before <code>&lt;/body&gt;</code></div>
+        <div class="gs-desc">Include the payment auto-fill patch (v1.1) and the new course gate script:</div>
+        <pre class="code"><span class="cm">&lt;!-- ADI Payment Auto-Fill Patch v1.1 --&gt;</span>
+<span class="kw">&lt;script</span> src=<span class="str">"adi-payment-autofill-patch.js"</span><span class="kw">&gt;&lt;/script&gt;</span>
+
+<span class="cm">&lt;!-- ADI Course Registration Gate v1.0 --&gt;</span>
+<span class="kw">&lt;script</span> src=<span class="str">"adi-course-registration-gate.js"</span><span class="kw">&gt;&lt;/script&gt;</span>
+<span class="kw">&lt;/body&gt;</span></pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="gs-num">2</div>
+      <div class="gs-body">
+        <div class="gs-title">Add data attributes to the registration page template</div>
+        <div class="gs-desc">The gate auto-wires itself to any element carrying a <code>data-adi-course-gate</code> attribute:</div>
+        <pre class="code"><span class="cm">&lt;!-- Status banner injects here automatically --&gt;</span>
+<span class="kw">&lt;div</span> data-adi-course-gate=<span class="str">"banner"</span><span class="kw">&gt;&lt;/div&gt;</span>
+
+<span class="cm">&lt;!-- Enrol button is disabled until gate opens --&gt;</span>
+<span class="kw">&lt;button</span> data-adi-course-gate=<span class="str">"guard"</span>
+        class=<span class="str">"btn-register"</span>
+        onclick=<span class="str">"submitCourseEnrolment()"</span><span class="kw">&gt;</span>
+  Register Selected Courses
+<span class="kw">&lt;/button&gt;</span></pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="gs-num">3</div>
+      <div class="gs-body">
+        <div class="gs-title">Call <code>confirmPayment()</code> from the finance confirmation endpoint</div>
+        <div class="gs-desc">When the Finance Office approves a payment in the admin panel, call:</div>
+        <pre class="code"><span class="cm">// In the portal's finance admin confirmation handler:</span>
+<span class="kw">function</span> <span class="fn">onFinanceConfirm</span>(paymentRecord) {
+  <span class="cm">// key: 'registration' | 'platform'</span>
+  <span class="fn">window.adiCourseGate.confirmPayment</span>(
+    paymentRecord.key,    <span class="cm">// 'registration' or 'platform'</span>
+    paymentRecord.txId    <span class="cm">// MoMo transaction ID</span>
+  );
+  <span class="cm">// Gate re-evaluates and fires 'adi:gate:open' if both are now confirmed.</span>
+  <span class="cm">// All guarded buttons enable and all banners update automatically.</span>
+}</pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="gs-num">4</div>
+      <div class="gs-body">
+        <div class="gs-title">Guard the course enrolment API call server-side too</div>
+        <div class="gs-desc">
+          The front-end gate is UX enforcement. Add a server-side check in the course
+          enrolment API route so a student cannot bypass it via direct API call:
+        </div>
+        <pre class="code"><span class="cm">// Server-side (Node / Express example):</span>
+app.<span class="fn">post</span>(<span class="str">'/api/enrol-courses'</span>, <span class="kw">async</span> (req, res) => {
+  <span class="kw">const</span> student = <span class="kw">await</span> <span class="fn">getStudent</span>(req.user.id);
+
+  <span class="kw">const</span> hasReg = student.payments.<span class="fn">find</span>(
+    p => p.type === <span class="str">'registration'</span> && p.confirmed
+  );
+  <span class="kw">const</span> hasPlatform = student.payments.<span class="fn">find</span>(
+    p => p.type === <span class="str">'platform'</span> && p.confirmed
+  );
+
+  <span class="kw">if</span> (!hasReg || !hasPlatform) {
+    <span class="kw">return</span> res.<span class="fn">status</span>(<span class="num">403</span>).<span class="fn">json</span>({
+      error: <span class="str">'GATE_LOCKED'</span>,
+      message: <span class="str">'Registration Fee and Platform Charge must be confirmed before course enrolment.'</span>
+    });
+  }
+  <span class="cm">// ... proceed with enrolment</span>
+});</pre>
+      </div>
+    </div>
+
+    <div class="guide-step">
+      <div class="gs-num">5</div>
+      <div class="gs-body">
+        <div class="gs-title">Listen for gate events in existing portal code</div>
+        <div class="gs-desc">Subscribe to DOM events to react anywhere in the portal when the gate opens or closes:</div>
+        <pre class="code">document.<span class="fn">addEventListener</span>(<span class="str">'adi:gate:open'</span>, <span class="kw">function</span>(e) {
+  <span class="cm">// e.detail = { open: true, paid: [...], missing: [] }</span>
+  <span class="fn">showCourseRegistrationSection</span>();
+  <span class="fn">adiNotify</span>(<span class="str">'portal'</span>,
+    <span class="str">'Enrolment Unlocked'</span>,
+    <span class="str">'Your payments have been confirmed. You may now register your courses.'</span>
+  );
+});
+
+document.<span class="fn">addEventListener</span>(<span class="str">'adi:gate:locked'</span>, <span class="kw">function</span>(e) {
+  <span class="fn">hideCourseRegistrationSection</span>();
+});</pre>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note info">
+    <strong>Integration with Notification Engine v3.1</strong> — The gate fires <code>adi:gate:open</code>
+    which you can pass straight to <code>window.adiNotify('portal', title, body)</code> to send
+    the student a chime + vibration the moment Finance confirms their payment.
+  </div>
+
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <strong style="font-family:var(--head)">American Ditek Institute</strong> — ADI University, Yaoundé<br>
+      <span style="opacity:.7">Academic Services · Course Registration Gate v1.0 · ISO/IEC 25010 · WCAG 2.2 AA</span>
+    </div>
+    <div style="text-align:right;opacity:.8">
+      Mentored by the <strong>University of Buea</strong><br>
+      www.adiuniversity.com
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════ Gate JS (embedded) ══════════════════════════════ -->
+<script>
+/* ── Embedded Gate Engine ───────────────────────────────── */
+(function (root) {
+  'use strict';
+  var ACCOUNTS = {
+    primary: { number:'237678305489', display:'+237 678 305 489', name:'GLOBAL INVESTMENT CREDIT COOPERATIVE BOD' }
+  };
+  var REQUIRED = [
+    { key:'registration', label:'Registration Fee',   amount:50000, currency:'XAF' },
+    { key:'platform',     label:'Platform Charge',    amount:500,   currency:'XAF' }
+  ];
+  var STORE_KEY = 'adi_courseGate_v1';
+  var _cache = null;
+
+  function loadStore(){ try{ var r=localStorage.getItem(STORE_KEY); return r?JSON.parse(r):{}; }catch(e){ return {}; } }
+  function saveStore(d){ try{ localStorage.setItem(STORE_KEY,JSON.stringify(d)); }catch(e){} }
+
+  function computeGate(store){
+    var paid=[], missing=[];
+    REQUIRED.forEach(function(req){
+      var rec=store[req.key];
+      if(rec&&rec.confirmed) paid.push(Object.assign({},req,rec));
+      else missing.push(Object.assign({},req));
+    });
+    return { open:missing.length===0, paid:paid, missing:missing };
+  }
+
+  function check(){
+    var store=loadStore(); var result=computeGate(store); _cache=result;
+    document.dispatchEvent(new CustomEvent(result.open?'adi:gate:open':'adi:gate:locked',{detail:result}));
+    return result;
+  }
+
+  function confirmPayment(key,txId){
+    var store=loadStore();
+    store[key]={confirmed:true,txId:txId||'',date:new Date().toISOString()};
+    saveStore(store); _cache=null; return check();
+  }
+
+  function resetGate(){ try{ localStorage.removeItem(STORE_KEY); }catch(e){} _cache=null; check(); }
+
+  function guard(el){
+    if(!el) return;
+    function update(r){
+      if(r.open){ el.removeAttribute('disabled'); el.removeAttribute('aria-disabled'); el.style.opacity=''; el.style.cursor=''; el.title=''; }
+      else{ el.setAttribute('disabled',''); el.setAttribute('aria-disabled','true'); el.style.opacity='0.4'; el.style.cursor='not-allowed'; el.title='Complete mandatory payments to unlock course enrolment.'; }
+    }
+    var r=check(); update(r);
+    document.addEventListener('adi:gate:open',function(e){update(e.detail);});
+    document.addEventListener('adi:gate:locked',function(e){update(e.detail);});
+  }
+
+  root.adiCourseGate = { check:check, confirmPayment:confirmPayment, resetGate:resetGate, guard:guard, REQUIRED:REQUIRED };
+}(window));
+
+/* ── Theme toggle ───────────────────────────────────────── */
+(function(){
+  var btn=document.getElementById('themeToggle');
+  function apply(dark){ document.documentElement.dataset.theme=dark?'dark':'light'; btn.textContent=dark?'☀️ Light':'🌙 Dark'; try{localStorage.setItem('adi_theme',dark?'dark':'light');}catch(e){} }
+  btn.addEventListener('click',function(){ apply(document.documentElement.dataset.theme!=='dark'); });
+  try{ var s=localStorage.getItem('adi_theme'); var sys=window.matchMedia('(prefers-color-scheme:dark)').matches; apply(s==='dark'||(!s&&sys)); }catch(e){}
+})();
+
+/* ── Course data ────────────────────────────────────────── */
+var COURSES = [
+  { code:'CSE 211', name:'Programming Fundamentals',   cv:5, type:'Core',     semester:1 },
+  { code:'CSE 212', name:'Computer Architecture',      cv:4, type:'Core',     semester:1 },
+  { code:'MAT 201', name:'Engineering Mathematics I',  cv:4, type:'Core',     semester:1 },
+  { code:'CSE 213', name:'Database Management Systems',cv:4, type:'Elective', semester:1 },
+  { code:'COM 201', name:'Technical Communication',    cv:3, type:'General',  semester:1 },
+  { code:'CSE 214', name:'Web Technologies I',         cv:4, type:'Elective', semester:1 }
+];
+
+var enrolled = {};
+
+function formatCurrency(n){ return n.toLocaleString() + ' XAF'; }
+
+/* ── Render courses ─────────────────────────────────────── */
+function renderCourses(gateOpen){
+  var grid=document.getElementById('course-grid');
+  grid.innerHTML='';
+  COURSES.forEach(function(c){
+    var isEnrolled=!!enrolled[c.code];
+    var card=document.createElement('div');
+    card.className='course-card '+(gateOpen?'unlocked':'locked');
+    card.innerHTML=
+      '<div class="cc-code">'+c.code+'</div>'+
+      '<div class="cc-name">'+c.name+'</div>'+
+      '<div class="cc-meta">'+
+        '<span>CV '+c.cv+'</span>'+
+        '<span>'+c.type+'</span>'+
+        '<span>Sem '+c.semester+'</span>'+
+      '</div>'+
+      '<div class="cc-enroll">'+
+        '<span style="font-size:.78rem;color:var(--muted)">'+
+          (isEnrolled?'<span style="color:var(--ok);font-weight:700">✓ Enrolled</span>':'Not registered')+
+        '</span>'+
+        '<button class="btn-enroll" '+(gateOpen&&!isEnrolled?'':'disabled')+
+          ' onclick="enrollCourse(\''+c.code+'\')" aria-label="Enrol in '+c.name+'">'+
+          (isEnrolled?'Enrolled ✓':'Enrol Now')+
+        '</button>'+
+      '</div>'+
+      (!gateOpen?'<div class="lock-overlay" aria-hidden="true">🔒</div>':'')+
+    '';
+    grid.appendChild(card);
+  });
+  updateEnrollCount();
+}
+
+function updateEnrollCount(){
+  var count=Object.keys(enrolled).length;
+  document.getElementById('enroll-count').textContent=count+' of '+COURSES.length+' enrolled';
+}
+
+function enrollCourse(code){
+  var result=adiCourseGate.check();
+  if(!result.open){ alert('Course enrolment is locked. Please complete mandatory payments first.'); return; }
+  enrolled[code]=true;
+  renderCourses(true);
+}
+
+/* ── Banner render ──────────────────────────────────────── */
+function renderBanner(result){
+  var host=document.getElementById('gate-banner-host');
+  host.innerHTML='';
+  var banner=document.createElement('div');
+  banner.setAttribute('role','status');
+  banner.setAttribute('aria-live','polite');
+
+  if(result.open){
+    banner.style.cssText='display:flex;align-items:flex-start;gap:12px;background:var(--okbg);border-left:4px solid var(--ok);border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:20px;font-size:.88rem;line-height:1.55;color:var(--ink)';
+    banner.innerHTML=
+      '<span style="font-size:1.3rem;flex:0 0 auto;margin-top:-1px" aria-hidden="true">✅</span>'+
+      '<div>'+
+        '<strong style="display:block;font-size:.93rem;color:var(--ok);margin-bottom:4px">Enrolment Unlocked — Payments Confirmed</strong>'+
+        '<span>Both the Registration Fee (50,000&nbsp;XAF) and Platform Charge (500&nbsp;XAF) have been verified by the Finance Office. '+
+        'You may now proceed to register your courses for this semester.</span>'+
+      '</div>';
+  } else {
+    var store=JSON.parse(localStorage.getItem('adi_courseGate_v1')||'{}');
+    var rows=adiCourseGate.REQUIRED.map(function(req){
+      var rec=store[req.key]; var done=rec&&rec.confirmed;
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.07)">'+
+        '<span style="font-weight:700;font-size:.95rem;color:'+(done?'var(--ok)':'var(--crimson)')+';flex:0 0 20px;text-align:center">'+(done?'✓':'✗')+'</span>'+
+        '<span style="flex:1"><strong>'+req.label+'</strong> — '+req.amount.toLocaleString()+' '+req.currency+'</span>'+
+        (done?'<span style="font-size:.76rem;color:var(--ok);font-weight:600;white-space:nowrap">Confirmed ✓</span>':'<span style="font-size:.76rem;color:var(--crimson);font-weight:600;white-space:nowrap">Pending</span>')+
+      '</div>';
+    }).join('');
+
+    banner.style.cssText='background:var(--warnbg);border-left:4px solid var(--gold);border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:20px;font-size:.88rem;line-height:1.55;color:var(--ink)';
+    banner.innerHTML=
+      '<div style="font-weight:700;font-size:.93rem;color:var(--warn);margin-bottom:8px;display:flex;align-items:center;gap:7px"><span>🔒</span> Course Enrolment is Currently Locked</div>'+
+      '<p style="margin:0 0 10px;color:var(--muted)">To gain access to course registration, you must complete and have confirmed by the Finance Office the following mandatory payments:</p>'+
+      '<div style="background:var(--card);border:1px solid var(--gold-line);border-radius:4px;padding:8px 12px;margin-bottom:12px">'+rows+'</div>'+
+      '<div style="display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--info)"><span aria-hidden="true">ℹ</span> Once your payment is processed via MTN MoMo and confirmed by the Finance Office, this page updates automatically — no reload required.</div>';
+  }
+  host.appendChild(banner);
+}
+
+/* ── Payment cards update ───────────────────────────────── */
+function updatePaymentCards(){
+  var store=JSON.parse(localStorage.getItem('adi_courseGate_v1')||'{}');
+  ['registration','platform'].forEach(function(key){
+    var id=key==='registration'?'registration':'platform';
+    var card=document.getElementById('rc-'+id);
+    var amtEl=document.getElementById('rc-'+(key==='registration'?'reg':'plat')+'-amount');
+    var statEl=document.getElementById('rc-'+(key==='registration'?'reg':'plat')+'-status');
+    var rec=store[key]; var done=rec&&rec.confirmed;
+    if(card){ card.className='req-card '+(done?'confirmed':'pending'); }
+    if(amtEl){ amtEl.className='rc-amount '+(done?'confirmed':'pending'); }
+    if(statEl){
+      statEl.style.color=done?'var(--ok)':'var(--crimson)';
+      statEl.innerHTML=done
+        ?'<span>✓</span> <span>Confirmed by Finance Office</span>'
+        :'<span>✗</span> <span>Pending confirmation</span>';
+    }
+  });
+}
+
+/* ── Hero badge update ──────────────────────────────────── */
+function updateHeroBadge(open){
+  var b=document.getElementById('hero-badge');
+  if(open){ b.className='badge b-ok'; b.textContent='✅ Enrolment Unlocked'; }
+  else{ b.className='badge b-warn'; b.textContent='🔒 Enrolment Locked'; }
+}
+
+/* ── Gate event listeners ───────────────────────────────── */
+document.addEventListener('adi:gate:open', function(e){
+  renderBanner(e.detail);
+  renderCourses(true);
+  updatePaymentCards();
+  updateHeroBadge(true);
+});
+document.addEventListener('adi:gate:locked', function(e){
+  renderBanner(e.detail);
+  renderCourses(false);
+  updatePaymentCards();
+  updateHeroBadge(false);
+});
+
+/* ── Demo control functions ─────────────────────────────── */
+function confirmFee(key){
+  var txId='TXN'+Math.floor(10000000000+Math.random()*89999999999);
+  window.adiCourseGate.confirmPayment(key, txId);
+}
+function confirmBoth(){ confirmFee('registration'); setTimeout(function(){ confirmFee('platform'); },200); }
+function resetAll(){ enrolled={}; window.adiCourseGate.resetGate(); }
+
+/* ── Bootstrap ──────────────────────────────────────────── */
+(function init(){
+  var result=window.adiCourseGate.check();
+  renderBanner(result);
+  renderCourses(result.open);
+  updatePaymentCards();
+  updateHeroBadge(result.open);
+  /* Auto-poll every 30 s */
+  setInterval(function(){
+    var r=window.adiCourseGate.check();
+    renderBanner(r); renderCourses(r.open); updatePaymentCards(); updateHeroBadge(r.open);
+  }, 30000);
+})();
+</script>
+</body>
+</html>
