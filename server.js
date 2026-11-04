@@ -883,7 +883,7 @@ __MODS["./lib/classroom"] = function (module, exports, require) {
 const crypto = require('crypto');
 const makeRefs = require('./refs');
 module.exports = function makeCls(ctx) {
-  const { S, save, audit, now, uid, R, E, limited, notifyUser, usersWith, send, body, bi, logic, remove, sniff } = ctx; const core = logic.core, J = x => JSON.parse(JSON.stringify(x));
+  const { S, save, audit, now, uid, R, E, limited, notifyUser, usersWith, send, body, bi, logic, remove, sniff } = ctx; const att = () => (ctx.att ? ctx.att() : null); const core = logic.core, J = x => JSON.parse(JSON.stringify(x));
   const fail = (code, msg, status = 400, extra) => { throw [status, msg || code, code, extra]; };
   const cfg = () => J(core.clsCfg(((S.get('settings', 'main') || {}).cls)));
   const tokOf = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 3 && !['course', 'introduction', 'principles', 'with', 'from', 'that', 'this', 'their', 'cours', 'avec', 'dans', 'pour'].includes(w));
@@ -946,15 +946,52 @@ module.exports = function makeCls(ctx) {
     if (Object.values(S.all('clsh')).some(s => s.deckId === id && s.status === 'live')) fail('IN_USE', 'This presentation is being used in a live session.', 409); await remove('clsd', id); return { ok: true };
   }
 
+  /* ---- notices about live classes: the students are told in the portal AND by e-mail (official letter, at the ADI and personal addresses) ---- */
+  const WD = { en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], fr: ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'] }, MO = { en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], fr: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'] };
+  const hh = n => String(n).padStart(2, '0');
+  function whenText(d, lang) {
+    const a = new Date(d.start + 3600e3), b = new Date(d.start + d.mins * 60000 + 3600e3), L = lang === 'fr' ? 'fr' : 'en';
+    return { date: (L === 'fr' ? WD.fr[a.getUTCDay()] + ' ' + a.getUTCDate() + ' ' + MO.fr[a.getUTCMonth()] : WD.en[a.getUTCDay()] + ', ' + a.getUTCDate() + ' ' + MO.en[a.getUTCMonth()]) + ' ' + a.getUTCFullYear(), time: hh(a.getUTCHours()) + ':' + hh(a.getUTCMinutes()) + ' – ' + hh(b.getUTCHours()) + ':' + hh(b.getUTCMinutes()) + (L === 'fr' ? ' (heure du Cameroun, UTC+01:00)' : ' (Cameroon time, UTC+01:00)') };
+  }
+  function classLetter(kind, c, d, lang, lecName) {
+    const fr = lang === 'fr', w = whenText(d, lang), plat = d.provider === 'adi' ? (fr ? 'Salle virtuelle ADI' : 'ADI virtual classroom') : (CLS_PROV_NAME[d.provider] || (fr ? 'Visioconférence' : 'Video conference'));
+    const rows = (fr ? 'Cours : ' : 'Course: ') + c.code + ' — ' + c.title + '\n' + (fr ? 'Sujet : ' : 'Topic: ') + d.title + '\n' + (fr ? 'Enseignant : ' : 'Lecturer: ') + lecName + '\n' + (fr ? 'Date : ' : 'Date: ') + w.date + '\n' + (fr ? 'Heure : ' : 'Time: ') + w.time + '\n' + (fr ? 'Plateforme : ' : 'Platform: ') + plat;
+    if (kind === 'cancel') return (fr ? 'Nous vous informons que le cours en direct suivant est annulé.' : 'We inform you that the following live class has been cancelled.') + '\n\n' + rows + '\n\n' + (fr ? 'Une nouvelle date vous sera communiquée dès qu\'elle sera arrêtée. Nous vous remercions de votre compréhension.' : 'A new date will be communicated as soon as it is fixed. Thank you for your understanding.');
+    return (kind === 'change' ? (fr ? 'L\'horaire de votre cours en direct a été modifié. Veuillez prendre note des nouvelles informations ci-dessous.' : 'The schedule of your live class has been changed. Please note the new details below.') : (fr ? 'Votre enseignant a programmé un cours en direct (classe virtuelle) pour le cours suivant.' : 'Your lecturer has scheduled a live virtual class for the following course.')) + '\n\n' + rows + '\n\n' + (fr ? 'Pour participer : connectez-vous au portail ADI, ouvrez « Classe virtuelle », choisissez ce cours puis sélectionnez « Rejoindre ». La salle ouvre 15 minutes avant le début. Votre présence est enregistrée automatiquement dès que vous rejoignez la séance ; nous vous prions d\'être ponctuel(le).' : 'To take part: sign in to the ADI portal, open Virtual classroom, choose this course and select "Join". The room opens 15 minutes before the start. Your attendance is recorded automatically when you join; kindly be punctual.');
+  }
+  const CLS_PROV_NAME = { zoom: 'Zoom', meet: 'Google Meet', teams: 'Microsoft Teams' };
+  function tellMembers(c, d, kind, lecName) {
+    const ids = members(c.id); if (!ids.length) return;
+    const title = (kind === 'cancel' ? bi('Live class cancelled', 'Cours en direct annulé') : kind === 'change' ? bi('Live class rescheduled', 'Cours en direct reprogrammé') : bi('Live class scheduled', 'Cours en direct programmé')) + ' — ' + c.code;
+    (async () => { for (const id of ids) { try { const u = S.get('users', id); if (u && u.status === 'active') await notifyUser(id, title, classLetter(kind, c, d, u.lang === 'fr' ? 'fr' : 'en', lecName), { link: '#/classroom/' + c.id }); } catch (e) { console.error('[classroom] notice', e.message); } } })();
+  }
+
   /* ---- live sessions ---- */
   const roomUrl = d => 'https://' + (cfg().jitsiDomain || 'meet.jit.si') + '/' + d.room;
   async function saveSession(u, b) {
-    const c = course(b.courseId); need(u, c, 'teach'); const { s, err } = core.clsSession(b.s); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
-    if (s.deckId) { const k = S.get('clsd', s.deckId); if (!k || k.courseId !== c.id || k.type !== 'deck') fail('DECK', 'Choose a presentation that belongs to this class.'); }
+    const c = course(b.courseId); need(u, c, 'teach'); const A_ = att();
     const old = b.id ? S.get('clsh', String(b.id)) : null; if (b.id && (!old || old.courseId !== c.id)) fail('NOT_FOUND', 'Not found', 404); if (old && ['live', 'ended', 'cancelled'].includes(old.status)) fail('STATE', 'This session can no longer be edited.', 409);
-    const id = old ? old.id : rid(8), doc = Object.assign({}, old || { status: 'scheduled', slide: 0, room: 'ADI-' + rid(6), at: now(), by: u.id, recUrl: '' }, J(s), { id, courseId: c.id, byName: u.name, upd: now() });
+    // a virtual class follows the timetable: its day and hours are those of a timetable session of this course (managers alone may add an extra session)
+    let timing = null; const raw = Object.assign({}, b.s || {});
+    if (b.slotId) {
+      timing = A_ ? A_.slotOn(String(b.slotId), String(b.date || '')) : null;
+      if (!timing || timing.courseId !== c.id) fail('TIMETABLE', 'That time is not on the timetable of this course.', 400);
+      if (timing.schedEnd < now() - 30 * 60000) fail('TIMETABLE', 'This timetable session has already taken place.', 400);
+      if (A_.virtualSlotTaken(timing.slotId, timing.date) && !(old && old.slotId === timing.slotId && old.date === timing.date)) fail('DUPLICATE', 'A virtual class is already scheduled for this timetable session.', 409);
+      raw.start = timing.schedStart; raw.mins = Math.round((timing.schedEnd - timing.schedStart) / 60000);
+    } else if (old && old.slotId) { raw.start = old.start; raw.mins = old.mins; }
+    else if (!(b.extra === true && isMgr(u))) fail('TIMETABLE', 'Please choose a session from the timetable of this course.', 400);
+    const { s, err } = core.clsSession(raw); if (err.length) fail('INVALID', 'Please correct: ' + err.join(', '), 400, err);
+    if (s.deckId) { const k = S.get('clsd', s.deckId); if (!k || k.courseId !== c.id || k.type !== 'deck') fail('DECK', 'Choose a presentation that belongs to this class.'); }
+    const id = old ? old.id : rid(8), keep = timing ? { slotId: timing.slotId, date: timing.date, ttRoom: timing.room || '' } : (old ? { slotId: old.slotId || '', date: old.date || '', ttRoom: old.ttRoom || '' } : { slotId: '', date: '', ttRoom: '' });
+    const doc = Object.assign({}, old || { status: 'scheduled', slide: 0, room: 'ADI-' + rid(6), at: now(), by: u.id, recUrl: '' }, J(s), keep, { id, courseId: c.id, byName: u.name, upd: now() });
     await save('clsh', id, doc); await audit(u, 'class session ' + (old ? 'edited ' : 'scheduled ') + c.code);
-    if (!old || old.start !== doc.start) await inApp(members(c.id), bi('Live class scheduled: ', 'Cours en direct programmé : ') + c.code, doc.title + ' — ' + new Date(doc.start + 3600e3).toISOString().slice(0, 16).replace('T', ' ') + ' (Cameroon)'); return { ok: true, id };
+    if (!old || old.start !== doc.start) { const kind = old ? 'change' : 'new'; await inApp(members(c.id), bi('Live class scheduled: ', 'Cours en direct programmé : ') + c.code, doc.title + ' — ' + new Date(doc.start + 3600e3).toISOString().slice(0, 16).replace('T', ' ') + ' (Cameroon)'); tellMembers(c, doc, kind, u.name); }
+    return { ok: true, id };
+  }
+  async function slotsFor(u, courseId) {
+    const c = course(courseId); need(u, c, 'teach'); const A_ = att(); if (!A_) return { slots: [] };
+    return { slots: A_.upcomingSlots(c.id, 28).map(x => ({ slotId: x.slotId, date: x.date, start: x.start, end: x.end, room: x.room, campus: x.campus, schedStart: x.schedStart, mins: Math.round((x.schedEnd - x.schedStart) / 60000), taken: A_.virtualSlotTaken(x.slotId, x.date) })) };
   }
   const live = id => { let x = LIVE.get(id); if (!x) { const d = S.get('clsh', id) || {}; x = { rev: 1, slide: d.slide || 0, poll: null, answers: {}, hands: new Map(), saved: 0 }; LIVE.set(id, x); } return x; };
   const deckOf = d => d.deckId ? S.get('clsd', d.deckId) : null;
@@ -963,11 +1000,12 @@ module.exports = function makeCls(ctx) {
     const persist = async () => { x.saved = now(); await save('clsh', id, d); };
     if (a === 'start') {
       if (['ended', 'cancelled'].includes(d.status)) fail('STATE', 'This session is over.', 409);
-      if (d.status !== 'live') { d.status = 'live'; d.startedAt = now(); x.rev++; if (deck && !deck.shared) await save('clsd', deck.id, Object.assign({}, deck, { shared: true })); await persist(); await inApp(members(c.id), bi('Live class started: ', 'Cours en direct commencé : ') + c.code, d.title); }
+      if (d.status !== 'live') { d.status = 'live'; d.startedAt = now(); d.startedBy = u.id; x.rev++; if (deck && !deck.shared) await save('clsd', deck.id, Object.assign({}, deck, { shared: true })); await persist(); await inApp(members(c.id), bi('Live class started: ', 'Cours en direct commencé : ') + c.code, d.title); }
     } else if (a === 'end') {
       if (d.status !== 'live') fail('STATE', 'The session is not live.', 409); d.status = 'ended'; d.endedAt = now(); d.results = Object.fromEntries(Object.entries(x.answers).map(([i, m]) => [i, Object.values(m)]));
       d.online = Object.keys(S.all('clsr')).filter(k => k.startsWith(id + '_')).length; x.rev++; await persist(); LIVE.delete(id);
-    } else if (a === 'cancel') { if (d.status !== 'scheduled') fail('STATE', 'Only a scheduled session can be cancelled.', 409); d.status = 'cancelled'; await persist(); await inApp(members(c.id), bi('Live class cancelled: ', 'Cours en direct annulé : ') + c.code, d.title); }
+      try { const A_ = att(); if (A_) await A_.virtualClose(d, false); } catch (e) { console.error('[classroom] attendance', e.message); }
+    } else if (a === 'cancel') { if (d.status !== 'scheduled') fail('STATE', 'Only a scheduled session can be cancelled.', 409); d.status = 'cancelled'; await persist(); await inApp(members(c.id), bi('Live class cancelled: ', 'Cours en direct annulé : ') + c.code, d.title); tellMembers(c, d, 'cancel', d.byName || u.name); }
     else if (a === 'slide') {
       if (d.status !== 'live') fail('STATE', 'The session is not live.', 409); const i = clsInt(b.i, 0, Math.max(0, n - 1)); x.slide = i; x.poll = deck && deck.slides[i] && deck.slides[i].k === 'quiz' ? { slide: i, open: false, reveal: false } : null; x.rev++;
       d.slide = i; if (now() - x.saved > 1500) await persist();
@@ -991,7 +1029,7 @@ module.exports = function makeCls(ctx) {
   function hand(u, id, b) { const d = S.get('clsh', id); if (!d) fail('NOT_FOUND', 'Not found', 404); need(u, course(d.courseId), 'member'); const x = live(id); if (b.up === true) x.hands.set(u.id, { n: u.name, at: now() }); else x.hands.delete(u.id); x.rev++; return { ok: true }; }
   function liveState(u, id, url) {
     const d = S.get('clsh', id); if (!d) fail('NOT_FOUND', 'Not found', 404); const c = course(d.courseId); need(u, c, 'member'); const x = live(id), t = now(), tch = teaches(u, c) || isMgr(u);
-    if (u.role === 'student') SEEN.set(id + ':' + u.id, t);
+    if (u.role === 'student') { SEEN.set(id + ':' + u.id, t); if (d.status === 'live') { const rk = id + '_' + u.id, rr = S.get('clsr', rk); if (rr && t - (rr.last || 0) > 60000) Promise.resolve(S.put('clsr', rk, Object.assign({}, rr, { last: t }))).catch(() => {}); } }
     const since = Number(url.searchParams.get('since') || 0), cm = Number(url.searchParams.get('cm') || 0), st = url.searchParams.get('st') || '';
     const msgs = Object.values(S.all('clsp')).filter(p => p.sess === id && p.kind === 'chat' && (p._seq || 0) > cm).sort((a, b) => a._seq - b._seq).slice(-60).map(p => ({ id: p._seq, n: p.name, r: p.role, text: p.text, at: p.at }));
     if (since === x.rev && !msgs.length && st === d.status) return { same: true, rev: x.rev, now: t };
@@ -1172,6 +1210,7 @@ module.exports = function makeCls(ctx) {
       if (!u || u.status !== 'active') return send(res, 401, { error: 'auth' }), true; if (!cfg().on && !isMgr(u)) fail('OFF', 'The virtual classroom is switched off.', 503);
       if ((m = /^\/api\/cls\/subfile\/([\w-]{1,90})$/.exec(p)) && req.method === 'GET') return await subfile(req, res, u, m[1]), true;
       if ((m = /^\/api\/cls\/live\/([\w-]{1,40})$/.exec(p)) && req.method === 'GET') return send(res, 200, liveState(u, m[1], url)), true;
+      if ((m = /^\/api\/cls\/slots\/([\w-]{1,40})$/.exec(p)) && req.method === 'GET') return send(res, 200, await slotsFor(u, m[1])), true;
       if ((m = /^\/api\/cls\/register\/([\w-]{1,40})$/.exec(p)) && req.method === 'GET') { const d = S.get('clsh', m[1]); if (!d) fail('NOT_FOUND', 'Not found', 404); const c = course(d.courseId); if (!(teaches(u, c) || isMgr(u))) fail('FORBIDDEN', 'Not allowed', 403); return send(res, 200, { list: Object.values(S.all('clsr')).filter(r => r.sess === m[1]).sort((a, b) => a.first - b.first) }), true; }
       if ((m = /^\/api\/cls\/export\/([\w-]{1,40})$/.exec(p)) && req.method === 'GET') { const kind = url.searchParams.get('kind') === 'attendance' ? 'attendance' : 'grades'; const csv = exportCsv(u, m[1], kind); res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="ADI-class-' + kind + '-' + ((course(m[1]) || {}).code || 'course').replace(/[^\w-]/g, '') + '.csv"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(csv), true; }
       if (req.method === 'POST') {
@@ -1776,8 +1815,8 @@ module.exports = function makeAtt(ctx) {
 
   /* ---------- tamper-evident event log ---------- */
   function loadHead() { const ev = Object.values(S.all('attlog')).sort((a, b) => a.n - b.n); const l = ev[ev.length - 1]; head = l ? { n: l.n, h: l.h } : { n: 0, h: 'GENESIS' }; }
-  function logEv(type, sid, uid_, d) {
-    const run = async () => { const ev = { n: head.n + 1, at: now(), type, sid: sid || '', uid: uid_ || '', d: d || {} }; ev.ph = head.h; ev.h = A.chainHash(head.h, ev); await S.put('attlog', 'e' + String(ev.n).padStart(9, '0'), ev); head = { n: ev.n, h: ev.h }; return ev; };
+  function logEv(type, sid, uid_, d, at) {
+    const run = async () => { const ev = { n: head.n + 1, at: at || now(), type, sid: sid || '', uid: uid_ || '', d: d || {} }; ev.ph = head.h; ev.h = A.chainHash(head.h, ev); await S.put('attlog', 'e' + String(ev.n).padStart(9, '0'), ev); head = { n: ev.n, h: ev.h }; return ev; };
     return (lock = lock.then(run, run));
   }
   const eventsOf = sid => Object.values(S.all('attlog')).filter(e => e.sid === sid).sort((a, b) => a.n - b.n);
@@ -1845,6 +1884,7 @@ module.exports = function makeAtt(ctx) {
     return ses;
   }
   async function sweep() {
+    await virtualSweep();
     const t = now(), c = cfg();
     for (const s of Object.values(S.all('sessions'))) {
       if (s.kind === 'class' && s.status === 'open' && t > s.schedEnd + c.closeGraceMin * 60000) await finalize(s, Math.min(t, s.schedEnd + c.closeGraceMin * 60000), true);
@@ -1857,7 +1897,7 @@ module.exports = function makeAtt(ctx) {
     const c = cfg(), t = now(), lp = local(t), creds = myCreds(u).map(x => ({ key: x.key, label: x.label, status: x.status, createdAt: x.createdAt, lastUsed: x.lastUsed || null }));
     const out = { enabled: c.on, now: t, date: lp.date, tz: '+0' + (c.tzMin / 60) + ':00', creds, consent: creds.length > 0, cfg: { codeStepSec: c.codeStepSec, geoMode: c.geoMode, evidence: c.evidence, evidenceTolMin: c.evidenceTolMin, attThreshold: c.attThreshold }, perms: { mark: can(u, 'att_mark'), teach: can(u, 'att_teach'), duty: can(u, 'att_duty'), manage: can(u, 'att_manage'), approve: can(u, 'att_approve') } };
     if (can(u, 'att_teach')) {
-      out.teach = slotsOn(lp.date, lp.dow, u.id).map(s => { const ses = S.get('sessions', sidOf(s.slotId, lp.date)), course = S.get('courses', s.courseId); return Object.assign({}, s, { sid: ses ? ses.id : null, status: ses ? ses.status : 'none', hours: ses ? ses.hours : null, payMin: ses ? ses.payMin : null, flags: ses ? ses.flags : [], enrolled: enrolledOf(course), canOpen: !ses && t >= s.schedStart - c.openBeforeMin * 60000 && t <= s.schedStart + c.openAfterMin * 60000, opensFrom: s.schedStart - c.openBeforeMin * 60000, opensUntil: s.schedStart + c.openAfterMin * 60000 }); });
+      out.teach = slotsOn(lp.date, lp.dow, u.id).map(s => { const ses = S.get('sessions', sidOf(s.slotId, lp.date)), course = S.get('courses', s.courseId), vc = Object.values(S.all('clsh')).find(x => x.slotId === s.slotId && x.date === lp.date && x.status !== 'cancelled'); return Object.assign({}, s, { virtual: !!vc, virtualId: vc ? vc.id : null, virtualStatus: vc ? vc.status : null, sid: ses ? ses.id : null, status: ses ? ses.status : 'none', hours: ses ? ses.hours : null, payMin: ses ? ses.payMin : null, flags: ses ? ses.flags : [], enrolled: enrolledOf(course), canOpen: !ses && t >= s.schedStart - c.openBeforeMin * 60000 && t <= s.schedStart + c.openAfterMin * 60000, opensFrom: s.schedStart - c.openBeforeMin * 60000, opensUntil: s.schedStart + c.openAfterMin * 60000 }); });
     }
     if (u.role === 'student') {
       const st = R.myStudent(u); out.learn = [];
@@ -1884,6 +1924,7 @@ module.exports = function makeAtt(ctx) {
     const sl = slotsOn(lp.date, lp.dow).find(x => x.slotId === slot.id); if (!sl) fail('NOT_TODAY', 'This class is not on the timetable today.', 400);
     if (sl.lecturerId !== u.id) fail('NOT_YOUR_CLASS', 'This course is assigned to another lecturer.', 403);
     if (S.get('sessions', sidOf(slot.id, lp.date))) fail('ALREADY', 'This class has already been opened today.', 409);
+    if (virtualSlotTaken(slot.id, lp.date)) fail('VIRTUAL', 'This timetable session is held as a virtual class: attendance is recorded automatically in the virtual classroom.', 409);
     if (t < sl.schedStart - c.openBeforeMin * 60000) fail('TOO_EARLY', 'Too early: you can open the class ' + c.openBeforeMin + ' minutes before it starts.', 400);
     if (t > sl.schedStart + c.openAfterMin * 60000) fail('TOO_LATE', 'Too late to open this class (' + c.openAfterMin + ' minutes after the start). Contact the administration.', 400);
     const clash = Object.values(S.all('sessions')).find(x => x.kind === 'class' && x.lecturerId === u.id && x.date === lp.date && x.status !== 'void' && (x.status === 'open' || (x.schedStart < sl.schedEnd && sl.schedStart < x.schedEnd)));
@@ -2025,6 +2066,45 @@ module.exports = function makeAtt(ctx) {
     return { chainOk: ch.ok, events: ch.count, head: ch.head, brokenAt: ch.bad, mismatches: bad, ok: ch.ok && !bad.length };
   }
 
+  /* ---------- virtual classes: they follow the timetable, and attendance is recorded automatically ---------- */
+  // a timetable occurrence (slot + date) with its exact instants, in Cameroon time
+  function slotOn(slotId, date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return null;
+    const noon = Date.parse(date + 'T12:00:00Z') - cfg().tzMin * 60000, p = local(noon); if (p.date !== date) return null;
+    return slotsOn(p.date, p.dow).find(x => x.slotId === String(slotId)) || null;
+  }
+  function upcomingSlots(courseId, days) {
+    const t = now(), out = []; for (let i = 0; i < (days || 21); i++) { const p = local(t + i * 864e5); slotsOn(p.date, p.dow).forEach(x => { if (x.courseId === courseId && x.schedEnd > t) out.push(x); }); }
+    return out.sort((a, b) => a.schedStart - b.schedStart);
+  }
+  const virtualSlotTaken = (slotId, date) => Object.values(S.all('clsh')).some(d => d.slotId === slotId && d.date === date && d.status !== 'cancelled');
+  // closes a virtual class: students who were in the room are marked present, and the lecturer is credited only if at least one student was present
+  async function virtualClose(d, auto) {
+    const lecId = d.startedBy || d.by, lec = S.get('users', lecId), course = S.get('courses', d.courseId); if (!lec || !course || !d.startedAt) return null;
+    const date = d.date || local(d.start).date, sid = d.slotId ? sidOf(d.slotId, date) : 'v_' + d.id; if (S.get('sessions', sid)) return S.get('sessions', sid);
+    const c = cfg(), schedEnd = d.start + d.mins * 60000, closeAt = auto ? Math.min(now(), schedEnd + c.closeGraceMin * 60000) : (d.endedAt || now());
+    const rows = Object.values(S.all('clsr')).filter(r => r.sess === d.id && r.uid && r.last >= d.startedAt && r.first <= closeAt), enrolled = enrolledOf(course);
+    const ses = { id: sid, kind: 'class', mode: 'virtual', virtualId: d.id, slotId: d.slotId || '', courseId: course.id, courseCode: course.code, courseTitle: course.title, lecturerId: lec.id, lecturerName: lec.name, date, campus: 'online', room: 'Virtual classroom', schedStart: d.start, schedEnd, ay: ayNow(), sem: course.sem, status: 'open', openAt: d.startedAt, enrolled, need: 1, evidence: 'basic', tol: 0, flags: [], disputes: 0 };
+    await save('sessions', ses.id, ses); await logEv('open', ses.id, lec.id, { slotId: d.slotId || '', openAt: ses.openAt, schedStart: ses.schedStart, schedEnd, enrolled, need: 1, evidence: 'basic', tol: 0, virtual: true }, d.startedAt);
+    for (const r of rows) {
+      const st = Object.values(S.all('students')).find(x => x.userId === r.uid) || {}, inAt = Math.max(r.first, d.startedAt), outAt = Math.min(r.last, closeAt);
+      const mk = (type, at) => ({ id: 'm_' + ses.id + '_' + r.uid + '_' + type, sid: ses.id, uid: r.uid, name: r.name || st.name || '', matric: r.matric || st.matric || '', role: 'student', lecturerId: lec.id, courseId: course.id, date, type, at, geo: null, dist: null, flags: [], dev: '', n: type === 'out' ? 1 : 0, virtual: true });
+      await save('att', mk('in', inAt).id, mk('in', inAt)); await logEv('mark', ses.id, r.uid, { role: 'student', t: 'in', flags: [], virtual: true }, inAt);
+      if (outAt > inAt + 60000) { await save('att', mk('out', outAt).id, mk('out', outAt)); await logEv('mark', ses.id, r.uid, { role: 'student', t: 'out', flags: [], virtual: true }, outAt); }
+    }
+    const done = await finalize(ses, closeAt, !!auto), fr = lec.lang === 'fr';
+    const txt = done.studentsIn ? (fr ? 'Cours virtuel ' + course.code + ' : ' + done.studentsIn + ' étudiant(s) présent(s) ; votre présence est enregistrée automatiquement (' + done.payMin + ' min créditées).' : 'Virtual class ' + course.code + ': ' + done.studentsIn + ' student(s) present; your attendance is recorded automatically (' + done.payMin + ' min credited).') : (fr ? 'Cours virtuel ' + course.code + ' : aucun étudiant présent. Sans au moins un étudiant, votre présence ne peut pas être enregistrée et les heures ne sont pas créditées.' : 'Virtual class ' + course.code + ': no student was present. Without at least one student your attendance cannot be recorded and no hours are credited.');
+    await save('notifs', uid('n'), { userId: lec.id, title: bi('Virtual class attendance', 'Présence au cours virtuel'), body: txt, at: now(), read: false });
+    return done;
+  }
+  async function virtualSweep() {
+    const t = now(), c = cfg();
+    for (const d of Object.values(S.all('clsh'))) {
+      if (d.status !== 'live' || !d.startedAt) continue; const limit = d.start + d.mins * 60000 + c.closeGraceMin * 60000;
+      if (t > limit) { d.status = 'ended'; d.endedAt = limit; d.autoEnded = true; await save('clsh', d.id, d); try { await virtualClose(d, true); } catch (e) { console.error('[att] virtual close', e.message); } }
+    }
+  }
+
 /* ---------- router ---------- */
   async function handle(req, res, u, p, url) {
     if (!p.startsWith('/api/att/')) return false;
@@ -2087,7 +2167,7 @@ module.exports = function makeAtt(ctx) {
     if (s && s.perms && !s.migAtt) { const perms = JSON.parse(JSON.stringify(s.perms)); for (const [role, add] of Object.entries(PERM_DEFAULTS)) if (Array.isArray(perms[role])) add.forEach(x => { if (!perms[role].includes(x)) perms[role].push(x); }); await save('settings', 'main', Object.assign({}, s, { perms, migAtt: true })); }
     const iv = setInterval(() => { sweep().catch(e => console.error('[att] sweep', e.message)); }, 60000); if (iv.unref) iv.unref();
   }
-  return { handle, init, sweep, loadHead, integrity };
+  return { handle, init, sweep, loadHead, integrity, slotOn, upcomingSlots, virtualSlotTaken, virtualClose };
 };
 
 };
@@ -4135,7 +4215,7 @@ async function seed() {
   try { PUSH = sideMod('push-api.js')({ S, now, send, body, limited, E }); await PUSH.init(); } catch (e) { PUSH = null; console.error('[push] disabled: ' + e.message); }
   global.__adiMailHire = (actor, doc) => MB.issueFromHire(actor, doc);
   global.__adiMailOf = d => { const m = MB.byHr ? MB.byHr(d.id) : null; if (!m) return null; const w = MB.withOtp ? MB.withOtp(m, { id: d.userId }) : null; return { email: m.email, status: m.status, otp: w && w.otp || '' }; };
-  CLS = makeCls({ S, save, audit, now, uid, R, E, limited, notifyUser, usersWith, send, body, bi, logic, remove, sniff: (b, n) => LIB.sniff(b, n) }); await CLS.init();
+  CLS = makeCls({ S, save, audit, now, uid, R, E, limited, notifyUser, usersWith, send, body, bi, logic, remove, att: () => ATT, sniff: (b, n) => LIB.sniff(b, n) }); await CLS.init();
   LIB = makeLib({ S, save, audit, now, uid, R, limited, notifyUser, usersWith, send, body, bi, logic, remove }); await LIB.init();
   ATT = makeAtt({ S, save, audit, now, uid, R, E, PROD, limited, notifyUser, usersWith, send, body, bi, logic, ip }); await ATT.init();
   for (const c of COLS) for (const d of Object.values(S.all(c))) if (d._seq > SEQ) SEQ = d._seq;
