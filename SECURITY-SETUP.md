@@ -73,3 +73,6 @@ A "New application" notification now opens that application straight away (the f
 
 ## Admission letter wording (v2.162.0)
 The offer paragraph of the admission letter now reads as one flowing sentence in English and in French for every level, e.g. "We are pleased to offer you provisional admission to the M.Sc. Human Resource Management programme (Master's degree) in the School of Social and Management Sciences, in line with your first choice, at the ADI Yaoundé campus, for the 2026/2027 academic year." The subject line, the salutation (the candidate's name is capitalised correctly) and the in-portal admission notification were polished in the same way.
+
+## Assign courses: APA-style table (v2.163.0)
+The course list on "Assign courses to a lecturer" is an APA 7th-edition style table (numbered, italic title, horizontal rules only, note below) with the columns Select, Course Code, Course Title, Programme / Specialty, Year (First Year ...), Level (Level 200 ... 600), Semester and Credit Value (CV). The table scrolls sideways and up and down inside its frame, keeps its header and the Select and Course Code columns in view, and nothing is cut off on a tablet.
