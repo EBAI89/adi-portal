@@ -4248,6 +4248,7 @@ async function seed() {
   await sideMod('minesup-api.js').seed({ S, save, now, uid, logic, hashPw, PROD });
   try { await sideMod('minesup-api.js').seedCohort({ S, save, now, uid, logic }); await sideMod('minesup-api.js').seedClassLists({ S, save, now, uid, logic }); } catch (e) { console.error('[cohort] ' + e.message); }
   if (MB) await MB.seed();
+  if (MB) { try { await MB.repairHireTitles(); } catch (e) { console.error('[mail] title repair', e && e.message || e); } }
   setInterval(() => momoPoll().catch(e => console.error(e)), 20000).unref();
   http.createServer((req, res) => route(req, res).catch(e => { console.error(e); if (!res.headersSent) send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too large' : e.code === 400 ? 'bad request' : 'server error' }); }))
     .listen(PORT, '0.0.0.0', () => { try { if (!PAGE_C) PAGE_C = buildPage(); } catch (e) {} console.log(`ADI portal on :${PORT} (store: ${S.kind}, momo: ${momo.mode()}, email: ${E.EMAIL_PROVIDER || 'log'}, sms: ${E.SMS_PROVIDER || 'log'}, whatsapp: ${E.WHATSAPP_PROVIDER || 'log'})`); channelCheck(); });

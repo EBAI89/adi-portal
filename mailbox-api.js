@@ -229,6 +229,30 @@ module.exports = function makeMailbox(ctx) {
     return Object.assign(pub(rec), { otp });
   }
 
+  // Self-healing data migration, run once on every boot: a mailbox/appointment record issued from a hire keeps the
+  // job-title text it was given at the moment of issuance — fixing the computation in issueFromHire only changes
+  // records issued from then on. This walks every such record still on file and, where the stored title, civility
+  // or degree disagree with what the (now corrected) logic would produce from its linked application, brings it
+  // up to date in place — so an appointment letter printed today always reflects today's rules, however old the
+  // underlying hire. It is idempotent: a record already correct is left untouched and nothing is re-saved.
+  async function repairHireTitles() {
+    let fixed = 0;
+    for (const m of all()) {
+      if (!m.hrId || m.status === 'revoked') continue;
+      const hra = S.get('hra', m.hrId);
+      if (!hra) continue;
+      const a = hra.a || {};
+      const titles = CAT[hra.cat] || ['Staff', 'Personnel'];
+      const wantTitle = titles[0] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : '');
+      const wantTitleFr = titles[1] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : '');
+      const wantCivility = clip(a.title || '', 20), wantDegree = String(a.degree || '');
+      if (m.title === wantTitle && m.titleFr === wantTitleFr && (m.civility || '') === wantCivility && (m.degree || '') === wantDegree) continue;
+      await save('mailbox', m.id, Object.assign({}, m, { title: wantTitle, titleFr: wantTitleFr, civility: wantCivility, degree: wantDegree }));
+      fixed += 1;
+    }
+    if (fixed) console.log('[mail] repaired ' + fixed + ' appointment title' + (fixed === 1 ? '' : 's') + ' from updated hire records');
+  }
+
   // An independent MINESUP account: the address is issued at sign-up, before the account row exists, so the caller passes the new user's id.
   async function issueForSignup(user, personal, opts) {
     opts = opts || {};
@@ -589,5 +613,5 @@ module.exports = function makeMailbox(ctx) {
     }
   }
 
-  return { handle, byHr, withOtp, issueFromAdmission, issueFromHire, issueForSignup, otpOk, onUserPassword, login, seed, officer, DOMAIN };
+  return { handle, byHr, withOtp, issueFromAdmission, issueFromHire, issueForSignup, otpOk, onUserPassword, login, seed, repairHireTitles, officer, DOMAIN };
 };
