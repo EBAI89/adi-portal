@@ -317,6 +317,7 @@ module.exports = function makeRules(store, logic) {
         if (n.userId !== u.id || (o && o.userId !== u.id)) return 'forbidden';
         if (o && !['draft', 'returned'].includes(o.status)) return 'locked';
         if (!['draft', 'submitted', 'returned'].includes(n.status)) return 'status';
+        if (n.status === 'submitted') { const pr = n.pr || {}; if (pr.c1 && ((pr.c2 && pr.c2 === pr.c1) || (pr.c3 && (pr.c3 === pr.c1 || pr.c3 === pr.c2)))) return 'choices must be different'; }
         if (o && JSON.stringify(o.decision) !== JSON.stringify(n.decision)) return 'decision';
         return true;
       case 'students':
@@ -2969,6 +2970,12 @@ async function applyWrite(u, c, id, o, n) {
       const tot = Object.values(S.all('courses')).filter(x => x.id !== id && x.level === n.level && x.specId === n.specId && Number(x.year) === Number(n.year || 1) && Number(x.sem) === Number(n.sem || 1) && stOf(x) !== 'E').reduce((a, x) => a + (Number(x.credits) || 0), 0) + add;
       if (tot > 30) throw ['A HND/BTS semester cannot exceed 30 credits (this would make ' + tot + ').'];
     }
+  }
+  if (c === 'apps' && n && n.status === 'admitted' && (!o || o.status !== 'admitted')) {
+    const dec = n.decision || {}, sp = logic.core.SPEC[dec.specId];
+    if (!sp || sp.level !== n.level) throw ['invalid specialty for this programme level'];
+    const declared = [(n.pr || {}).c1, (n.pr || {}).c2, (n.pr || {}).c3].filter(Boolean);
+    if (!declared.includes(dec.specId) && String(dec.remark || '').trim().length < 15) throw ['admitting outside the declared choices requires a remark explaining the academic basis (level of education, qualification, supporting documents)'];
   }
   if (c === 'apps' && n && n.status === 'admitted' && (!o || o.status !== 'admitted') && MB) {
     try { await MB.issueFromAdmission(u, n); } catch (e) { console.error('[mail] admission', e && e.message || e); }
