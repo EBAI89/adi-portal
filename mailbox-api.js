@@ -208,17 +208,22 @@ module.exports = function makeMailbox(ctx) {
       user = Object.assign({}, user, { role });
       await save('users', user.id, user);
     }
+    // The vacancy's own CURRENT title is what gets appended — never hra.vacTitle, which is only a text snapshot taken
+    // at the moment the application was submitted. For a general/open application (no hra.vac) that snapshot is just
+    // the category name again, e.g. "Senior lecturer / professor — general application" — gluing that onto the
+    // category label a second time is exactly the duplication bug. Reading the live hrv record's .title sidesteps
+    // that stale snapshot entirely: a general application has no vacancy record, so vacPost is null and nothing is
+    // appended; a real posting contributes only its own clean position title.
+    const vacPost = hra.vac ? S.get('hrv', hra.vac) : null;
+    const vacSuffix = vacPost && vacPost.title ? clip(vacPost.title, 120) : '';
     const { rec } = await persist({
       local, kind, role: user.role, name: user.name || name, userId: user.id,
       hrId: hra.id, hrRef: hra.ref || '', personalEmail: personal,
       phone: clip(a.phone || user.phone || '', 40),
-      // the vacancy's own posted title is appended only when this hire came from an actual posted vacancy (hra.vac) —
-      // a general/open application has no vacancy, so vacTitle there is just the category name again ("… — general application")
-      // and must never be glued onto the category label a second time.
-      title: titles[0] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
-      titleFr: titles[1] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
+      title: titles[0] + (vacSuffix ? ' — ' + vacSuffix : ''),
+      titleFr: titles[1] + (vacSuffix ? ' — ' + vacSuffix : ''),
       civility: clip(a.title || '', 20), degree: String(a.degree || ''),
-      ref: await nextRef(), dept: clip(((hra.vac && S.get('hrv', hra.vac)) || {}).field || '', 120), prob: String(((hra.vac && S.get('hrv', hra.vac)) || {}).prob || ''), contract: String(((hra.vac && S.get('hrv', hra.vac)) || {}).contract || ''),
+      ref: await nextRef(), dept: clip((vacPost || {}).field || '', 120), prob: String((vacPost || {}).prob || ''), contract: String((vacPost || {}).contract || ''),
       issuedBy: actor && actor.id, issuedByName: actor && actor.name || 'Human Resources'
     }, otp);
     if (user.email === rec.email) {
@@ -243,8 +248,13 @@ module.exports = function makeMailbox(ctx) {
       if (!hra) continue;
       const a = hra.a || {};
       const titles = CAT[hra.cat] || ['Staff', 'Personnel'];
-      const wantTitle = titles[0] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : '');
-      const wantTitleFr = titles[1] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : '');
+      // Same rule as issueFromHire: append the vacancy's own live title, never the hra.vacTitle snapshot — for a
+      // general application that snapshot is just the category name again ("… — general application"), which is
+      // exactly the duplicated text this repair exists to clear out.
+      const vacPost = hra.vac ? S.get('hrv', hra.vac) : null;
+      const vacSuffix = vacPost && vacPost.title ? clip(vacPost.title, 120) : '';
+      const wantTitle = titles[0] + (vacSuffix ? ' — ' + vacSuffix : '');
+      const wantTitleFr = titles[1] + (vacSuffix ? ' — ' + vacSuffix : '');
       const wantCivility = clip(a.title || '', 20), wantDegree = String(a.degree || '');
       if (m.title === wantTitle && m.titleFr === wantTitleFr && (m.civility || '') === wantCivility && (m.degree || '') === wantDegree) continue;
       await save('mailbox', m.id, Object.assign({}, m, { title: wantTitle, titleFr: wantTitleFr, civility: wantCivility, degree: wantDegree }));
