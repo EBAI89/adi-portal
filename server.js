@@ -3713,6 +3713,25 @@ async function route(req, res) {
     const temp = tempPassword(); await save('users', x.id, Object.assign({}, x, { pw: await hashPw(temp), mustChange: true }));
     await audit(u, 'temporary password issued for ' + x.email); return send(res, 200, { ok: true, temp });
   }
+  if (p === '/api/admin/users/assign-email' && req.method === 'POST') {          // super administrator issues or changes an official @adiuniversity.com address for an existing account
+    if (!R.isSuper(u)) return send(res, 403, { error: 'forbidden' });
+    const b = await body(req, 4000), x = S.get('users', String(b.userId || '')); if (!x) return send(res, 404, { error: 'user' });
+    if (x.id === u.id) return send(res, 400, { error: 'Use My profile to change your own sign-in email.' });
+    const local = String(b.local || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    if (local.length < 2 || local.length > 64) return send(res, 400, { error: 'Enter a valid local part (2-64 letters, digits, dots or hyphens).' });
+    const email = local + '@adiuniversity.com';
+    const taken = Object.values(S.all('users')).some(y => y && y.id !== x.id && String(y.email).toLowerCase() === email);
+    if (taken) return send(res, 409, { error: 'That address is already assigned to another account.' });
+    if (String(x.email).toLowerCase() === email) return send(res, 400, { error: 'This is already their sign-in email.' });
+    const prevEmail = x.email, prevWasReal = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(prevEmail) && !/@adiuniversity\.com$/i.test(prevEmail);
+    const next = Object.assign({}, x, { email }, (prevWasReal && !x.contactEmail) ? { contactEmail: prevEmail } : {});
+    await save('users', x.id, next);
+    await audit(u, 'ADI email assigned to ' + x.name + ': ' + email + (prevEmail !== email ? ' (was ' + prevEmail + ')' : ''));
+    if (b.notify !== false && prevWasReal) {
+      try { await notifyUser(x.id, bi('Your ADI institutional email', 'Votre e-mail institutionnel ADI'), bi('The Super Administrator has assigned you an official American Ditek Institute email address: ' + email + '. Use it to sign in to the portal from now on.', 'Le Super Administrateur vous a attribué une adresse e-mail officielle de l\'American Ditek Institute : ' + email + '. Utilisez-la désormais pour vous connecter au portail.')); } catch (e) {}
+    }
+    return send(res, 200, { ok: true, email });
+  }
   if (p === '/api/seal' && req.method === 'GET') {          // the round seal alone, for the public fee structure (no signatures)
     try { SEAL_JSON = SEAL_JSON || JSON.stringify({ seal: JSON.parse(SIGS_JSON).seal || null }); } catch (e) { SEAL_JSON = '{"seal":null}'; }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }); return res.end(SEAL_JSON);
