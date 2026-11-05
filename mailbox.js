@@ -355,9 +355,28 @@
     };
   }
 
+  // Proper-case a name only when it was typed ALL CAPS or all lower case; a name already mixed case
+  // (how most people actually type their own name) is left exactly as the applicant wrote it.
+  function properName(s) {
+    s = String(s || '').trim(); if (!s) return s;
+    if (/[a-z]/.test(s) && /[A-Z]/.test(s)) return s;
+    return s.toLowerCase().replace(/(^|[\s'-])([a-zà-ÿ])/g, (a, p, c) => p + c.toUpperCase());
+  }
+  // The applicant's own civility (Mr/Ms/Mrs/Dr/Prof/Eng, chosen on the application form) → a proper academic
+  // honorific for the salutation, bilingual. Never the job title ("Senior lecturer") — that is m.title/titleFr.
+  const HON_EN = { Mr: 'Mr.', Ms: 'Ms.', Mrs: 'Mrs.', Dr: 'Dr.', Prof: 'Prof.', Eng: 'Eng.' };
+  const HON_FR_SAL = { Mr: 'Cher Monsieur', Ms: 'Chère Madame', Mrs: 'Chère Madame', Dr: 'Cher Docteur', Prof: 'Cher Professeur', Eng: 'Cher Ingénieur' };
+  function honorific(m) {
+    let civ = String(m.civility || '').trim();
+    if (!civ && (m.degree === 'phd' || m.degree === 'postdoc')) civ = 'Dr'; // a doctorate earns the courtesy title even if the applicant left the field blank
+    return civ;
+  }
   /* Appointment letter text, drawn up to the conventions of international universities: confirmation of appointment, nature of the engagement, duties, terms, mailbox, acceptance. */
   function appointmentText(m) {
     const T = String(m.title || '').trim() || 'Member of staff', TF = String(m.titleFr || m.title || '').trim() || 'membre du personnel';
+    const dispName = properName(m.name), civ = honorific(m);
+    const salEn = 'Dear ' + (civ ? (HON_EN[civ] || civ + '.') + ' ' + dispName : (dispName || 'Colleague')) + ',';
+    const salFr = civ && HON_FR_SAL[civ] ? HON_FR_SAL[civ] + ' ' + dispName + ',' : 'Chère Madame, Cher Monsieur,';
     const key = (m.title + ' ' + m.titleFr).toLowerCase();
     const ct = String(m.contract || ''), k = ct === 'internship' ? 'intern' : ct === 'consultancy' ? 'consultant' : (ct === 'hourly' || ct === 'parttime') ? 'visiting' : /intern|stagiaire/.test(key) ? 'intern' : /consult/.test(key) ? 'consultant' : /adjunct|visiting|vacataire|part-time|temps partiel/.test(key) ? 'visiting' : /teaching assistant|assistant d/.test(key) ? 'assistant' : /senior|maître/.test(key) ? 'senior' : (m.kind === 'lecturer' ? 'lecturer' : /administrator|administrateur/.test(key) || m.role === 'admin' ? 'administrator' : /technical|technique/.test(key) ? 'technical' : 'staff');
     const fmt = (loc) => { try { return new Date(m.issuedAt || Date.now()).toLocaleDateString(loc, { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return ''; } };
@@ -378,7 +397,7 @@
     return {
       titleEn: T + (dept ? ' — ' + dept : ''), titleFr: TF + (dept ? ' — ' + dept : ''), dept, titleFr: TF, dateEn: fmt('en-GB'), dateFr: fmt('fr-FR'),
       en: [
-        'Dear ' + (m.name || 'Colleague') + ',',
+        salEn,
         'On behalf of American Ditek Institute (ADI University), and further to the recommendation of the recruitment committee, it gives me great pleasure to confirm your appointment as **' + T + '**' + (dept ? ', to be assigned to **' + dl + '**' : '') + '. We are confident that you will make a valued contribution to our academic community.',
         nat[0],
         pr ? 'Probation and remuneration: You shall serve a probationary period of **' + pr[0] + '**, expressly stipulated in writing by this letter in accordance with Article 28 of the Cameroon Labour Code (Law No. 92/007 of 14 August 1992), which limits probation, including any renewal, to six (6) months, or eight (8) months for management staff. During this period either party may end the engagement without notice or indemnity, unless otherwise agreed (Article 43). Upon successful completion of probation and confirmation of your appointment, your remuneration, salary scale and associated benefits shall be governed strictly by your formal Employment Contract.' : 'Remuneration: The duration, workload and remuneration of your engagement are governed strictly by the terms of the agreement issued by Human Resources, which should be read together with this letter.',
@@ -387,7 +406,7 @@
         'With sincere regards and every good wish for a successful tenure,'
       ],
       fr: [
-        'Chère Madame, Cher Monsieur,',
+        salFr,
         'Au nom de l\'American Ditek Institute (ADI University), et sur recommandation de la commission de recrutement, j\'ai le grand plaisir de vous confirmer votre nomination en qualité de **' + TF + '**' + (dept ? ', avec affectation à l\'entité suivante : **' + dept + '**' : '') + '. Nous sommes convaincus que vous apporterez une contribution précieuse à notre communauté académique.',
         nat[1],
         pr ? 'Période d\'essai et rémunération : Vous effectuerez une période d\'essai de **' + pr[1] + '**, expressément stipulée par écrit dans la présente lettre conformément à l\'article 28 du Code du travail camerounais (loi n° 92/007 du 14 août 1992), qui limite l\'essai, renouvellement compris, à six (6) mois, ou huit (8) mois pour les cadres. Pendant cette période, chacune des parties peut mettre fin à l\'engagement sans préavis ni indemnité, sauf convention contraire (article 43). Après l\'accomplissement satisfaisant de l\'essai et la confirmation de votre nomination, votre rémunération, votre grille salariale et les avantages y afférents seront régis strictement par votre contrat de travail.' : 'Rémunération : La durée, la charge de travail et la rémunération de votre engagement sont régies strictement par les termes de la convention établie par les Ressources humaines, à lire avec la présente lettre.',
@@ -417,7 +436,7 @@
       const letter = fr => {
         const body = fr ? L.fr : L.en, ttl = fr ? L.titleFr : L.titleEn;
         R((fr ? 'Yaoundé, le ' + L.dateFr : 'Yaoundé, ' + L.dateEn) + (m.ref ? '   ·   ' + (fr ? 'Réf. : ' : 'Ref.: ') + m.ref : ''), { justify: false, gap: 4 });
-        R('**' + String(m.name || '') + '**', { justify: false, size: 11, gap: .4 });
+        R('**' + properName(m.name) + '**', { justify: false, size: 11, gap: .4 });
         R(ttl, { justify: false, gap: 3.5 });
         R(body[0], { justify: false, gap: 2.4 });
         R(fr ? '**Objet : Nomination en qualité de ' + L.titleFr + '**' : '**Subject: Offer of appointment as ' + L.titleEn + '**', { justify: false, size: 10.5, gap: 2.4 });
@@ -438,9 +457,9 @@
       d.setDrawColor(201, 162, 39); d.setLineWidth(.6); d.line(18, y, 192, y); d.setTextColor(0); y += 8;
       R('To: **The Administrative Director, American Ditek Institute (ADI University)** — Human Resources', { justify: false, gap: 1 });
       R('Reference: **' + String(m.ref || '—') + '**', { justify: false, gap: 4 });
-      R('I, the undersigned, **' + String(m.name || '') + '**, acknowledge receipt of the Letter of Appointment as **' + L.titleEn + '**. I have read and understood its terms, including the probationary period and the conditions of remuneration, and I hereby accept the appointment. I undertake to activate my institutional mailbox and to keep my credentials confidential.', { gap: 3 });
+      R('I, the undersigned, **' + properName(m.name) + '**, acknowledge receipt of the Letter of Appointment as **' + L.titleEn + '**. I have read and understood its terms, including the probationary period and the conditions of remuneration, and I hereby accept the appointment. I undertake to activate my institutional mailbox and to keep my credentials confidential.', { gap: 3 });
       R('À l\'attention de : **Monsieur le Directeur administratif, American Ditek Institute (ADI University)** — Ressources humaines', { justify: false, italic: true, color: [70, 80, 105], size: 10, gap: 2 });
-      R('Je soussigné(e), **' + String(m.name || '') + '**, accuse réception de la lettre de nomination en qualité de **' + L.titleFr + '**. J\'ai pris connaissance de ses termes, y compris la période d\'essai et les conditions de rémunération, et j\'accepte par la présente cette nomination. Je m\'engage à activer ma messagerie institutionnelle et à garder mes identifiants confidentiels.', { italic: true, color: [70, 80, 105], size: 10, gap: 12 });
+      R('Je soussigné(e), **' + properName(m.name) + '**, accuse réception de la lettre de nomination en qualité de **' + L.titleFr + '**. J\'ai pris connaissance de ses termes, y compris la période d\'essai et les conditions de rémunération, et j\'accepte par la présente cette nomination. Je m\'engage à activer ma messagerie institutionnelle et à garder mes identifiants confidentiels.', { italic: true, color: [70, 80, 105], size: 10, gap: 12 });
       d.setFont('times', 'normal'); d.setFontSize(10.5); d.setDrawColor(60, 70, 95); d.setLineWidth(.25);
       [['Place and date / Lieu et date', 18, 80], ['Signature (preceded by "Read and approved" / précédée de « Lu et approuvé »)', 100, 92]].forEach(([lab, x, w]) => { d.line(x, y + 22, x + w - 2, y + 22); d.setFontSize(9); d.text(lab, x, y + 27); });
       y += 40; d.setFontSize(9); d.setTextColor(90, 98, 120);

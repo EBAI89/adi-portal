@@ -116,6 +116,7 @@ module.exports = function makeMailbox(ctx) {
       matric: m.matric || '', hrId: m.hrId || '', hrRef: m.hrRef || '',
       personalEmail: m.personalEmail || '', phone: m.phone || '',
       title: m.title || '', titleFr: m.titleFr || '', dept: m.dept || '', prob: m.prob || '', contract: m.contract || '',
+      civility: m.civility || '', degree: m.degree || '',
       status: m.status, ref: m.ref, issuedAt: m.issuedAt, issuedBy: m.issuedBy || '',
       issuedByName: m.issuedByName || '', setupAt: m.setupAt || null
     };
@@ -211,8 +212,12 @@ module.exports = function makeMailbox(ctx) {
       local, kind, role: user.role, name: user.name || name, userId: user.id,
       hrId: hra.id, hrRef: hra.ref || '', personalEmail: personal,
       phone: clip(a.phone || user.phone || '', 40),
-      title: titles[0] + (hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
-      titleFr: titles[1] + (hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
+      // the vacancy's own posted title is appended only when this hire came from an actual posted vacancy (hra.vac) —
+      // a general/open application has no vacancy, so vacTitle there is just the category name again ("… — general application")
+      // and must never be glued onto the category label a second time.
+      title: titles[0] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
+      titleFr: titles[1] + (hra.vac && hra.vacTitle ? ' — ' + clip(hra.vacTitle, 120) : ''),
+      civility: clip(a.title || '', 20), degree: String(a.degree || ''),
       ref: await nextRef(), dept: clip(((hra.vac && S.get('hrv', hra.vac)) || {}).field || '', 120), prob: String(((hra.vac && S.get('hrv', hra.vac)) || {}).prob || ''), contract: String(((hra.vac && S.get('hrv', hra.vac)) || {}).contract || ''),
       issuedBy: actor && actor.id, issuedByName: actor && actor.name || 'Human Resources'
     }, otp);
