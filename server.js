@@ -2487,6 +2487,10 @@ function send(res, code, obj, headers = {}) {
 let PAGE_C = null;
 function buildPage() {
   let page = __EMBED_HTML; const v = encodeURIComponent(PORTAL_VER);
+  // each side file (minesup.js, guard.js, …) is cache-busted by its own content hash, not the shared
+  // release number: a fix lands on a brand-new address the moment it is deployed, whatever else did or
+  // did not change that day — a browser or the service worker can never keep serving a file this old.
+  const sideV = name => { const buf = sideFile(name); return buf ? zEntry('side:/' + name, buf).etag.replace(/"/g, '').slice(0, 10) : v; };
   // the pictures are one very large line of the page script: they move to a separate, long-cached file, so the page itself is far smaller and a returning visitor downloads them only once
   let img = null, img2 = null; const a = page.indexOf('const IMG = {');
   if (a >= 0) { const z = page.indexOf('\n', a); const line = page.slice(a, z); if (/\};\s*$/.test(line)) { let o = null; try { o = JSON.parse(line.slice('const IMG = '.length).replace(/;\s*$/, '')); } catch (e) {}
@@ -2496,7 +2500,7 @@ function buildPage() {
   page = page.replace(/(?<!<noscript>)<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2[^"]*">/g, '');
   page = page.replace(/<link href="(https:\/\/fonts\.googleapis\.com\/css2[^"]*)" rel="stylesheet">/, '<link rel="preload" as="style" href="$1" onload="this.onload=null;this.rel=\'stylesheet\'"><noscript><link rel="stylesheet" href="$1"></noscript>');   // fonts no longer hold up the first paint
   page = page.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>', (img ? '<script src="/assets/img.js?v=' + img.etag.replace(/"/g, '').slice(0, 10) + '"></script>' : ''));
-  page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css?v=' + v + '"><link rel="stylesheet" href="/mailbox.css?v=' + v + '"><link rel="stylesheet" href="/pager.css?v=' + v + '"><link rel="stylesheet" href="/studio.css?v=' + v + '"></head>').replace('</body>', '<script src="/minesup.js?v=' + v + '"></script><script src="/mailbox.js?v=' + v + '"></script><script src="/pager.js?v=' + v + '"></script><script src="/studio.js?v=' + v + '"></script><script src="/guard.js?v=' + v + '"></script><script src="/push.js?v=' + v + '"></script></body>');
+  page = page.replace('</head>', '<link rel="stylesheet" href="/minesup.css?v=' + sideV('minesup.css') + '"><link rel="stylesheet" href="/mailbox.css?v=' + sideV('mailbox.css') + '"><link rel="stylesheet" href="/pager.css?v=' + sideV('pager.css') + '"><link rel="stylesheet" href="/studio.css?v=' + sideV('studio.css') + '"></head>').replace('</body>', '<script src="/minesup.js?v=' + sideV('minesup.js') + '"></script><script src="/mailbox.js?v=' + sideV('mailbox.js') + '"></script><script src="/pager.js?v=' + sideV('pager.js') + '"></script><script src="/studio.js?v=' + sideV('studio.js') + '"></script><script src="/guard.js?v=' + sideV('guard.js') + '"></script><script src="/push.js?v=' + sideV('push.js') + '"></script></body>');
     if (!PROD) {
       page = page.replace('<body>', '<body><div style="position:sticky;top:0;z-index:99999;background:#0a2048;color:#fff;padding:14px 14px 16px;font-family:Inter,Arial,sans-serif"><div style="font-weight:700;font-size:15px;margin-bottom:8px">Portal kit — tap the gold button to download</div><a href="/ADI-portal-kit.zip" download="ADI-portal-kit.zip" style="display:block;text-align:center;background:#e0b33a;color:#0a2048;font-weight:800;font-size:20px;padding:16px;border-radius:12px;text-decoration:none">Download ADI-portal-kit.zip</a></div>');
     }
