@@ -179,8 +179,9 @@ module.exports = function makeMailbox(ctx) {
     return Object.assign(pub(rec), { otp });
   }
 
-  async function issueFromHire(actor, hra) {
-    if (!hra || hra.stage !== 'hired' || hra.anon || !hra.userId) return null;      // the work address is issued only to the candidate's own ADI account
+  async function issueFromHire(actor, hra, opts) {
+    opts = opts || {};
+    if (!hra || hra.stage !== 'hired' || hra.anon || (!hra.userId && !opts.force)) return null;      // the work address is issued to the candidate's own ADI account once linked; a super administrator may also open one directly from the appointed candidate's file (opts.force)
     const existing = byHr(hra.id);
     if (existing) return withOtp(existing, actor);
     const a = hra.a || {};
@@ -247,8 +248,9 @@ module.exports = function makeMailbox(ctx) {
     if (b.hrId) {
       const h = S.get('hra', String(b.hrId));
       if (!h || h.stage !== 'hired') fail(400, 'Only an appointed candidate can receive an ADI address.', 'not_hired');
-      if (!h.userId) fail(409, 'The candidate must first create an ADI account and link this application (My applications); the address is then issued to that account.', 'no_account');
-      return issueFromHire(actor, h);
+      const made = await issueFromHire(actor, h, { force: true });        // the administrator's own tap is explicit intent: open the account now, from the candidate's file, rather than waiting for the candidate to self-link
+      if (!made) fail(500, 'The address could not be issued. Please try again.', 'issue_failed');
+      return made;
     }
     const userId = String(b.userId || '');
     const user = S.get('users', userId);
@@ -533,7 +535,7 @@ module.exports = function makeMailbox(ctx) {
     } catch (e) {
       const status = e.status || 500;
       if (status >= 500) console.error('[mail]', e);
-      return send(res, status, { error: e.code || e.message || 'server' }), true;
+      return send(res, status, { error: e.message || e.code || 'server', code: e.code || '' }), true;        // the person reads a complete sentence; the code travels alongside for support logs and any client-side branching
     }
   }
 
