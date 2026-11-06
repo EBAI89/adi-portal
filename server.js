@@ -2570,7 +2570,12 @@ function noticeEmails(u) {
 // An automatic notice (payment, decision, hours...) is sent as a short formal letter: salutation, message, closing and the sender's office.
 function noticeLetterAuto(u, title, body, lang) {
   const b = String(body || '').trim(); if (/\n\s*— — —\s*\n/.test(b) && !lang) return b.split(/\n\s*— — —\s*\n/).map((x, k) => noticeLetterAuto(u, title, x, k ? 'fr' : 'en')).join('\n\n— — —\n\n'); if (/^(Dear |Madame|Monsieur|# )/.test(b)) return b; const fr = lang ? lang === 'fr' : (u && u.lang === 'fr'), name = u && u.name ? String(u.name).trim() : '';
-  return (fr ? 'Madame, Monsieur' + (name ? ' ' + name : '') + ',' : 'Dear ' + (name || 'Sir or Madam') + ',') + '\n\n' + b + '\n\n' + (fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,') + '\n\n--\n' + (fr ? 'L\'Administration' : 'The Administration') + '\n' + (fr ? 'American Ditek Institute (Université ADI)' : 'American Ditek Institute (ADI University)');
+  // A short, unpunctuated fragment (e.g. "Jane Doe — Master's degree") is an internal portal alert, not a prose message:
+  // it is given a proper lead-in sentence and a closing instruction instead of being spliced straight after the salutation.
+  const frag = b.length > 0 && !/[.!?…]['"”’)]*$/.test(b.split('\n').pop().trim());
+  const lead = frag ? (fr ? 'Ceci est une notification automatique du portail ADI. Veuillez trouver ci-dessous l\'élément qui requiert votre attention :' : 'This is an automated notification from the ADI portal. Please find below the item that requires your attention:') : '';
+  const action = frag ? (fr ? 'Nous vous prions de bien vouloir vous connecter au portail ADI afin d\'examiner et de traiter cet élément.' : 'Kindly sign in to the ADI portal to review and action this item.') : '';
+  return [fr ? 'Madame, Monsieur' + (name ? ' ' + name : '') + ',' : 'Dear ' + (name || 'Sir or Madam') + ',', lead, b, action].filter(Boolean).join('\n\n') + '\n\n' + (fr ? 'Nous vous prions d\'agréer, Madame, Monsieur, l\'expression de nos salutations distinguées.' : 'Yours sincerely,') + '\n\n--\n' + (fr ? 'L\'Administration' : 'The Administration') + '\n' + (fr ? 'American Ditek Institute (Université ADI)' : 'American Ditek Institute (ADI University)');
 }
 
 /* Rejection letters: the letter is filed for the person, e-mailed to every super administrator with the PDF attached (a copy of what the person receives),
