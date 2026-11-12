@@ -3107,6 +3107,10 @@ async function route(req, res) {
     docFiles();
     if (await global.__DOCFILES.handle(req, res, u, url, p)) return;
   }
+  if (p === '/api/prereg/template' || p === '/api/prereg/parse') {       // MINESUP candidate (pre-registration) sheet: blank template and upload reader
+    global.__PREREG = global.__PREREG || __req('./adi-prereg.js')({ S, send, body, limited, audit, can: x => x.role === 'super_admin' || (logic.perms(S)[x.role] || []).includes('manage_students') });
+    if (await global.__PREREG.handle(req, res, u, url, p)) return;
+  }
   if (p === '/api/docs/issue' || p === '/api/sptr' || p.startsWith('/api/sptr/') || p === '/verify' || p === '/api/verify' || p === '/api/verify/check' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
     global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core, notifyUser, usersWith, canTranscript, onTranscript });
     if (await global.__DOCREG.handle(req, res, u, url, p)) return;
