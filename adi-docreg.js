@@ -22,30 +22,80 @@ module.exports = function makeDocReg(ctx) {
   const nextN = () => { if (!scanned) { scanned = true; Object.keys(S.all(COL)).forEach(k => { const n = Number(String(k).split('-').pop()) || 0; if (n > maxN) maxN = n; }); } return ++maxN; };
   const isStaff = u => u && !['student', 'applicant'].includes(u.role);
 
+  /* ---- special-case transcripts: a record composed by the super administrator (holder particulars, courses and marks) for a person whose results are not,
+   * or not fully, held in the portal. Kept in its own collection, never sent to any other user. Grades and grade points are always computed here from the mark. */
+  const SP = 'sptr', GR = [[80, 'A', 4], [70, 'B+', 3.5], [60, 'B', 3], [55, 'C+', 2.5], [50, 'C', 2], [45, 'D+', 1.5], [40, 'D', 1], [0, 'F', 0]];
+  const gradeOf = m => { const g = GR.find(x => m >= x[0]) || GR[GR.length - 1]; return { grade: g[1], gp: g[2] }; };
+  const isSuper = u => !!u && u.status === 'active' && u.role === 'super_admin';
+  function cleanSp(b) {
+    const err = m => ({ err: m });
+    const o = { name: plain(b.name, 90), matric: plain(b.matric, 24).toUpperCase(), dob: /^\d{4}-\d{2}-\d{2}$/.test(String(b.dob || '')) ? String(b.dob) : '', pob: plain(b.pob, 60), sex: /^[MF]$/.test(String(b.sex || '')) ? String(b.sex) : '',
+      entryYear: /^\d{4}$/.test(String(b.entryYear || '')) ? String(b.entryYear) : '', level: plain(b.level, 8).toUpperCase(), programme: plain(b.programme, 90), field: plain(b.field, 90), specialty: plain(b.specialty, 110), basis: plain(b.basis, 400), from: plain(b.from, 24).toUpperCase(), terms: [] };
+    if (o.name.length < 3) return err('Enter the holder\'s full name.');
+    if (o.matric.length < 3) return err('Enter the registration number (matricule).');
+    if (!o.programme) return err('Enter the programme of study.');
+    if (o.basis.length < 10) return err('State the basis for this special case (at least ten characters).');
+    const seen = new Set();
+    for (const t of (Array.isArray(b.terms) ? b.terms : []).slice(0, 16)) {
+      const ay = plain(t && t.ay, 9), sem = Number(t && t.sem) === 2 ? 2 : 1;
+      if (!/^\d{4}\/\d{4}$/.test(ay)) return err('Each semester needs an academic year written as 2024/2025.');
+      if (seen.has(ay + sem)) return err('Semester ' + sem + ' of ' + ay + ' appears twice.'); seen.add(ay + sem);
+      const rows = [];
+      for (const r of (Array.isArray(t.rows) ? t.rows : []).slice(0, 24)) {
+        const code = plain(r && r.code, 14).toUpperCase(), title = plain(r && r.title, 120); if (!code && !title && (r.mark === '' || r.mark == null)) continue;
+        const cv = Number(r.cv), mark = Math.round(Number(r.mark) * 100) / 100;
+        if (!title) return err('A course in ' + ay + ' semester ' + sem + ' has no title.');
+        if (!(cv > 0 && cv <= 30)) return err('The credit value of "' + title + '" must be between 1 and 30.');
+        if (r.mark === '' || r.mark == null || !(mark >= 0 && mark <= 100)) return err('The mark of "' + title + '" must be between 0 and 100.');
+        rows.push(Object.assign({ code, title, cv, mark }, gradeOf(mark)));
+      }
+      if (rows.length) o.terms.push({ ay, sem, rows });
+    }
+    if (!o.terms.length) return err('Enter at least one course with its mark.');
+    o.terms.sort((a, b2) => a.ay.localeCompare(b2.ay) || a.sem - b2.sem);
+    return { rec: o };
+  }
+  const spRows = sp => { const out = []; (sp.terms || []).forEach(t => (t.rows || []).forEach(r => out.push({ ay: t.ay, sem: t.sem, code: r.code, title: r.title, cv: r.cv, total: r.mark, grade: r.grade, gp: r.gp, resit: false }))); return out; };
+  async function spSave(u, b) {
+    if (!isSuper(u)) return { code: 403, out: { error: 'Special-case transcripts are composed by the super administrator only.' } };
+    if (limited('sptr:' + u.id, 200, 3600e3)) return { code: 429, out: { error: 'Too many changes' } };
+    const c = cleanSp(b || {}); if (c.err) return { code: 400, out: { error: c.err } };
+    const id = /^sp[a-z0-9]{6,24}$/.test(String(b.id || '')) ? String(b.id) : '', old = id ? S.get(SP, id) : null;
+    if (id && !old) return { code: 404, out: { error: 'Unknown record' } };
+    const rec = Object.assign(c.rec, { id: old ? old.id : 'sp' + now().toString(36) + crypto.randomBytes(3).toString('hex'), at: old ? old.at : now(), by: old ? old.by : (u.name || u.email || ''), updatedAt: now(), updatedBy: u.name || u.email || '', gen: old ? old.gen || null : null });
+    await S.put(SP, rec.id, rec);
+    try { await audit(u, 'special transcript record ' + (old ? 'amended ' : 'created ') + rec.id + ' ' + rec.matric + ' ' + rec.name); } catch (e) {}
+    return { code: 200, out: { rec } };
+  }
+
   // ---- issue: called by the browser when it builds a PDF
   async function issue(u, b) {
     if (!u || u.status !== 'active') return { code: 401, out: { error: 'sign in' } };
     if (limited('docissue:' + u.id, 150, 3600e3)) return { code: 429, out: { error: 'Too many documents' } };
     const type = TYPES[b.type] ? b.type : 'GN', digest = String(b.digest || '').toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(digest)) return { code: 400, out: { error: 'bad digest' } };
-    const matric = plain(b.matric, 24).toUpperCase(), st = matric ? S.get('students', matric) : null;
-    if (type === 'TR' && !(st && (ctx.canTranscript ? ctx.canTranscript(u, st.matric) : u.role === 'super_admin'))) return { code: 403, out: { error: 'The transcript is issued by the super administrator, or by an authorised officer for a student whose application is on file.' } };
+    const spx = b.special ? S.get(SP, plain(b.special, 40)) : null;
+    if (b.special && !(spx && isSuper(u) && type === 'TR')) return { code: 403, out: { error: 'Special-case transcripts are issued by the super administrator only.' } };
+    const matric = spx ? spx.matric : plain(b.matric, 24).toUpperCase(), st = spx ? null : (matric ? S.get('students', matric) : null);
+    if (type === 'TR' && !spx && !(st && (ctx.canTranscript ? ctx.canTranscript(u, st.matric) : u.role === 'super_admin'))) return { code: 403, out: { error: 'The transcript is issued by the super administrator, or by an authorised officer for a student whose application is on file.' } };
     if (st && !isStaff(u) && st.userId !== u.id && u.matric !== st.matric) return { code: 403, out: { error: 'forbidden' } };
     let pay = null;
     if (type === 'RC' && b.pay) {
       pay = S.get('payments', plain(b.pay, 60));
       if (pay && !isStaff(u) && pay.userId !== u.id && !(pay.matric && u.matric === pay.matric)) return { code: 403, out: { error: 'forbidden' } };
     }
-    const key = crypto.createHash('sha256').update([type, matric, plain(b.ay, 12), plain(b.sem, 4), digest].join('|')).digest('hex').slice(0, 24);
+    const key = crypto.createHash('sha256').update([type, matric, plain(b.ay, 12), plain(b.sem, 4), digest, spx ? 'sp:' + spx.id + ':' + spx.updatedAt : ''].join('|')).digest('hex').slice(0, 24);
     let rec = Object.values(S.all(COL)).find(r => r.key === key);
     if (!rec) {
       const serial = 'ADI-' + type + '-' + new Date().getUTCFullYear() + '-' + String(nextN()).padStart(6, '0');
       rec = { id: serial, key, type, title: plain(b.title, 120), matric: st ? st.matric : '', name: st ? st.name : '', ay: plain(b.ay, 12), sem: plain(b.sem, 4), pages: Math.min(500, Number(b.pages) || 0), digest, at: now(), by: u.id, role: u.role, n: 0 };
       if (b.subject) rec.subject = plain(b.subject, 100);
+      // a special-case transcript carries its own record, frozen at the moment of issue: the verification page shows exactly what was printed
+      if (spx) { rec.matric = spx.matric; rec.name = spx.name; rec.sp = { id: spx.id, name: spx.name, matric: spx.matric, dob: spx.dob, pob: spx.pob, sex: spx.sex, level: spx.level, programme: spx.programme, field: spx.field, specialty: spx.specialty, rows: spRows(spx) }; }
     }
     if (pay && !rec.rc) applyPay(rec, pay);
     rec.n = (rec.n || 0) + 1; rec.last = now(); await S.put(COL, rec.id, rec);
-    if (type === 'TR') { try { await audit(u, 'transcript issued ' + rec.id + ' ' + rec.matric); } catch (e) {} if (ctx.onTranscript && st) { try { await ctx.onTranscript(u, st, rec); } catch (e) {} } }
+    if (type === 'TR') { try { await audit(u, 'transcript issued ' + rec.id + ' ' + rec.matric); } catch (e) {} if (ctx.onTranscript && st) { try { await ctx.onTranscript(u, st, rec); } catch (e) {} } if (spx) { spx.gen = { at: now(), by: u.name || u.email || '', serial: rec.id, n: ((spx.gen && spx.gen.n) || 0) + 1 }; try { await S.put(SP, spx.id, spx); } catch (e) {} } }
     return { code: 200, out: { serial: rec.id, code: codeOf(rec.id, rec.digest), at: rec.at } };
   }
 
@@ -91,6 +141,7 @@ module.exports = function makeDocReg(ctx) {
   }
   // who a document belongs to: the enrolled student, or — for a receipt paid before enrolment — the applicant and the programme offered
   function ownerOf(rec) {
+    if (rec.sp) { const x = rec.sp; return { name: x.name, matric: x.matric, level: x.level || '', programme: x.programme || '', programmeFr: x.programme || '', school: x.field || '', schoolFr: x.field || '', specialty: x.specialty || '', dob: x.dob || '', pob: x.pob || '', gender: x.sex || '', nat: '', photo: '' }; }
     const st = rec.matric ? S.get('students', rec.matric) : null; if (st) return owner(st);
     if (rec.prog && rec.rc) return owner({ name: rec.rc.payer || rec.name, matric: '', level: rec.prog.level, specId: rec.prog.specId, gid: rec.prog.gid, userId: rec.uid });
     return null;
@@ -172,16 +223,16 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
     if (!s) return shell('<div class="card"><p class="st" style="color:#0b2559">Verify a document · Vérifier un document</p><p>Enter the serial number and the verification code printed on the document, or scan its QR code. · Saisissez le numéro de série et le code de vérification imprimés sur le document, ou scannez son code QR.</p></div>' + form('', ''));
     const rec = S.get(COL, s);
     if (!rec || !c || !same(codeOf(rec.id, rec.digest), c)) return shell('<div class="card bad"><p class="st">NOT VERIFIED · NON VÉRIFIÉ</p><p>No document matches this serial number and code. Treat the document as <b>not authentic</b> and contact the University. · Aucun document ne correspond à ce numéro et à ce code. Considérez le document comme <b>non authentique</b> et contactez l’Université.</p></div>' + form(s, c));
-    const T = TYPES[rec.type] || TYPES.GN, st = (rec.matric ? S.get('students', rec.matric) : null) || ownerOf(rec);
+    const T = TYPES[rec.type] || TYPES.GN, st = rec.sp ? ownerOf(rec) : ((rec.matric ? S.get('students', rec.matric) : null) || ownerOf(rec));
     let h = '<div class="card ok"><p class="st">AUTHENTIC · AUTHENTIQUE</p><p>This document was issued by ADI University and is registered in its official register. · Ce document a été délivré par ADI University et figure dans son registre officiel.</p><dl>' +
       '<dt>Document</dt><dd>' + esc(T[0]) + ' / ' + esc(T[1]) + '</dd><dt>Serial · Numéro</dt><dd>' + esc(rec.id) + '</dd><dt>Issued · Délivré le</dt><dd>' + esc(fmtD(rec.at)) + '</dd>' +
       (rec.pages ? '<dt>Pages</dt><dd>' + rec.pages + '</dd>' : '') + (rec.ay ? '<dt>Session</dt><dd>' + esc(rec.ay) + (rec.sem ? ' · S' + esc(rec.sem) : '') + '</dd>' : '') +
       (st ? '<dt>Student · Étudiant</dt><dd>' + esc(st.name) + '</dd><dt>Matricule</dt><dd>' + esc(st.matric) + '</dd>' : (rec.subject ? '<dt>Subject · Objet</dt><dd>' + esc(rec.subject) + '</dd>' : '')) + '</dl></div>';
     if (st && (rec.type === 'TR' || rec.type === 'SR')) {
       const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
-      const ow = owner(st), gl = ow.gender === 'F' ? 'Female · Féminin' : ow.gender === 'M' ? 'Male · Masculin' : '';
+      const ow = rec.sp ? st : owner(st), gl = ow.gender === 'F' ? 'Female · Féminin' : ow.gender === 'M' ? 'Male · Masculin' : '';
       h = h.replace('</dl></div>', '<dt>Programme</dt><dd>' + esc(ow.programme || '—') + '</dd>' + (ow.school ? '<dt>School · Faculté</dt><dd>' + esc(ow.school) + '</dd>' : '') + (ow.specialty ? '<dt>Department / Specialty · Spécialité</dt><dd>' + esc(ow.specialty) + '</dd>' : '') + (ow.dob ? '<dt>Date of birth · Né(e) le</dt><dd>' + esc(fmtD(Date.parse(ow.dob + 'T12:00:00Z'))) + '</dd>' : '') + (ow.pob ? '<dt>Place of birth · Lieu</dt><dd>' + esc(ow.pob) + '</dd>' : '') + (gl ? '<dt>Sex · Sexe</dt><dd>' + gl + '</dd>' : '') + (ow.nat ? '<dt>Nationality · Nationalité</dt><dd>' + esc(ow.nat) + '</dd>' : '') + '</dl>' + (ow.photo ? '<p><img alt="Holder photograph" src="' + ow.photo + '" style="width:110px;height:130px;object-fit:cover;border:1px solid #d5dbea;margin-top:10px"></p>' : '') + '<p class="note">Compare these particulars, and the photograph, with the identity of the person presenting the document. · Comparez ces données, et la photographie, avec l\'identité de la personne qui présente le document.</p></div>');
-      const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0, cur = '';
+      const rows = rec.sp ? rec.sp.rows : records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0, cur = '';
       let t = '<div class="card"><h2 style="margin-top:0">Results on file at ADI University · Résultats détenus par ADI University</h2><table><tr><th>Code</th><th>Course · Cours</th><th class="n">CV</th><th class="n">Mark</th><th>Grade</th><th class="n">GP</th></tr>';
       rows.forEach(r => { const k = r.ay + ' · S' + r.sem; if (k !== cur) { cur = k; t += '<tr><td colspan="6" style="background:#e9eef8;font-weight:bold">' + esc(k) + '</td></tr>'; } cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; t += '<tr><td>' + esc(r.code) + '</td><td>' + esc(r.title) + '</td><td class="n">' + r.cv + '</td><td class="n">' + esc(r.total) + (r.resit ? ' #' : '') + '</td><td>' + esc(r.grade) + '</td><td class="n">' + r.gp.toFixed(1) + '</td></tr>'; });
       t += '</table>' + (rows.length ? '<dl><dt>Credits attempted · tentés</dt><dd>' + cr + '</dd><dt>Credits earned · acquis</dt><dd>' + earn + '</dd><dt>' + (rec.type === 'SR' ? 'GPA' : 'CGPA') + '</dt><dd>' + (cr ? (wp / cr).toFixed(2) : '—') + '</dd></dl><p class="note"># = resit mark retained. The figures above are the results published today; a document issued earlier shows the results published at its date. · # = note de rattrapage retenue. Les chiffres ci-dessus sont les résultats publiés aujourd’hui ; un document délivré plus tôt présente les résultats publiés à sa date.</p>' : '<p>No published results.</p>') + '</div>';
@@ -197,8 +248,8 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
     const T = TYPES[rec.type] || TYPES.GN, st = rec.matric ? S.get('students', rec.matric) : null, ow0 = ownerOf(rec);
     const out = { idFields: idFields(rec, ow0), valid: true, serial: rec.id, type: rec.type, typeEn: T[0], typeFr: T[1], issued: rec.at, pages: rec.pages || 0, ay: rec.ay || '', sem: rec.sem || '', subject: rec.subject || '' };
     if (ow0) { out.student = Object.assign({ programme: ow0.specialty, level: ow0.level }, ow0, { programmeName: ow0.programme, specialty: ow0.specialty }); }
-    if (st && (rec.type === 'TR' || rec.type === 'SR')) {
-      const rows = records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
+    if ((st || rec.sp) && (rec.type === 'TR' || rec.type === 'SR')) {
+      const rows = rec.sp ? rec.sp.rows : records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
       rows.forEach(r => { cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; });
       out.results = rows; out.totals = { attempted: cr, earned: earn, gpa: cr ? Math.round(wp / cr * 100) / 100 : null };
     }
@@ -207,6 +258,14 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
   }
 
   async function handle(req, res, u, url, p) {
+    if (p === '/api/sptr' && req.method === 'GET') { if (!isSuper(u)) { send(res, 403, { error: 'forbidden' }); return true; } send(res, 200, { recs: Object.values(S.all(SP)).filter(Boolean).sort((a, b2) => (b2.updatedAt || 0) - (a.updatedAt || 0)) }); return true; }
+    if (p === '/api/sptr/save' && req.method === 'POST') { const r = await spSave(u, await body(req, 200000)); send(res, r.code, r.out); return true; }
+    if (p.startsWith('/api/sptr/') && p.endsWith('/delete') && req.method === 'POST') {
+      if (!isSuper(u)) { send(res, 403, { error: 'forbidden' }); return true; }
+      const id = decodeURIComponent(p.slice(10, -7)), old = S.get(SP, id); if (!old) { send(res, 404, { error: 'Unknown record' }); return true; }
+      await S.del(SP, id); try { await audit(u, 'special transcript record deleted ' + id + ' ' + old.matric + ' ' + old.name); } catch (e) {}
+      send(res, 200, { ok: true }); return true;
+    }
     if (p === '/api/docs/issue' && req.method === 'POST') { const r = await issue(u, await body(req, 4000)); send(res, r.code, r.out); return true; }
     if (p === '/verify' || p.startsWith('/verify/') || p === '/api/verify' || p === '/api/verify/check') {
       if (limited('verify:' + ip(req), 80, 3600e3)) { res.writeHead(429, { 'Content-Type': 'text/plain' }); res.end('Too many requests'); return true; }
