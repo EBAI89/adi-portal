@@ -264,13 +264,13 @@ module.exports = function makeRules(store, logic) {
 
     switch (c) {
       case 'users': { const { pw, totp, totpPending, sms2, sms2Pending, ...safe } = d; safe.mfa = !!((totp && totp.on) || (sms2 && sms2.on)); safe.mfaKind = totp && totp.on ? 'app' : sms2 && sms2.on ? (sms2.via === 'email' ? 'email' : 'sms') : ''; if (sms2 && sms2.on && sms2.phone && d.id === u.id) safe.mfaPhone = String(sms2.phone || '').replace(/\d(?=\d{3})/g, '•'); safe.mfaReq = !!(typeof globalThis.ADI_MFA_REQ === 'function' && globalThis.ADI_MFA_REQ(d)); if (d.id === u.id || !['applicant', 'student'].includes(u.role)) return safe; return d.role === 'lecturer' || d.role === 'super_admin' || d.role === 'admin' ? { id: d.id, name: d.name, role: d.role, status: d.status } : null; }
-      case 'apps': return d.userId === u.id || sany(u, 'manage_applications', 'view_students', 'manage_students') ? d : null;
+      case 'apps': return d.userId === u.id || sany(u, 'manage_applications', 'view_students', 'manage_students', 'manage_transcripts') ? d : null;
       case 'students': return d.userId === u.id || sany(u, 'view_students', 'manage_students', 'manage_applications', 'view_classlists', 'verify_payments', 'enter_results', 'publish_results', 'manage_transcripts', 'finance_reports') ? d : null;
       case 'payments': return d.userId === u.id || (d.matric && (ownsMatric(u, d.matric) || (u.purpose === 'minesup' && u.msMatric === d.matric))) || sany(u, 'verify_payments', 'finance_reports', 'view_students', 'manage_students', 'view_classlists') || (/^tr_/.test(d.kind || '') && sany(u, 'manage_transcripts')) ? d : null;
       case 'formb': return d.userId === u.id || sany(u, 'manage_students', 'view_students', 'view_classlists') ? d : null;
-      case 'enroll': return ownsMatric(u, d.matric) || sany(u, 'view_classlists', 'manage_students', 'view_students', 'enter_results', 'publish_results', 'transcripts') ? d : null;
+      case 'enroll': return ownsMatric(u, d.matric) || sany(u, 'view_classlists', 'manage_students', 'view_students', 'enter_results', 'publish_results', 'transcripts', 'manage_transcripts') ? d : null;
       case 'results':
-        if (sany(u, 'enter_results', 'publish_results', 'manage_students', 'view_students', 'transcripts')) return d;
+        if (sany(u, 'enter_results', 'publish_results', 'manage_students', 'view_students', 'transcripts', 'manage_transcripts')) return d;
         if (!(ownsMatric(u, d.matric) && d.state === 'published')) return null;
         if (logic.resultsUnlocked(store, d)) return d;
         return { id: d.id, matric: d.matric, ay: d.ay, sem: d.sem, courseId: d.courseId, state: d.state, locked: true };
@@ -2601,7 +2601,11 @@ const msBridge = {
   },
   notifyLinked: async (matric, title, text) => { for (const x of Object.values(S.all('users'))) if (x && x.status === 'active' && (x.msMatric === matric)) { try { await notifyUser(x.id, title, text); } catch (e) {} } }
 };
-const docFiles = () => (global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit, ms: msBridge }));
+/* Who may issue the official transcript: the super administrator for any student; an officer whose role holds "manage_transcripts" for a student whose transcript application is on file (not rejected). */
+const canTranscript = (u, matric) => !!u && u.status === 'active' && !!matric && (u.role === 'super_admin' || ((logic.perms(S)[u.role] || []).includes('manage_transcripts') && Object.values(S.all('trreq')).some(r => r && r.matric === matric && r.status !== 'rejected')));
+/* each issue is written on the student's open applications, so the register shows when, by whom and under which serial the transcript was produced */
+const onTranscript = async (u, st, rec) => { for (const r of Object.values(S.all('trreq'))) { if (!r || r.matric !== st.matric || r.status === 'rejected') continue; r.gen = { at: now(), by: u.name || u.email || '', serial: rec.id, n: ((r.gen && r.gen.n) || 0) + 1 }; try { await S.put('trreq', r.id, r); } catch (e) {} } };
+const docFiles = () => (global.__DOCFILES = global.__DOCFILES || __req('./adi-files.js')({ S, now, limited, send, body, audit, ms: msBridge, canTranscript }));
 async function rejectionLetter(kind, rec, by, extra) {
   try {
     const owner = S.get('users', rec.userId); if (!owner) return;
@@ -3104,7 +3108,7 @@ async function route(req, res) {
     if (await global.__DOCFILES.handle(req, res, u, url, p)) return;
   }
   if (p === '/api/docs/issue' || p === '/verify' || p === '/api/verify' || p === '/api/verify/check' || p.startsWith('/verify/')) {       // document authenticity register and the public verification page
-    global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core, notifyUser, usersWith });
+    global.__DOCREG = global.__DOCREG || __req('./adi-docreg.js')({ S, now, limited, send, body, ip, audit, SECRET, core: logic.core, notifyUser, usersWith, canTranscript, onTranscript });
     if (await global.__DOCREG.handle(req, res, u, url, p)) return;
   }
   if (p === '/api/session/ping' && req.method === 'POST') return send(res, 200, { ok: true, me: u ? u.id : null });

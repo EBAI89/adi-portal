@@ -65,7 +65,7 @@ module.exports = function makeFiles(ctx) {
       owner = o;
     }
     const cat = CATS.includes(b.cat) ? b.cat : 'other';
-    if (cat === 'transcript' && u.role !== 'super_admin') return { code: 403, out: { error: 'The transcript is filed by the super administrator only.' } };
+    if (cat === 'transcript' && !(ctx.canTranscript ? ctx.canTranscript(u, plain(b.matric, 24).toUpperCase()) : u.role === 'super_admin')) return { code: 403, out: { error: 'The transcript is filed by the super administrator or an authorised transcripts officer only.' } };
     const hash = crypto.createHash('sha256').update(buf).digest('hex');
     const mine = Object.values(S.all(COL)).filter(r => r.ownerId === owner.id && !r.gate);
     let rec = mine.find(r => r.hash === hash);

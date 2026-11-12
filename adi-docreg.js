@@ -29,7 +29,7 @@ module.exports = function makeDocReg(ctx) {
     const type = TYPES[b.type] ? b.type : 'GN', digest = String(b.digest || '').toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(digest)) return { code: 400, out: { error: 'bad digest' } };
     const matric = plain(b.matric, 24).toUpperCase(), st = matric ? S.get('students', matric) : null;
-    if (type === 'TR' && !(u.role === 'super_admin' && st)) return { code: 403, out: { error: 'The transcript is issued by the super administrator only.' } };
+    if (type === 'TR' && !(st && (ctx.canTranscript ? ctx.canTranscript(u, st.matric) : u.role === 'super_admin'))) return { code: 403, out: { error: 'The transcript is issued by the super administrator, or by an authorised officer for a student whose application is on file.' } };
     if (st && !isStaff(u) && st.userId !== u.id && u.matric !== st.matric) return { code: 403, out: { error: 'forbidden' } };
     let pay = null;
     if (type === 'RC' && b.pay) {
@@ -45,7 +45,7 @@ module.exports = function makeDocReg(ctx) {
     }
     if (pay && !rec.rc) applyPay(rec, pay);
     rec.n = (rec.n || 0) + 1; rec.last = now(); await S.put(COL, rec.id, rec);
-    if (type === 'TR') { try { await audit(u, 'transcript issued ' + rec.id + ' ' + rec.matric); } catch (e) {} }
+    if (type === 'TR') { try { await audit(u, 'transcript issued ' + rec.id + ' ' + rec.matric); } catch (e) {} if (ctx.onTranscript && st) { try { await ctx.onTranscript(u, st, rec); } catch (e) {} } }
     return { code: 200, out: { serial: rec.id, code: codeOf(rec.id, rec.digest), at: rec.at } };
   }
 
