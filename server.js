@@ -3626,6 +3626,51 @@ async function route(req, res) {
     const n = Object.assign({}, x, { pw: await hashPw(b.password), mustChange: false }); await save('users', x.id, n); await S.setMeta(key, null);
     await audit(n, 'password reset by email link'); pwChangedMail(n); return send(res, 200, { ok: true });
   }
+  if (p === '/api/payments/office' && req.method === 'POST') {          // an authorised officer settles an item that was paid outside the portal (cash desk, bank slip, MoMo received by the office): unpaid -> paid, with a receipt
+    const okU = u && u.status === 'active' && (u.role === 'super_admin' || (logic.perms(S)[u.role] || []).includes('verify_payments'));
+    if (!okU) return send(res, 403, { error: 'Only the Super Administrator or an officer authorised to verify payments may record a payment.' });
+    if (limited('payoffice:' + u.id, 150, 3600e3)) return send(res, 429, { error: 'Too many payments recorded in one hour. Please wait.' });
+    const b = await body(req, 4000), txt = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+    const kind = txt(b.kind, 60), method = ['cash', 'bank', 'momo', 'other'].includes(b.method) ? b.method : '', note = txt(b.note, 200), refIn = txt(b.ref, 40);
+    if (!kind) return send(res, 400, { error: 'Select the item being paid.' });
+    if (!method) return send(res, 400, { error: 'Select how the payment was received.' });
+    if (note.length < 5) return send(res, 400, { error: 'State where and when the payment was received (at least five characters).' });
+    let st = b.matric ? S.get('students', txt(b.matric, 24)) : null;
+    const x = b.userId ? S.get('users', txt(b.userId, 40)) : (st && st.userId ? S.get('users', st.userId) : null);
+    if (!st && x) st = (x.purpose === 'minesup' && x.msMatric ? S.get('students', x.msMatric) : Object.values(S.all('students')).find(q => q && q.userId === x.id)) || null;
+    if (!st && !x) return send(res, 404, { error: 'Student or account not found.' });
+    const all = Object.entries(S.all('payments')).filter(([, q]) => q), ay = logic.AY(), who = (st && st.name) || (x && x.name) || '';
+    const mine = kind === 'service' ? (x ? all.filter(([, q]) => q.userId === x.id && q.kind === 'service') : [])
+      : all.filter(([, q]) => st && q.matric === st.matric && q.kind === kind && (/^tr_/.test(kind) || q.ay === ay));
+    const stamp = { office: true, channel: method, officeNote: note, recordedBy: u.name, recordedById: u.id };
+    const pend = kind === 'other' ? null : mine.find(([, q]) => q.status === 'pending');
+    if (pend) {                                                                    // the payer already declared this payment: confirm that record instead of creating a second one
+      const done = await confirmPayment(Object.assign({}, pend[1], { id: pend[0] }), u.name, stamp);
+      await audit(u, 'payment marked as paid (' + method + '): ' + done.label + ' ' + done.amount + ' XAF — ' + who + ' ' + (done.receiptNo || ''));
+      return send(res, 200, { ok: true, id: pend[0], receiptNo: done.receiptNo, amount: done.amount, confirmedPending: true });
+    }
+    let amount, label;
+    if (kind === 'service') {
+      if (!x) return send(res, 400, { error: 'This person has no portal account, so the service fee cannot be recorded.' });
+      if (mine.some(([, q]) => q.status === 'confirmed')) return send(res, 400, { error: 'The service fee is already settled or waived.' });
+      amount = logic.SERVICE_FEE - logic.creditAvail(S, x.id, 'service', ay).sum; label = 'Service fee';
+    } else {
+      if (!st) return send(res, 400, { error: 'This account has no student record.' });
+      const price = logic.priceFor(S, st, kind);
+      if (!price) return send(res, 400, { error: 'This item does not apply to this student, or is already settled.' });
+      if (price.custom) { amount = Math.round(Number(b.amount)); label = txt(b.label, 120); if (!(amount > 0 && amount <= 5e6)) return send(res, 400, { error: 'Enter the amount received, in XAF.' }); if (label.length < 3) return send(res, 400, { error: 'Describe what the payment is for.' }); }
+      else {
+        if (price.done || mine.some(([, q]) => q.status === 'confirmed')) return send(res, 400, { error: 'This item is already recorded as paid.' });
+        amount = Number(price.amount) - (x ? logic.creditAvail(S, x.id, kind, ay).sum : 0); label = price.label;
+      }
+    }
+    if (refIn && all.some(([, q]) => String(q.ref || '').toLowerCase() === refIn.toLowerCase())) return send(res, 400, { error: 'This reference is already recorded on another payment.' });
+    const id = uid('pay'), rec = Object.assign({ id, userId: x ? x.id : '', matric: st ? st.matric : '', payerName: who, kind, label, amount, ref: refIn || 'OFFICE-' + id.slice(-8).toUpperCase(), payerPhone: '', status: 'pending', at: now(), ay, momoTo: '', method: 'office' }, stamp);
+    await save('payments', id, rec);
+    const done = await confirmPayment(rec, u.name);
+    await audit(u, 'payment recorded as paid (' + method + '): ' + label + ' ' + amount + ' XAF — ' + who + (st ? ' (' + st.matric + ')' : '') + ' ' + (done.receiptNo || ''));
+    return send(res, 200, { ok: true, id, receiptNo: done.receiptNo, amount });
+  }
   if (p === '/api/admin/service-waiver' && req.method === 'POST') {          // super administrator pre-grants a cleared student the MINESUP service-fee exemption (or revokes it)
     if (!u || u.role !== 'super_admin') return send(res, 403, { error: 'forbidden' });
     const b = await body(req, 4000), x = S.get('users', String(b.userId || '')); if (!x) return send(res, 404, { error: 'User not found.' });
