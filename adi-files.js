@@ -111,6 +111,7 @@ module.exports = function makeFiles(ctx) {
     const cat = q.get('cat') || '', s = String(q.get('q') || '').toLowerCase().trim(), all = u.role === 'super_admin' && q.get('all') === '1';
     let rows = Object.values(S.all(COL)).filter(r => all || sees(u, r));
     if (cat && CATS.includes(cat)) rows = rows.filter(r => r.cat === cat);
+    if (q.get('gate') === 'ministry') rows = rows.filter(r => r.gate === 'ministry');   // the MINESUP transcript registry lists the ministry's transcripts only
     if (s) rows = rows.filter(r => (r.name + ' ' + r.title + ' ' + r.ref + ' ' + r.serial + ' ' + r.matric + ' ' + r.ownerName).toLowerCase().includes(s));
     const counts = {}; Object.values(S.all(COL)).filter(r => all || sees(u, r)).forEach(r => { counts[r.cat] = (counts[r.cat] || 0) + 1; });
     rows.sort((a, b) => b.at - a.at);
