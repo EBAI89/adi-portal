@@ -99,16 +99,38 @@ module.exports = function makeDocReg(ctx) {
     return { code: 200, out: { serial: rec.id, code: codeOf(rec.id, rec.digest), at: rec.at } };
   }
 
+  /* HND / BTS: a semester stands at 30 credits (same rule as the portal's transcript). Courses of another semester (carry-over / repeat, recognised by the year-and-semester digits of
+   * the code) and courses beyond the 30-credit load are listed but not counted, so a resit or repeated course is counted once, in its own semester. `pend` marks the semesters in which
+   * a registered course has no published result yet; those are summed as they stand. Works on copies, never on the stored rows. */
+  const SEM_LOAD = 30, stemOf = c => { const m = /^[A-Za-z]{2,4}\s*-?\s*(\d)(\d)\d/.exec(String(c || '').trim()); return m ? m[1] + m[2] : ''; };
+  function loadTotals(rows0, level, pend) {
+    const std = level === 'HND' || level === 'BTS', rows = rows0.map(r => Object.assign({}, r, { flag: 0 })), by = {};
+    rows.forEach(r => { const k = r.ay + '|' + r.sem; (by[k] = by[k] || []).push(r); });
+    let cr = 0, wp = 0, earn = 0;
+    Object.keys(by).forEach(k => {
+      const g = by[k];
+      if (std && g.reduce((a, r) => a + (Number(r.cv) || 0), 0) > SEM_LOAD) {
+        const cnt = {}; let best = '', bn = 0; g.forEach(r => { const s = stemOf(r.code); if (!s) return; cnt[s] = (cnt[s] || 0) + (Number(r.cv) || 0); if (cnt[s] > bn) { bn = cnt[s]; best = s; } });
+        if (best) g.forEach(r => { const s = stemOf(r.code); if (s && s !== best) r.flag = 1; });
+        let acc = 0; g.map((r, i) => i).sort((a, b) => String(g[a].code || '').localeCompare(String(g[b].code || ''))).forEach(i => { if (g[i].flag) return; const c = Number(g[i].cv) || 0; if (acc + c <= SEM_LOAD) acc += c; else g[i].flag = 2; });
+      }
+      let a = 0; g.forEach(r => { if (r.flag) return; const c = Number(r.cv) || 0; a += c; wp += (Number(r.gp) || 0) * c; if (r.grade !== 'F') earn += c; });
+      cr += std && !(pend && pend[k]) ? SEM_LOAD : a;
+    });
+    return { cr, wp, earn, rows };
+  }
+
   // ---- what the portal itself holds for the student (never taken from the client)
   function records(st, ay, sem) {
     const enr = Object.values(S.all('enroll')).filter(e => e.matric === st.matric && (!ay || e.ay === ay) && (!sem || String(e.sem) === String(sem)));
-    const rows = [];
+    const rows = [], pend = {};
     enr.forEach(e => {
       const c = S.get('courses', e.courseId), r = S.get('results', e.matric + '_' + e.courseId + '_' + String(e.ay).replace('/', '-'));
+      if (c && !(r && r.state === 'published')) pend[e.ay + '|' + (Number(e.sem) || 0)] = 1;
       if (c && r && r.state === 'published') rows.push({ ay: e.ay, sem: Number(e.sem) || 0, code: c.code, title: c.title, cv: Number(c.credits) || 0, total: r.total, grade: r.grade, gp: Number(r.gp) || 0, resit: !!r.resitUsed });
     });
     rows.sort((a, b) => String(a.ay).localeCompare(String(b.ay)) || a.sem - b.sem || String(a.code).localeCompare(String(b.code)));
-    return rows;
+    rows.pend = pend; return rows;
   }
   const fmtD = t => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Africa/Douala' });
 
@@ -232,10 +254,10 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
       const sp = (core && core.SPEC && core.SPEC[st.specId]) || {}, grp = (core && core.GRP && core.GRP[st.gid || sp.gid]) || {};
       const ow = rec.sp ? st : owner(st), gl = ow.gender === 'F' ? 'Female · Féminin' : ow.gender === 'M' ? 'Male · Masculin' : '';
       h = h.replace('</dl></div>', '<dt>Programme</dt><dd>' + esc(ow.programme || '—') + '</dd>' + (ow.school ? '<dt>School · Faculté</dt><dd>' + esc(ow.school) + '</dd>' : '') + (ow.specialty ? '<dt>Department / Specialty · Spécialité</dt><dd>' + esc(ow.specialty) + '</dd>' : '') + (ow.dob ? '<dt>Date of birth · Né(e) le</dt><dd>' + esc(fmtD(Date.parse(ow.dob + 'T12:00:00Z'))) + '</dd>' : '') + (ow.pob ? '<dt>Place of birth · Lieu</dt><dd>' + esc(ow.pob) + '</dd>' : '') + (gl ? '<dt>Sex · Sexe</dt><dd>' + gl + '</dd>' : '') + (ow.nat ? '<dt>Nationality · Nationalité</dt><dd>' + esc(ow.nat) + '</dd>' : '') + '</dl>' + (ow.photo ? '<p><img alt="Holder photograph" src="' + ow.photo + '" style="width:110px;height:130px;object-fit:cover;border:1px solid #d5dbea;margin-top:10px"></p>' : '') + '<p class="note">Compare these particulars, and the photograph, with the identity of the person presenting the document. · Comparez ces données, et la photographie, avec l\'identité de la personne qui présente le document.</p></div>');
-      const rows = rec.sp ? rec.sp.rows : records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0, cur = '';
+      const rows0 = rec.sp ? rec.sp.rows : records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''), TT = loadTotals(rows0, (rec.sp && rec.sp.level) || st.level, rows0.pend), rows = TT.rows, cr = TT.cr, wp = TT.wp, earn = TT.earn; let cur = '';
       let t = '<div class="card"><h2 style="margin-top:0">Results on file at ADI University · Résultats détenus par ADI University</h2><table><tr><th>Code</th><th>Course · Cours</th><th class="n">CV</th><th class="n">Mark</th><th>Grade</th><th class="n">GP</th></tr>';
-      rows.forEach(r => { const k = r.ay + ' · S' + r.sem; if (k !== cur) { cur = k; t += '<tr><td colspan="6" style="background:#e9eef8;font-weight:bold">' + esc(k) + '</td></tr>'; } cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; t += '<tr><td>' + esc(r.code) + '</td><td>' + esc(r.title) + '</td><td class="n">' + r.cv + '</td><td class="n">' + esc(r.total) + (r.resit ? ' #' : '') + '</td><td>' + esc(r.grade) + '</td><td class="n">' + r.gp.toFixed(1) + '</td></tr>'; });
-      t += '</table>' + (rows.length ? '<dl><dt>Credits attempted · tentés</dt><dd>' + cr + '</dd><dt>Credits earned · acquis</dt><dd>' + earn + '</dd><dt>' + (rec.type === 'SR' ? 'GPA' : 'CGPA') + '</dt><dd>' + (cr ? (wp / cr).toFixed(2) : '—') + '</dd></dl><p class="note"># = resit mark retained. The figures above are the results published today; a document issued earlier shows the results published at its date. · # = note de rattrapage retenue. Les chiffres ci-dessus sont les résultats publiés aujourd’hui ; un document délivré plus tôt présente les résultats publiés à sa date.</p>' : '<p>No published results.</p>') + '</div>';
+      rows.forEach(r => { const k = r.ay + ' · S' + r.sem; if (k !== cur) { cur = k; t += '<tr><td colspan="6" style="background:#e9eef8;font-weight:bold">' + esc(k) + '</td></tr>'; } t += '<tr><td>' + esc(r.code) + '</td><td>' + esc(r.title) + '</td><td class="n">' + r.cv + (r.flag ? ' †' : '') + '</td><td class="n">' + esc(r.total) + (r.resit ? ' #' : '') + '</td><td>' + esc(r.grade) + '</td><td class="n">' + r.gp.toFixed(1) + '</td></tr>'; });
+      t += '</table>' + (rows.length ? '<dl><dt>Credits attempted · tentés</dt><dd>' + cr + '</dd><dt>Credits earned · acquis</dt><dd>' + earn + '</dd><dt>' + (rec.type === 'SR' ? 'GPA' : 'CGPA') + '</dt><dd>' + (cr ? (wp / cr).toFixed(2) : '—') + '</dd></dl><p class="note"># = resit mark retained. † = carry-over or additional course, not counted in the 30-credit semester load. The figures above are the results published today; a document issued earlier shows the results published at its date. · # = note de rattrapage retenue. † = cours reporté ou supplémentaire, non compté dans la charge semestrielle de 30 crédits. Les chiffres ci-dessus sont les résultats publiés aujourd’hui ; un document délivré plus tôt présente les résultats publiés à sa date.</p>' : '<p>No published results.</p>') + '</div>';
       h += t;
     }
     return shell(h + form('', ''));
@@ -249,8 +271,7 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}input{flex:1 1 200px;pa
     const out = { idFields: idFields(rec, ow0), valid: true, serial: rec.id, type: rec.type, typeEn: T[0], typeFr: T[1], issued: rec.at, pages: rec.pages || 0, ay: rec.ay || '', sem: rec.sem || '', subject: rec.subject || '' };
     if (ow0) { out.student = Object.assign({ programme: ow0.specialty, level: ow0.level }, ow0, { programmeName: ow0.programme, specialty: ow0.specialty }); }
     if ((st || rec.sp) && (rec.type === 'TR' || rec.type === 'SR')) {
-      const rows = rec.sp ? rec.sp.rows : records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''); let cr = 0, wp = 0, earn = 0;
-      rows.forEach(r => { cr += r.cv; wp += r.gp * r.cv; if (r.grade !== 'F') earn += r.cv; });
+      const rows0 = rec.sp ? rec.sp.rows : records(st, rec.type === 'SR' ? rec.ay : '', rec.type === 'SR' ? rec.sem : ''), TT = loadTotals(rows0, (rec.sp && rec.sp.level) || (st && st.level) || '', rows0.pend), rows = TT.rows, cr = TT.cr, wp = TT.wp, earn = TT.earn;
       out.results = rows; out.totals = { attempted: cr, earned: earn, gpa: cr ? Math.round(wp / cr * 100) / 100 : null };
     }
     if (rec.rc) out.pay = { payer: rec.rc.payer, amount: rec.rc.amount, label: rec.rc.label, ay: rec.rc.ay, receiptNo: rec.rc.receiptNo, status: rec.rc.status, paidAt: rec.rc.paidAt };

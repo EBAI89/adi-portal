@@ -2977,7 +2977,9 @@ async function applyWrite(u, c, id, o, n) {
     if (stOf(n) !== 'E') {
       const add = Math.max(1, Number(n.credits) || 1);
       const tot = Object.values(S.all('courses')).filter(x => x.id !== id && x.level === n.level && x.specId === n.specId && Number(x.year) === Number(n.year || 1) && Number(x.sem) === Number(n.sem || 1) && stOf(x) !== 'E').reduce((a, x) => a + (Number(x.credits) || 0), 0) + add;
-      if (tot > 30) throw ['A HND/BTS semester cannot exceed 30 credits (this would make ' + tot + ').'];
+      // The Super Administrator may correct any credit value. For everyone else a semester may not be pushed above 30 credits; lowering a course in a semester that is already over is allowed.
+      const prev = o && o.level === n.level && o.specId === n.specId && Number(o.year || 1) === Number(n.year || 1) && Number(o.sem || 1) === Number(n.sem || 1) && stOf(o) !== 'E' ? Math.max(1, Number(o.credits) || 1) : 0;
+      if (tot > 30 && u.role !== 'super_admin' && add > prev) throw ['A HND/BTS semester cannot exceed 30 credits (this would make ' + tot + ').'];
     }
   }
   if (c === 'apps' && n && n.status === 'admitted' && (!o || o.status !== 'admitted')) {
