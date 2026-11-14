@@ -176,7 +176,10 @@ function priceFor(store, st, kind) {
 }
 /* ---------- course registration (ADI Student Guide §12, §13.3, §16.8) ---------- */
 const stg = store => store.get('settings', 'main') || {};
-function creditRule(store, lv) { return core.regCreditRule(stg(store), lv); }
+function creditRule(store, lv, finTot) { return core.regCreditRule(stg(store), lv, finTot); }
+// the final semester of an HND/BTS programme (the 4th; the 6th where the specialty runs for three years) is the mock examination on the Ministry's papers: no 30-credit ceiling
+const progMonths = (level, specId) => ((core.SPEC[specId] || {}).months) || ((core.LEVELS[level] || {}).months) || 24;
+const semIsFinal = (level, specId, yr, sem) => (level === 'HND' || level === 'BTS') && (Number(yr) - 1) * 2 + Number(sem) === Math.max(2, Math.round(progMonths(level, specId) / 6));
 function windowOpen(store) { return core.regWinCalc(stg(store), Date.now()).open; }
 const cStatus = c => ({ C: 1, R: 1, E: 1 }[c.status] ? c.status : (c.compulsory ? 'C' : 'E'));
 function isOffered(store, c, st, yr, sem) { return offered(store, st, yr, sem).some(x => x.id === c.id); }
@@ -185,7 +188,7 @@ const fbKey = (matric, ay, sem) => matric + '_' + String(ay).replace('/', '-') +
 function regOk(store, st) { load(store); return !!core.feeBook(JSON.parse(JSON.stringify(st))).regOk; }
 // Validates a student's Form B submission; returns { error } or { credits, courses }.
 function checkFormB(store, st, n, old) {
-  const sem = Number(n.sem), yr = Number(n.year), years = Math.max(1, Math.round(((core.LEVELS[st.level] || {}).months || 24) / 12));
+  const sem = Number(n.sem), yr = Number(n.year), years = Math.max(1, Math.round(progMonths(st.level, st.specId) / 12));
   if (![1, 2].includes(sem) || !(yr >= 1 && yr <= years)) return { error: 'semester or year' };
   if (!Array.isArray(n.courses) || n.courses.length > 60) return { error: 'courses' };
   if (!regOk(store, st)) return { error: 'registration fee not paid' };
@@ -193,7 +196,7 @@ function checkFormB(store, st, n, old) {
   const list = offered(store, st, yr, sem), ids = new Set(n.courses);
   for (const id of ids) if (!list.some(c => c.id === id)) return { error: 'course not offered: ' + id };
   const missing = list.filter(c => cStatus(c) !== 'E' && !ids.has(c.id)); if (missing.length) return { error: 'compulsory/required course missing: ' + missing.map(c => c.code).join(', ') };
-  const chosen = list.filter(c => ids.has(c.id)), total = chosen.reduce((a, c) => a + (Number(c.credits) || 0), 0), rule = creditRule(store, st.level), avail = list.reduce((a, c) => a + (Number(c.credits) || 0), 0);
+  const chosen = list.filter(c => ids.has(c.id)), total = chosen.reduce((a, c) => a + (Number(c.credits) || 0), 0), avail = list.reduce((a, c) => a + (Number(c.credits) || 0), 0), rule = creditRule(store, st.level, semIsFinal(st.level, st.specId, yr, sem) ? avail : 0);
   if (total > rule.max) return { error: 'above the maximum of ' + rule.max + ' credits' };
   if (total < rule.min && avail >= rule.min) return { error: 'below the minimum of ' + rule.min + ' credits' };
   return { credits: total, courses: chosen.map(c => c.id), sem, year: yr };
@@ -2979,7 +2982,7 @@ async function applyWrite(u, c, id, o, n) {
       const tot = Object.values(S.all('courses')).filter(x => x.id !== id && x.level === n.level && x.specId === n.specId && Number(x.year) === Number(n.year || 1) && Number(x.sem) === Number(n.sem || 1) && stOf(x) !== 'E').reduce((a, x) => a + (Number(x.credits) || 0), 0) + add;
       // The Super Administrator may correct any credit value. For everyone else a semester may not be pushed above 30 credits; lowering a course in a semester that is already over is allowed.
       const prev = o && o.level === n.level && o.specId === n.specId && Number(o.year || 1) === Number(n.year || 1) && Number(o.sem || 1) === Number(n.sem || 1) && stOf(o) !== 'E' ? Math.max(1, Number(o.credits) || 1) : 0;
-      if (tot > 30 && u.role !== 'super_admin' && add > prev) throw ['A HND/BTS semester cannot exceed 30 credits (this would make ' + tot + ').'];
+      if (tot > 30 && u.role !== 'super_admin' && add > prev && !semIsFinal(n.level, n.specId, n.year || 1, n.sem || 1)) throw ['A HND/BTS semester cannot exceed 30 credits (this would make ' + tot + ').'];
     }
   }
   if (c === 'apps' && n && n.status === 'admitted' && (!o || o.status !== 'admitted')) {
