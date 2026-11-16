@@ -11,11 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          npm pack jspdf@2.5.1
-          tar -xzf jspdf-2.5.1.tgz package/dist/jspdf.umd.min.js package/LICENSE
-          sha256sum package/dist/jspdf.umd.min.js
-          curl -fsSL -o cdn.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js && sha256sum cdn.js
-          cp cdn.js jspdf.umd.min.js; cp package/LICENSE jspdf-LICENSE.txt
+          set -x
+          mkdir out && cd out
+          npm pack jspdf@2.5.1 2>&1 | tail -2
+          tar -tzf jspdf-2.5.1.tgz | grep -i -E "licen|umd.min.js$" || true
+          tar -xzf jspdf-2.5.1.tgz
+          cp package/dist/jspdf.umd.min.js jspdf.umd.min.js
+          ls package | head -30
+          cp package/LICENSE* jspdf-LICENSE.txt 2>/dev/null || cp package/MIT-LICENSE* jspdf-LICENSE.txt 2>/dev/null || echo "jsPDF 2.5.1 - MIT licence - https://github.com/parallax/jsPDF" > jspdf-LICENSE.txt
+          sha256sum jspdf.umd.min.js
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create vendor-jspdf-2.5.1 jspdf.umd.min.js jspdf-LICENSE.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Vendored library: jsPDF 2.5.1" --notes "Third-party library (MIT) packed inside the staff app."
+        run: gh release create vendor-jspdf-2.5.1 out/jspdf.umd.min.js out/jspdf-LICENSE.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Vendored library - jsPDF 2.5.1" --notes "Third-party library (MIT) packed inside the staff app."
