@@ -1,0 +1,21 @@
+# One-off: fetches the PDF library (jsPDF 2.5.1, MIT licence) so it can be packed inside the staff app for offline use.
+name: Vendor libraries
+on:
+  push:
+    branches: [android-app]
+    paths: ['.github/workflows/vendor-libs.yml']
+permissions:
+  contents: write
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          npm pack jspdf@2.5.1
+          tar -xzf jspdf-2.5.1.tgz package/dist/jspdf.umd.min.js package/LICENSE
+          sha256sum package/dist/jspdf.umd.min.js
+          curl -fsSL -o cdn.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js && sha256sum cdn.js
+          cp cdn.js jspdf.umd.min.js; cp package/LICENSE jspdf-LICENSE.txt
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create vendor-jspdf-2.5.1 jspdf.umd.min.js jspdf-LICENSE.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Vendored library: jsPDF 2.5.1" --notes "Third-party library (MIT) packed inside the staff app."
