@@ -47,7 +47,7 @@ module.exports = function makeDocReg(ctx) {
         if (!title) return err('A course in ' + ay + ' semester ' + sem + ' has no title.');
         if (!(cv > 0 && cv <= 30)) return err('The credit value of "' + title + '" must be between 1 and 30.');
         if (r.mark === '' || r.mark == null || !(mark >= 0 && mark <= 100)) return err('The mark of "' + title + '" must be between 0 and 100.');
-        const row = Object.assign({ code, title, cv, mark }, gradeOf(mark)); if (r.rs) row.rs = true;                 // mark obtained at the resit session: printed with #
+        const row = Object.assign({ code, title, cv, mark }, gradeOf(mark)); if (r.rs) { row.rs = true; const fm = Math.round(Number(r.fm) * 100) / 100; if (r.fm !== '' && r.fm != null && fm >= 0 && fm <= 100) row.fm = fm; }   // fm: mark of the regular session, when it is on record                 // mark obtained at the resit session: printed with #
         if (r.ab && mark === 0) row.ab = true;                                                                          // absent: printed X, graded F
         rows.push(row);
       }
