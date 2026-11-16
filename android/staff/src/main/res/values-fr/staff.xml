@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="staffName">Relevés ADI</string>
+    <string name="staffCannotOpen">Aucune application sur ce téléphone ne peut ouvrir ce lien.</string>
+    <string name="staffSaved">Enregistré dans le dossier Download/ADI.</string>
+</resources>

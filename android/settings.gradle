@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = 'adi-portal-app'
-include ':app'
+include ':app', ':staff'

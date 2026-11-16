@@ -7,6 +7,7 @@ on:
     branches: [main, android-app]
     paths:
       - 'android/**'
+      - '!android/staff/**'
       - '.github/workflows/android-apk.yml'
   workflow_dispatch:
 
@@ -33,7 +34,7 @@ jobs:
         working-directory: android
         run: |
           set -o pipefail
-          gradle --no-daemon --stacktrace assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+          gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/ADI-Portal.apk"
           "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$RUNNER_TEMP/ADI-Portal.apk" | tee -a "$RUNNER_TEMP/build.log" || true
 

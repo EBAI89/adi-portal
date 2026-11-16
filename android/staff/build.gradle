@@ -1,0 +1,47 @@
+// ADI Transcripts — the staff app. The portal's Transcript Office packed in the app, working with no internet and no server.
+// The packed copy of the portal (src/main/assets/site) is produced by build-assets.mjs before this build; it is not kept in the repository.
+plugins { id 'com.android.application' }
+
+def buildNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
+
+android {
+    namespace 'com.adiuniversity.portal.staff'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.adiuniversity.portal.staff'
+        minSdk 23
+        targetSdk 34
+        versionCode buildNo
+        versionName "1.0.${buildNo}"
+    }
+    signingConfigs {
+        release {
+            storeFile rootProject.file(System.getenv('ADI_KEYSTORE_FILE') ?: 'adi-release.jks')
+            storePassword System.getenv('ADI_KEYSTORE_PASSWORD') ?: 'adi-portal-app'
+            keyAlias 'adi'
+            keyPassword System.getenv('ADI_KEYSTORE_PASSWORD') ?: 'adi-portal-app'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    // the launcher icon is the one of the public app
+    sourceSets { main { res.srcDirs += ['../app/src/main/res'] } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_11; targetCompatibility JavaVersion.VERSION_11 }
+    lint { checkReleaseBuilds false; abortOnError false }
+}
+
+tasks.register('checkPackedPortal') {
+    doLast {
+        if (!file('src/main/assets/site/index.html').exists()) throw new GradleException('Run "node android/staff/build-assets.mjs" first: the packed copy of the portal is missing.')
+    }
+}
+preBuild.dependsOn 'checkPackedPortal'
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+}

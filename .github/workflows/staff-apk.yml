@@ -1,0 +1,75 @@
+# Builds the private ADI staff app (Transcript Office working offline).
+# The portal's data is never in this repository: the packed copy of the portal is produced here, during the build.
+# The finished APK is encrypted with the owner's public key (android/staff/delivery-key.pub.pem) before it is published,
+# so only the owner, who holds the private key, can open it. The public app is built by android-apk.yml.
+name: Build staff APK (private)
+
+on:
+  push:
+    branches: [android-app, main]
+    paths:
+      - 'android/staff/**'
+      - 'adi-docreg.js'
+      - '.github/workflows/staff-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  staff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Pack the portal into the app
+        run: node android/staff/build-assets.mjs 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Build the signed APK
+        working-directory: android
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :staff:assembleRelease 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          cp staff/build/outputs/apk/release/staff-release.apk "$RUNNER_TEMP/ADI-Staff.apk"
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$RUNNER_TEMP/ADI-Staff.apk" | tee -a "$RUNNER_TEMP/build.log" || true
+
+      - name: Encrypt for the owner
+        run: |
+          cd "$RUNNER_TEMP"
+          openssl rand -hex 32 > k.txt
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in ADI-Staff.apk -out ADI-Staff.apk.enc -pass file:k.txt
+          openssl pkeyutl -encrypt -pubin -inkey "$GITHUB_WORKSPACE/android/staff/delivery-key.pub.pem" -pkeyopt rsa_padding_mode:oaep -in k.txt -out ADI-Staff.key.enc
+          sha256sum ADI-Staff.apk | cut -d' ' -f1 > ADI-Staff.sha256
+          rm k.txt ADI-Staff.apk
+          ls -la
+
+      - name: Publish the encrypted files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release create "staff-enc-${GITHUB_RUN_NUMBER}" ADI-Staff.apk.enc ADI-Staff.key.enc ADI-Staff.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Encrypted staff build ${GITHUB_RUN_NUMBER}" \
+            --notes "Encrypted: readable only by the owner. Not an installable file."
+
+      - name: Save the build log when the build fails
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/log" && cd "$RUNNER_TEMP/log"
+          tail -n 300 "$RUNNER_TEMP/build.log" > build-log.txt 2>/dev/null || echo "no build log" > build-log.txt
+          git init -q && git checkout -q -b staff-build-log
+          git config user.name "github-actions[bot]" && git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add build-log.txt && git commit -q -m "Staff build log (run ${GITHUB_RUN_NUMBER})"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" staff-build-log

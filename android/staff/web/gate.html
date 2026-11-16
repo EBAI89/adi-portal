@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ADI Transcripts — staff</title>
+<style>
+:root{--navy:#0B2559;--gold:#C9A227;--ink:#0F1A33;--muted:#5A6580;--line:#D9DFEC;--bad:#9B1420}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--navy);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;padding:18px}
+.card{background:#fff;border-radius:16px;padding:22px 18px;width:100%;max-width:420px;border-top:5px solid var(--gold)}
+img{width:76px;height:76px;object-fit:contain;display:block;margin:0 auto 8px}
+h1{font-size:1.25rem;line-height:1.25;text-align:center;margin:0 0 4px;color:var(--navy);text-wrap:balance}
+.sub{text-align:center;color:var(--muted);font-size:.9rem;margin:0 0 16px}
+label{display:block;font-weight:600;font-size:.9rem;margin:12px 0 4px}
+input{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;min-height:48px}
+input:focus{outline:2px solid var(--navy);outline-offset:1px}
+button{width:100%;font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px;min-height:48px;margin-top:16px;background:var(--navy);color:#fff}
+button:disabled{opacity:.55}
+.link{background:transparent;color:var(--muted);font-weight:500;font-size:.86rem;text-decoration:underline;margin-top:6px}
+.err{color:var(--bad);font-size:.9rem;min-height:1.4em;margin:10px 0 0}
+.note{font-size:.84rem;color:var(--muted);margin:14px 0 0}
+.lang{display:flex;justify-content:center;gap:6px;margin-bottom:10px}
+.lang button{width:auto;min-height:36px;margin:0;padding:6px 14px;background:#fff;color:var(--navy);border:1px solid var(--line);font-size:.85rem}
+.lang button.on{background:var(--navy);color:#fff}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="lang"><button type="button" data-l="en">EN</button><button type="button" data-l="fr">FR</button></div>
+  <img src="/mail-assets/adi-logo.png" alt="">
+  <h1 id="t"></h1><p class="sub" id="s"></p>
+  <form id="f" autocomplete="off">
+    <div id="setup" hidden>
+      <label for="name" id="ln"></label><input id="name" type="text" maxlength="60" autocomplete="off">
+      <label for="p1" id="l1"></label><input id="p1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
+      <label for="p2" id="l2"></label><input id="p2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
+    </div>
+    <div id="unlock" hidden>
+      <label for="pin" id="lp"></label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="off">
+    </div>
+    <p class="err" id="e" role="alert"></p>
+    <button id="go" type="submit"></button>
+    <button id="reset" type="button" class="link" hidden></button>
+  </form>
+  <p class="note" id="n"></p>
+</main>
+<script>
+(function () {
+  'use strict';
+  const T = {
+    en: { t: 'ADI Transcripts — staff app', s0: 'First use on this phone', s1: 'Enter your PIN to open the Transcript Office', ln: 'Your name (as the issuing officer)', l1: 'Choose a PIN (6 to 12 digits)', l2: 'Type the PIN again', lp: 'PIN', go0: 'Set the PIN and open', go1: 'Open',
+          n: 'This app works without internet. The records you compose and the transcripts you issue are kept on this phone only.', eName: 'Enter your name.', ePin: 'The PIN must have 6 to 12 digits.', eSame: 'The two PINs are not the same.', eBad: 'Wrong PIN.', eWait: 'Too many attempts. Wait %s seconds.',
+          reset: 'PIN forgotten: erase this app’s records and start again', resetAsk: 'This erases every record and issued transcript kept in this app on this phone. It cannot be undone. Type ERASE to confirm.', eCrypto: 'This phone cannot protect the PIN (secure storage unavailable).' },
+    fr: { t: 'Relevés de notes ADI — application du personnel', s0: 'Première utilisation sur ce téléphone', s1: 'Saisissez votre code PIN pour ouvrir le Bureau des relevés', ln: 'Votre nom (agent émetteur)', l1: 'Choisissez un code PIN (6 à 12 chiffres)', l2: 'Saisissez de nouveau le code PIN', lp: 'Code PIN', go0: 'Définir le code PIN et ouvrir', go1: 'Ouvrir',
+          n: 'Cette application fonctionne sans internet. Les dossiers saisis et les relevés délivrés restent uniquement sur ce téléphone.', eName: 'Saisissez votre nom.', ePin: 'Le code PIN doit comporter 6 à 12 chiffres.', eSame: 'Les deux codes PIN sont différents.', eBad: 'Code PIN incorrect.', eWait: 'Trop de tentatives. Patientez %s secondes.',
+          reset: 'Code PIN oublié : effacer les dossiers de cette application et recommencer', resetAsk: 'Cette action efface tous les dossiers et relevés conservés dans cette application sur ce téléphone. Elle est irréversible. Saisissez ERASE pour confirmer.', eCrypto: 'Ce téléphone ne peut pas protéger le code PIN (stockage sécurisé indisponible).' }
+  };
+  const $ = id => document.getElementById(id);
+  const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } };
+  let lang = get('adi_lang') === 'fr' || (!get('adi_lang') && (navigator.language || '').toLowerCase().startsWith('fr')) ? 'fr' : 'en';
+  let prof = null; try { prof = JSON.parse(get('adi_off_profile') || 'null'); } catch (e) {}
+  const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '0')).join('');
+  const rnd = n => { const a = new Uint8Array(n); crypto.getRandomValues(a); return a; };
+  async function derive(pin, saltHex, iter) {
+    const salt = new Uint8Array(saltHex.match(/../g).map(h => parseInt(h, 16)));
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+    return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256));
+  }
+  function paint() {
+    const t = T[lang], first = !prof;
+    document.documentElement.lang = lang;
+    document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.l === lang));
+    $('t').textContent = t.t; $('s').textContent = first ? t.s0 : t.s1; $('ln').textContent = t.ln; $('l1').textContent = t.l1; $('l2').textContent = t.l2; $('lp').textContent = t.lp;
+    $('go').textContent = first ? t.go0 : t.go1; $('n').textContent = t.n; $('reset').textContent = t.reset;
+    $('setup').hidden = !first; $('unlock').hidden = first; $('reset').hidden = first;
+  }
+  document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => { lang = b.dataset.l; set('adi_lang', lang); $('e').textContent = ''; paint(); }));
+  /* adi_tab and adi_last are the portal's own marks of a session opened in this window */
+  const open = () => { try { sessionStorage.setItem('adi_off_unlocked', '1'); sessionStorage.removeItem('adi_off_routed'); sessionStorage.setItem('adi_tab', '1'); localStorage.setItem('adi_last', String(Date.now())); } catch (e) {} location.replace('/'); };
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); const t = T[lang], e = $('e'); e.textContent = '';
+    if (!(window.crypto && crypto.subtle)) { e.textContent = t.eCrypto; return; }
+    $('go').disabled = true;
+    try {
+      if (!prof) {
+        const name = $('name').value.trim().replace(/\s+/g, ' '), p1 = $('p1').value, p2 = $('p2').value;
+        if (name.length < 3) { e.textContent = t.eName; return; }
+        if (!/^\d{6,12}$/.test(p1)) { e.textContent = t.ePin; return; }
+        if (p1 !== p2) { e.textContent = t.eSame; return; }
+        const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', tag = Array.from(rnd(3), x => A[x % A.length]).join(''), salt = hex(rnd(16)), iter = 250000;
+        prof = { name, tag, secret: hex(rnd(32)), salt, iter, hash: await derive(p1, salt, iter), at: Date.now() };
+        if (!set('adi_off_profile', JSON.stringify(prof))) { prof = null; e.textContent = t.eCrypto; return; }
+        open(); return;
+      }
+      let g = {}; try { g = JSON.parse(get('adi_off_guard') || '{}'); } catch (x) {}
+      const wait = Math.ceil(((g.until || 0) - Date.now()) / 1000);
+      if (wait > 0) { e.textContent = t.eWait.replace('%s', wait); return; }
+      if (await derive($('pin').value, prof.salt, prof.iter) === prof.hash) { set('adi_off_guard', '{}'); open(); return; }
+      g.n = (g.n || 0) + 1; if (g.n >= 5) g.until = Date.now() + Math.min(900, 30 * Math.pow(2, g.n - 5)) * 1000;
+      set('adi_off_guard', JSON.stringify(g)); $('pin').value = ''; e.textContent = t.eBad;
+    } finally { $('go').disabled = false; }
+  });
+  $('reset').addEventListener('click', () => {
+    if (prompt(T[lang].resetAsk) !== 'ERASE') return;
+    try { ['adi_off_profile', 'adi_off_db', 'adi_off_guard'].forEach(k => localStorage.removeItem(k)); sessionStorage.clear(); } catch (e) {}
+    prof = null; paint();
+  });
+  paint();
+})();
+</script>
+</body>
+</html>
