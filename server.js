@@ -3215,6 +3215,12 @@ async function route(req, res) {
     const page = sideMod('adi-guide.js').docHtml({ lang: gpv[1], html: g.html, fmt: g.fmt, edit, print: url.searchParams.get('print') === '1', pg: pgq ? pgq.split(',').slice(0, 80) : null });
     res.writeHead(200, Object.assign({}, secNow(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })); return res.end(page);
   }
+  /* Android app (ADI Portal APK): this file lets the installed app open the portal full screen, with no browser address bar.
+     The fingerprint is that of the key the app is signed with (see android/ in the repository). */
+  if (p === '/.well-known/assetlinks.json' && req.method === 'GET') {
+    const fps = String(E.ANDROID_APP_SHA256 || '1E:D9:71:DA:45:EE:2A:1B:8F:95:2B:BC:F0:6D:81:93:FB:35:A7:2B:7A:D7:54:49:B8:12:F7:6E:88:48:5D:21').split(',').map(x => x.trim()).filter(Boolean);
+    return send(res, 200, [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: E.ANDROID_APP_ID || 'com.adiuniversity.portal', sha256_cert_fingerprints: fps } }], { 'Cache-Control': 'public, max-age=3600' });
+  }
   if ((p === '/minesup.js' || p === '/minesup.css' || p === '/mailbox.js' || p === '/mailbox.css' || p === '/pager.js' || p === '/pager.css' || p === '/studio.js' || p === '/guard.js' || p === '/studio.css' || p === '/push.js' || p === '/sw.js') && req.method === 'GET') {
     const body = sideFile(p.slice(1));
     if (!body) return send(res, 404, { error: 'missing' });

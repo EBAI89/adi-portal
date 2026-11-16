@@ -1,0 +1,37 @@
+// ADI Portal — Android app. It opens the live portal full screen (Trusted Web Activity) and relies on the portal's own
+// offline storage, so the same sign-in, alerts, uploads and downloads work as in the browser.
+plugins { id 'com.android.application' }
+
+def buildNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
+
+android {
+    namespace 'com.adiuniversity.portal'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.adiuniversity.portal'
+        minSdk 23
+        targetSdk 35
+        versionCode buildNo
+        versionName "1.0.${buildNo}"
+    }
+    signingConfigs {
+        release {
+            storeFile rootProject.file(System.getenv('ADI_KEYSTORE_FILE') ?: 'adi-release.jks')
+            storePassword System.getenv('ADI_KEYSTORE_PASSWORD') ?: 'adi-portal-app'
+            keyAlias 'adi'
+            keyPassword System.getenv('ADI_KEYSTORE_PASSWORD') ?: 'adi-portal-app'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    lint { checkReleaseBuilds false; abortOnError false }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

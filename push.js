@@ -9,6 +9,32 @@
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
+  /* Offline notice: with no connection the portal shows the data last saved on this device (see sw.js). A slim bar says so, with the date of that copy,
+     and goes away by itself once the server answers again. */
+  const OFF = { bar: null, at: 0, t: null, closed: false };
+  const offText = () => { const d = OFF.at ? new Date(OFF.at).toLocaleString(LBL('en-GB', 'fr-FR'), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; return LBL('Offline — showing the data saved on this device' + (d ? ' on ' + d : '') + '. Changes and payments need an internet connection.', 'Hors ligne — affichage des données enregistrées sur cet appareil' + (d ? ' le ' + d : '') + '. Les modifications et les paiements nécessitent une connexion internet.'); };
+  async function offProbe() { try { const r = await fetch('/api/health?probe=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' }); return !!(r && r.ok); } catch (e) { return false; } }
+  function offHide() { clearInterval(OFF.t); OFF.t = null; OFF.closed = false; if (OFF.bar) { OFF.bar.remove(); OFF.bar = null; } }
+  async function offShow(at) {
+    if (at) OFF.at = at;
+    if (!OFF.at) { try { const h = await (await caches.open('adi-data-v1')).match('/api/sync?since=0&epoch=&vk=&lite=1'); OFF.at = Number((h && h.headers.get('X-ADI-Saved')) || 0); } catch (e) {} }
+    if (!OFF.t) OFF.t = setInterval(async () => { if (await offProbe()) { offHide(); if (typeof apiSync === 'function') apiSync(); } }, 20000);
+    if (OFF.closed) return;
+    if (!OFF.bar) {
+      const b = OFF.bar = document.createElement('div'); b.id = 'offline-bar'; b.setAttribute('role', 'status');
+      b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:100005;background:#8A5A00;color:#fff;padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;justify-content:center;font-size:.84rem;line-height:1.35;box-shadow:0 -3px 14px rgba(0,0,0,.25)';
+      b.innerHTML = '<span></span><button type="button" aria-label="' + LBL('Hide', 'Masquer') + '" style="border:0;background:transparent;color:#fff;font-size:1.25rem;line-height:1;padding:2px 8px;cursor:pointer">×</button>';
+      b.querySelector('button').addEventListener('click', () => { OFF.closed = true; b.remove(); OFF.bar = null; });
+      (document.body || document.documentElement).appendChild(b);
+    }
+    OFF.bar.firstChild.textContent = offText();
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'adi-offline') offShow(e.data.at); });
+  window.addEventListener('offline', () => offShow());
+  window.addEventListener('online', async () => { if (await offProbe()) { offHide(); if (typeof apiSync === 'function') apiSync(); } });
+  const offStart = async () => { if (!(await offProbe())) offShow(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', offStart); else offStart();
+
   const key64 = s => { const p = '='.repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
   async function mine() { try { const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); } catch (e) { return null; } }
   async function load() {

@@ -1,0 +1,64 @@
+# Builds the ADI Portal Android app (APK) and publishes it under "Releases" on GitHub.
+# Runs by itself whenever the android/ folder changes; it can also be started by hand from the Actions tab.
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, android-app]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build the signed APK
+        working-directory: android
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/ADI-Portal.apk"
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$RUNNER_TEMP/ADI-Portal.apk" | tee -a "$RUNNER_TEMP/build.log" || true
+
+      - name: Publish the APK as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="app-v1.0.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" "$RUNNER_TEMP/ADI-Portal.apk" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "ADI Portal Android app 1.0.${GITHUB_RUN_NUMBER}" \
+            --notes "Install: download ADI-Portal.apk on the phone, open it and allow installation from this source. The app opens the ADI portal; after the first sign-in it also opens without a connection and shows the data last saved on the phone."
+
+      - name: Keep the APK with the run as well
+        uses: actions/upload-artifact@v4
+        with:
+          name: ADI-Portal-apk
+          path: ${{ runner.temp }}/ADI-Portal.apk
+
+      - name: Save the build log when the build fails
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/log" && cd "$RUNNER_TEMP/log"
+          tail -n 400 "$RUNNER_TEMP/build.log" > build-log.txt 2>/dev/null || echo "no build log" > build-log.txt
+          git init -q && git checkout -q -b apk-build-log
+          git config user.name "github-actions[bot]" && git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add build-log.txt && git commit -q -m "APK build log (run ${GITHUB_RUN_NUMBER})"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" apk-build-log

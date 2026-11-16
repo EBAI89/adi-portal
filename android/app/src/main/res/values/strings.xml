@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="appName">ADI Portal</string>
+    <string name="launcherName">ADI Portal</string>
+    <!-- The address the app opens. Change these two lines if the portal moves to another address (e.g. portal.adiuniversity.com). -->
+    <string name="hostName">adi-portal.onrender.com</string>
+    <string name="launchUrl">https://adi-portal.onrender.com/</string>
+    <string name="providerAuthority">com.adiuniversity.portal.fileprovider</string>
+    <string name="assetStatements">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://adi-portal.onrender.com\" } }]</string>
+</resources>
