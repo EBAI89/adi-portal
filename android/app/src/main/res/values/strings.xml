@@ -5,6 +5,7 @@
     <!-- The address the app opens. Change these two lines if the portal moves to another address (e.g. portal.adiuniversity.com). -->
     <string name="hostName">adi-portal.onrender.com</string>
     <string name="launchUrl">https://adi-portal.onrender.com/</string>
+    <string name="cannotOpen">No app on this phone can open this link.</string>
     <string name="providerAuthority">com.adiuniversity.portal.fileprovider</string>
     <string name="assetStatements">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://adi-portal.onrender.com\" } }]</string>
 </resources>

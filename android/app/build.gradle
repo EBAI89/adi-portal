@@ -1,5 +1,6 @@
-// ADI Portal — Android app. It opens the live portal full screen (Trusted Web Activity) and relies on the portal's own
-// offline storage, so the same sign-in, alerts, uploads and downloads work as in the browser.
+// ADI Portal — Android app. The first screen shows pages packed inside the app (programmes, fees, contacts: no internet,
+// no server). The portal itself opens full screen (Trusted Web Activity), with the same sign-in, alerts, uploads and
+// downloads as in the browser, and the portal's own offline storage.
 plugins { id 'com.android.application' }
 
 def buildNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
@@ -11,7 +12,7 @@ android {
     defaultConfig {
         applicationId 'com.adiuniversity.portal'
         minSdk 23
-        targetSdk 35
+        targetSdk 34   // 34 keeps the system bars outside the page on Android 15
         versionCode buildNo
         versionName "1.0.${buildNo}"
     }
@@ -29,6 +30,7 @@ android {
             signingConfig signingConfigs.release
         }
     }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_11; targetCompatibility JavaVersion.VERSION_11 }
     lint { checkReleaseBuilds false; abortOnError false }
 }
 

@@ -45,7 +45,7 @@ jobs:
           gh release create "$TAG" "$RUNNER_TEMP/ADI-Portal.apk" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "ADI Portal Android app 1.0.${GITHUB_RUN_NUMBER}" \
-            --notes "Install: download ADI-Portal.apk on the phone, open it and allow installation from this source. The app opens the ADI portal; after the first sign-in it also opens without a connection and shows the data last saved on the phone."
+            --notes "Install: download ADI-Portal.apk on the phone, open it and allow installation from this source. Programmes, fees and contacts are packed inside the app and open without internet. Sign-in, results and payments open the live portal."
 
       - name: Keep the APK with the run as well
         uses: actions/upload-artifact@v4

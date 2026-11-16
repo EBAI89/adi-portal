@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>American Ditek Institute (ADI)</title>
+<style>
+:root{--navy:#0B2559;--royal:#2447B8;--gold:#C9A227;--gold-soft:#F4E9C1;--bg:#F2F4F9;--card:#fff;--ink:#0F1A33;--muted:#5A6580;--line:#D9DFEC;--soft:#E9EEF8}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+a{color:var(--royal)}
+.top{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:3px solid var(--gold)}
+.top img{width:42px;height:42px;object-fit:contain;background:#fff;border-radius:8px;padding:2px;flex:none}
+.top b{flex:1;font-size:1rem;line-height:1.2;min-width:0}
+.lang{display:flex;border:1px solid rgba(255,255,255,.55);border-radius:8px;overflow:hidden;flex:none}
+.lang button{border:0;background:transparent;color:#fff;font:inherit;font-weight:700;font-size:.85rem;padding:8px 11px;min-height:40px}
+.lang button.on{background:var(--gold);color:var(--navy)}
+main{padding:14px;max-width:760px;margin:0 auto}
+h1{font-size:1.5rem;line-height:1.2;margin:4px 0 10px;text-wrap:balance}
+h2{font-size:1.2rem;line-height:1.25;margin:18px 0 8px;text-wrap:balance}
+h3{font-size:1.02rem;margin:18px 0 8px}
+p{margin:8px 0}
+ul{margin:8px 0;padding-left:20px}
+li{margin:3px 0}
+.muted{color:var(--muted)}.small{font-size:.86rem}.nw{white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.card h2:first-child,.card h3:first-child{margin-top:0}
+.hero{background:var(--navy);color:#fff;border-radius:14px;padding:18px 16px;margin-bottom:12px}
+.hero .eyebrow{color:var(--gold);font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.hero h1{font-size:1.7rem;margin:6px 0 8px}
+.hero p{color:#DCE4F7;margin:0}
+.btn{display:block;text-align:center;text-decoration:none;font-weight:700;border-radius:10px;padding:13px 14px;min-height:48px;margin:10px 0 2px;background:var(--navy);color:#fff;border:2px solid var(--navy)}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--navy)}
+.btn.line{background:#fff;color:var(--navy)}
+.hint{font-size:.84rem;color:var(--muted);text-align:center;margin:2px 0 10px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.tiles a{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 6px;text-align:center;text-decoration:none;color:var(--navy);font-weight:700;font-size:.92rem;min-height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.tiles svg,.tabbar svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.note{background:var(--gold-soft);border:1px solid #E3D18B;border-radius:10px;padding:10px 12px;font-size:.88rem;margin:12px 0}
+.levels{display:flex;gap:6px;margin:10px 0 12px}
+.levels a{flex:1;text-align:center;text-decoration:none;font-weight:700;font-size:.9rem;padding:11px 4px;min-height:44px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--navy)}
+.levels a.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+details{background:#fff;border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:0 12px}
+summary{font-weight:700;padding:13px 0;min-height:48px;cursor:pointer;color:var(--navy)}
+summary .muted{font-weight:400}
+details ul{margin:0 0 12px}
+.tw{overflow-x:auto;margin:8px -14px;padding:0 14px}
+table{border-collapse:collapse;width:100%;background:#fff;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{border:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}
+th{background:var(--soft);color:var(--navy);font-size:.72rem;text-transform:uppercase}
+table.wide{font-size:.8rem}table.wide th{font-size:.66rem}
+.socrow{display:grid;gap:8px;margin:6px 0}
+.socbtn{display:block;text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:48px;background:var(--soft);color:var(--ink)}
+.socbtn b{display:block;color:var(--navy)}
+.socbtn span{font-size:.86rem;color:var(--muted)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:60px;text-decoration:none;color:var(--muted);font-size:.74rem;font-weight:600}
+.tabbar a.on{color:var(--navy)}
+.tabbar a.on svg{stroke:var(--gold)}
+.foot{font-size:.82rem;color:var(--muted);text-align:center;margin:18px 0 6px}
+</style>
+</head>
+<body>
+<header class="top"><img src="adi-logo.png" alt=""><b>American Ditek Institute (ADI)</b>
+  <span class="lang"><button type="button" data-l="en">EN</button><button type="button" data-l="fr">FR</button></span></header>
+<main id="v"></main>
+<nav class="tabbar" id="tabs"></nav>
+<script>
+/*__DATA__*/
+const T = {
+  en: { home: 'Home', programmes: 'Programmes', fees: 'Fees', contact: 'Contact', open: 'Open the student portal', openHint: 'Sign-in, results, transcripts and payments — internet needed', apply: 'Apply now',
+        saved: 'Programmes, fees and contacts are stored inside this app and open without internet. Information as saved on %d — the portal always has the latest.', progTitle: 'Our programmes', progApply: 'Apply for a programme', feesPay: 'Pay fees on the portal', ask: 'Send a message on the portal', feesTitle: 'Fees', contactTitle: 'Contact' },
+  fr: { home: 'Accueil', programmes: 'Programmes', fees: 'Frais', contact: 'Contact', open: 'Ouvrir le portail étudiant', openHint: 'Connexion, résultats, relevés de notes et paiements — connexion internet requise', apply: 'Candidater',
+        saved: 'Les programmes, les frais et les contacts sont enregistrés dans cette application et s’ouvrent sans internet. Informations enregistrées le %d — le portail contient toujours la version la plus récente.', progTitle: 'Nos programmes', progApply: 'Candidater à un programme', feesPay: 'Payer les frais sur le portail', ask: 'Envoyer un message sur le portail', feesTitle: 'Frais', contactTitle: 'Contact' }
+};
+const LEVELS = [['HND', 'HND'], ['BTS', 'BTS'], ['BSC', 'Bachelor'], ['MSC', 'Master']];
+const ICON = {
+  home: '<svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+  programmes: '<svg viewBox="0 0 24 24"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 3 9 3 12 0v-5"/></svg>',
+  fees: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  contact: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>'
+};
+let lang = 'en';
+try { lang = localStorage.getItem('adi_lang') || ((navigator.language || '').toLowerCase().startsWith('fr') ? 'fr' : 'en'); } catch (e) {}
+if (lang !== 'fr') lang = 'en';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const when = () => { try { return new Date(BUILT + 'T12:00:00').toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return BUILT; } };
+function view() {
+  const t = T[lang], d = DATA[lang], r = (location.hash || '#home').slice(1).split('/'), p = ['programmes', 'fees', 'contact'].includes(r[0]) ? r[0] : 'home';
+  document.documentElement.lang = lang;
+  document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.l === lang));
+  document.getElementById('tabs').innerHTML = ['home', 'programmes', 'fees', 'contact'].map(k => '<a href="#' + k + '" class="' + (k === p ? 'on' : '') + '">' + ICON[k] + esc(t[k]) + '</a>').join('');
+  let h = '';
+  if (p === 'home') {
+    h = '<section class="hero">' + (d.home.eyebrow ? '<div class="eyebrow">' + esc(d.home.eyebrow) + '</div>' : '') + '<h1>' + esc(d.home.h1) + '</h1><p>' + esc(d.home.p) + '</p></section>'
+      + '<a class="btn gold" href="' + PORTAL + '/#/login">' + esc(t.open) + '</a><p class="hint">' + esc(t.openHint) + '</p>'
+      + '<a class="btn line" href="' + PORTAL + '/#/signup">' + esc(t.apply) + '</a>'
+      + '<div class="tiles">' + ['programmes', 'fees', 'contact'].map(k => '<a href="#' + k + '">' + ICON[k] + esc(t[k]) + '</a>').join('') + '</div>'
+      + '<div class="note">' + esc(t.saved.replace('%d', when())) + '</div>'
+      + '<p class="foot">' + d.util.map(esc).join('<br>') + '</p>';
+  } else if (p === 'programmes') {
+    const lv = LEVELS.some(x => x[0] === r[1]) ? r[1] : 'HND';
+    h = '<h1>' + esc(t.progTitle) + '</h1><div class="levels">' + LEVELS.map(x => '<a href="#programmes/' + x[0] + '" class="' + (x[0] === lv ? 'on' : '') + '">' + x[1] + '</a>').join('') + '</div>'
+      + d.prog[lv] + '<a class="btn gold" href="' + PORTAL + '/#/signup">' + esc(t.progApply) + '</a>';
+  } else if (p === 'fees') {
+    h = '<h1>' + esc(t.feesTitle) + '</h1>' + d.fees + '<a class="btn gold" href="' + PORTAL + '/#/login">' + esc(t.feesPay) + '</a>';
+  } else {
+    h = '<h1>' + esc(t.contactTitle) + '</h1>' + d.contact + '<a class="btn line" href="' + PORTAL + '/#/contact">' + esc(t.ask) + '</a>';
+  }
+  const v = document.getElementById('v'); v.innerHTML = h;
+  v.querySelectorAll('table').forEach(tb => { if (tb.rows[0] && tb.rows[0].cells.length > 3) tb.classList.add('wide'); if (!tb.parentElement.classList.contains('tw')) { const w = document.createElement('div'); w.className = 'tw'; tb.replaceWith(w); w.appendChild(tb); } });
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('.lang button').forEach(b => b.addEventListener('click', () => { lang = b.dataset.l; try { localStorage.setItem('adi_lang', lang); } catch (e) {} view(); }));
+window.addEventListener('hashchange', view);
+view();
+</script>
+</body>
+</html>
