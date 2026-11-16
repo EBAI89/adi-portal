@@ -7,7 +7,7 @@
   const SS = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
   const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } } };
   let PROF = null; try { PROF = JSON.parse(LS.get('adi_off_profile') || 'null'); } catch (e) {}
-  if (!PROF || SS.get('adi_off_unlocked') !== '1') { location.replace('/offline-app/gate.html'); return; }
+  if (!PROF || !PROF.dk || SS.get('adi_off_unlocked') !== '1') { location.replace('/offline-app/gate.html'); return; }
   /* Coming back from another app (to read marks from a photo, say) must not close the session and lose a record being typed:
      the portal's own check runs after this one and then finds the session fresh. The PIN is asked again whenever the app is reopened,
      and the portal's 15-minute idle warning still applies. */
@@ -50,7 +50,12 @@
   /* ---- data: packed with the app (read only) and kept on this phone (records composed and documents issued here) ---- */
   const realFetch = window.fetch.bind(window);
   const packed = n => realFetch('/offline-app/api/' + n + '.json').then(r => { if (!r.ok) throw new Error('missing ' + n); return r.json(); });
-  const SEED = { health: packed('health'), sync: packed('sync'), sig: packed('sig') };
+  /* the students' records, the seal and the signatures are packed sealed; the key was drawn from the activation code at first use (gate.html) */
+  const unhex = h => new Uint8Array(String(h).match(/../g).map(x => parseInt(x, 16)));
+  const dataKey = crypto.subtle.importKey('raw', unhex(PROF.dk), 'AES-GCM', false, ['decrypt']);
+  const opened = async n => { const b = await packed(n + '.enc'), raw = Uint8Array.from(atob(b.ct), c => c.charCodeAt(0)); return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unhex(b.iv) }, await dataKey, raw))); };
+  const SEED = { health: packed('health'), sync: opened('sync'), sig: opened('sig') };
+  SEED.sync.catch(() => {}); SEED.sig.catch(() => {});
   let DB = { cols: {}, meta: {}, audit: [] }; try { DB = Object.assign(DB, JSON.parse(LS.get('adi_off_db') || '{}')); } catch (e) {}
   const LOCAL = ['sptr', 'docreg'];
   const flush = () => { if (!LS.set('adi_off_db', JSON.stringify(DB))) throw Object.assign(new Error('The phone storage is full: export the records, then free some space.'), { status: 507 }); };
@@ -69,7 +74,7 @@
     ME = Object.assign({}, (seedCols.users || {})[sync.me] || { id: sync.me, role: 'super_admin', status: 'active' }, { name: PROF.name || 'Super Administrator' });
     if (seedCols.users) seedCols.users[sync.me] = ME;
     const mod = { exports: {} }; window.__ADI_DOCREG(n => { if (n === 'crypto') return nodeCrypto; throw new Error('no module ' + n); }, mod, NodeBuffer);
-    REG = mod.exports({ S, now: () => Date.now(), limited: () => false, ip: () => 'device', SECRET: PROF.secret, core: {}, serialTag: 'OF' + PROF.tag + '-',
+    REG = mod.exports({ S, now: () => Date.now(), limited: () => false, ip: () => 'device', SECRET: PROF.secret, core: {}, serialTag: 'OF' + PROF.tag + '-', seedRecs: sync.__spSeed || [],
       send(res, code, obj) { res.code = code; res.out = obj; }, body: async req => req.body || {},
       audit: async (u, action) => { DB.audit.push({ at: Date.now(), user: (u && u.name) || '', action: String(action) }); if (DB.audit.length > 2000) DB.audit.splice(0, DB.audit.length - 2000); flush(); } });
     return sync;
@@ -81,7 +86,7 @@
     const sync = await ready;
     if (path === '/api/health') return [200, Object.assign({}, await SEED.health, { me: sync.me, ai: false, momo: null, demo: false, demoAccounts: null })];
     if (path === '/api/sync' && method === 'GET') {
-      if (String(q.get('since') || '0') === '0' || q.get('epoch') !== sync.epoch) return [200, Object.assign({}, sync, { full: true })];
+      if (String(q.get('since') || '0') === '0' || q.get('epoch') !== sync.epoch) return [200, Object.assign({}, sync, { full: true, __spSeed: undefined })];
       return [200, { epoch: sync.epoch, seq: sync.seq, vk: sync.vk, me: sync.me, full: false, cols: {}, del: [] }];
     }
     if (path === '/api/sig') return [200, await SEED.sig];

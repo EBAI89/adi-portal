@@ -32,6 +32,7 @@ button:disabled{opacity:.55}
   <h1 id="t"></h1><p class="sub" id="s"></p>
   <form id="f" autocomplete="off">
     <div id="setup" hidden>
+      <label for="code" id="lc"></label><input id="code" type="text" maxlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <label for="name" id="ln"></label><input id="name" type="text" maxlength="60" autocomplete="off">
       <label for="p1" id="l1"></label><input id="p1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
       <label for="p2" id="l2"></label><input id="p2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
@@ -49,10 +50,10 @@ button:disabled{opacity:.55}
 (function () {
   'use strict';
   const T = {
-    en: { t: 'ADI Transcripts — staff app', s0: 'First use on this phone', s1: 'Enter your PIN to open the Transcript Office', ln: 'Your name (as the issuing officer)', l1: 'Choose a PIN (6 to 12 digits)', l2: 'Type the PIN again', lp: 'PIN', go0: 'Set the PIN and open', go1: 'Open',
+    en: { t: 'ADI Transcripts — staff app', s0: 'First use on this phone', s1: 'Enter your PIN to open the Transcript Office', lc: 'Activation code (given by the Administrative Director)', eCode: 'Wrong activation code.', ln: 'Your name (as the issuing officer)', l1: 'Choose a PIN (6 to 12 digits)', l2: 'Type the PIN again', lp: 'PIN', go0: 'Set the PIN and open', go1: 'Open',
           n: 'This app works without internet. The records you compose and the transcripts you issue are kept on this phone only.', eName: 'Enter your name.', ePin: 'The PIN must have 6 to 12 digits.', eSame: 'The two PINs are not the same.', eBad: 'Wrong PIN.', eWait: 'Too many attempts. Wait %s seconds.',
           reset: 'PIN forgotten: erase this app’s records and start again', resetAsk: 'This erases every record and issued transcript kept in this app on this phone. It cannot be undone. Type ERASE to confirm.', eCrypto: 'This phone cannot protect the PIN (secure storage unavailable).' },
-    fr: { t: 'Relevés de notes ADI — application du personnel', s0: 'Première utilisation sur ce téléphone', s1: 'Saisissez votre code PIN pour ouvrir le Bureau des relevés', ln: 'Votre nom (agent émetteur)', l1: 'Choisissez un code PIN (6 à 12 chiffres)', l2: 'Saisissez de nouveau le code PIN', lp: 'Code PIN', go0: 'Définir le code PIN et ouvrir', go1: 'Ouvrir',
+    fr: { t: 'Relevés de notes ADI — application du personnel', s0: 'Première utilisation sur ce téléphone', s1: 'Saisissez votre code PIN pour ouvrir le Bureau des relevés', lc: 'Code d’activation (remis par le Directeur administratif)', eCode: 'Code d’activation incorrect.', ln: 'Votre nom (agent émetteur)', l1: 'Choisissez un code PIN (6 à 12 chiffres)', l2: 'Saisissez de nouveau le code PIN', lp: 'Code PIN', go0: 'Définir le code PIN et ouvrir', go1: 'Ouvrir',
           n: 'Cette application fonctionne sans internet. Les dossiers saisis et les relevés délivrés restent uniquement sur ce téléphone.', eName: 'Saisissez votre nom.', ePin: 'Le code PIN doit comporter 6 à 12 chiffres.', eSame: 'Les deux codes PIN sont différents.', eBad: 'Code PIN incorrect.', eWait: 'Trop de tentatives. Patientez %s secondes.',
           reset: 'Code PIN oublié : effacer les dossiers de cette application et recommencer', resetAsk: 'Cette action efface tous les dossiers et relevés conservés dans cette application sur ce téléphone. Elle est irréversible. Saisissez ERASE pour confirmer.', eCrypto: 'Ce téléphone ne peut pas protéger le code PIN (stockage sécurisé indisponible).' }
   };
@@ -60,6 +61,7 @@ button:disabled{opacity:.55}
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } };
   let lang = get('adi_lang') === 'fr' || (!get('adi_lang') && (navigator.language || '').toLowerCase().startsWith('fr')) ? 'fr' : 'en';
   let prof = null; try { prof = JSON.parse(get('adi_off_profile') || 'null'); } catch (e) {}
+  if (prof && !prof.dk) prof = null;   // set up before the data was sealed: activate again (the records kept on the phone stay)
   const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '0')).join('');
   const rnd = n => { const a = new Uint8Array(n); crypto.getRandomValues(a); return a; };
   async function derive(pin, saltHex, iter) {
@@ -71,7 +73,7 @@ button:disabled{opacity:.55}
     const t = T[lang], first = !prof;
     document.documentElement.lang = lang;
     document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.l === lang));
-    $('t').textContent = t.t; $('s').textContent = first ? t.s0 : t.s1; $('ln').textContent = t.ln; $('l1').textContent = t.l1; $('l2').textContent = t.l2; $('lp').textContent = t.lp;
+    $('t').textContent = t.t; $('s').textContent = first ? t.s0 : t.s1; $('lc').textContent = t.lc; $('ln').textContent = t.ln; $('l1').textContent = t.l1; $('l2').textContent = t.l2; $('lp').textContent = t.lp;
     $('go').textContent = first ? t.go0 : t.go1; $('n').textContent = t.n; $('reset').textContent = t.reset;
     $('setup').hidden = !first; $('unlock').hidden = first; $('reset').hidden = first;
   }
@@ -88,8 +90,19 @@ button:disabled{opacity:.55}
         if (name.length < 3) { e.textContent = t.eName; return; }
         if (!/^\d{6,12}$/.test(p1)) { e.textContent = t.ePin; return; }
         if (p1 !== p2) { e.textContent = t.eSame; return; }
+        /* the activation code opens the sealed data packed in the app; without it the app holds nothing readable */
+        let dk = '';
+        try {
+          const b = await (await fetch('/offline-app/api/sig.enc.json')).json(), un = h => new Uint8Array(h.match(/../g).map(x => parseInt(x, 16)));
+          const code = $('code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(code), 'PBKDF2', false, ['deriveBits']);
+          const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: un(b.salt), iterations: b.iter }, km, 256);
+          const k = await crypto.subtle.importKey('raw', bits, 'AES-GCM', false, ['decrypt']);
+          await crypto.subtle.decrypt({ name: 'AES-GCM', iv: un(b.iv) }, k, Uint8Array.from(atob(b.ct), c => c.charCodeAt(0)));
+          dk = hex(bits);
+        } catch (x) { e.textContent = t.eCode; return; }
         const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', tag = Array.from(rnd(3), x => A[x % A.length]).join(''), salt = hex(rnd(16)), iter = 250000;
-        prof = { name, tag, secret: hex(rnd(32)), salt, iter, hash: await derive(p1, salt, iter), at: Date.now() };
+        prof = { name, tag, dk, secret: hex(rnd(32)), salt, iter, hash: await derive(p1, salt, iter), at: Date.now() };
         if (!set('adi_off_profile', JSON.stringify(prof))) { prof = null; e.textContent = t.eCrypto; return; }
         open(); return;
       }

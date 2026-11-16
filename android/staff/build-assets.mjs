@@ -15,7 +15,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, pbkdf2Sync, createCipheriv } from 'node:crypto';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, '..', '..'), OUT = join(HERE, 'src', 'main', 'assets', 'site');
 const PORT = 4700 + Math.floor(Math.random() * 200), BASE = 'http://127.0.0.1:' + PORT;
@@ -79,6 +79,10 @@ async function main() {
   let reg = readFileSync(join(ROOT, 'adi-docreg.js'), 'utf8');
   const SER = "String(nextN()).padStart(6, '0')"; must(reg.split(SER).length === 2, 'adi-docreg.js: the serial number line has changed');
   reg = reg.replace(SER, "(ctx.serialTag || '') + String(nextN()).padStart(4, '0')");
+  // the records transcribed into the module (holders' names, dates of birth and marks) are taken out of the packed script and travel with the sealed data
+  const SEEDM = /const SP_SEED_RECS = (\[.*\]);\n/.exec(reg); must(SEEDM, 'adi-docreg.js: the transcribed records were not found');
+  const spSeed = JSON.parse(SEEDM[1]); must(Array.isArray(spSeed), 'adi-docreg.js: transcribed records unreadable');
+  reg = reg.replace(SEEDM[0], 'const SP_SEED_RECS = (ctx.seedRecs || []);\n');
   put('offline-app/docreg.js', 'window.__ADI_DOCREG = function (require, module, Buffer) {\n' + reg + '\n};\n');
   for (const f of ['offline-server.js', 'offline-after.js', 'gate.html']) cpSync(join(HERE, 'web', f), join(OUT, 'offline-app', f));
 
@@ -97,7 +101,22 @@ async function main() {
   const u = sync.cols.users[lj.me]; must(u && u.role === 'super_admin', 'super administrator account'); u.email = ''; u.name = 'Super Administrator';
   ['sessions', 'audit', 'notifs', 'mailbox'].forEach(c => { if (sync.cols[c]) sync.cols[c] = {}; });
   const sig = await (await get('/api/sig', true)).json(); must(sig && sig.seal && sig.admin, 'seal and signatures');
-  put('offline-app/api/health.json', JSON.stringify(health)); put('offline-app/api/sync.json', JSON.stringify(sync)); put('offline-app/api/sig.json', JSON.stringify(sig));
+  put('offline-app/api/health.json', JSON.stringify(health));
+  /* The students' records, the seal and the signatures are never packed in clear. They are sealed (AES-256-GCM) with a key drawn from the
+     activation code, so the app, even downloaded by a stranger, shows and issues nothing without that code. Sealing needs the code and is
+     done by the owner (ADI_SEAL_CODE=… node android/staff/build-assets.mjs); the sealed files are kept in android/staff/sealed and the
+     automatic build only packs them. */
+  const SEALED = join(HERE, 'sealed'), code = String(process.env.ADI_SEAL_CODE || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code) {
+    must(code.length >= 12, 'the activation code must have at least 12 letters and digits');
+    const salt = randomBytes(16), iter = 600000, key = pbkdf2Sync(code, salt, iter, 32, 'sha256');
+    const seal = obj => { const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', key, iv), ct = Buffer.concat([c.update(Buffer.from(JSON.stringify(obj), 'utf8')), c.final(), c.getAuthTag()]); return JSON.stringify({ v: 1, salt: salt.toString('hex'), iter, iv: iv.toString('hex'), ct: ct.toString('base64') }); };
+    mkdirSync(SEALED, { recursive: true });
+    writeFileSync(join(SEALED, 'sync.enc.json'), seal(Object.assign({}, sync, { __spSeed: spSeed }))); writeFileSync(join(SEALED, 'sig.enc.json'), seal(sig));
+    writeFileSync(join(SEALED, 'sealed-for.txt'), 'portal version ' + health.ver + ', sealed ' + new Date().toISOString() + '\n');
+    console.log('data sealed with the activation code');
+  }
+  for (const f of ['sync.enc.json', 'sig.enc.json']) { must(existsSync(join(SEALED, f)), 'android/staff/sealed/' + f + ' is missing: seal the data first (ADI_SEAL_CODE=… node android/staff/build-assets.mjs)'); cpSync(join(SEALED, f), join(OUT, 'offline-app', 'api', f)); }
   console.log('staff app files written to', OUT, '—', n, 'page files, portal version', health.ver, ', students', Object.keys(sync.cols.students || {}).length);
 }
 
