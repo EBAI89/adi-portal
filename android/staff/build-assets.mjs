@@ -11,7 +11,7 @@
  * Usage: node android/staff/build-assets.mjs        (Node 20+, no packages needed)
  */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, cpSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,7 @@ async function main() {
   const cookie = (lr.headers.getSetCookie ? lr.headers.getSetCookie() : [lr.headers.get('set-cookie')]).map(c => String(c).split(';')[0]).join('; ');
   const get = async (p, auth) => { const r = await fetch(BASE + p, { headers: auth ? { Cookie: cookie } : {} }); must(r.ok, p + ' → HTTP ' + r.status); return r; };
 
-  rmSync(OUT, { recursive: true, force: true }); mkdirSync(join(OUT, '__offline', 'api'), { recursive: true });
+  rmSync(OUT, { recursive: true, force: true }); mkdirSync(join(OUT, 'offline-app', 'api'), { recursive: true });
   const put = (rel, buf) => { const f = join(OUT, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, buf); };
 
   // ---- the page and what it loads
@@ -71,22 +71,25 @@ async function main() {
 
   // ---- the PDF library: packed, not fetched from the internet
   const CDN = /https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/jspdf\/[^"']+\/jspdf\.umd\.min\.js/g;
-  must(CDN.test(html), 'the page no longer loads jsPDF from the expected address'); html = html.replace(CDN, '/__offline/jspdf.umd.min.js');
-  put('__offline/jspdf.umd.min.js', readFileSync(join(HERE, 'vendor', 'jspdf.umd.min.js')));
-  put('__offline/jspdf-LICENSE.txt', readFileSync(join(HERE, 'vendor', 'jspdf-LICENSE.txt')));
+  must(CDN.test(html), 'the page no longer loads jsPDF from the expected address'); html = html.replace(CDN, '/offline-app/jspdf.umd.min.js');
+  put('offline-app/jspdf.umd.min.js', readFileSync(join(HERE, 'vendor', 'jspdf.umd.min.js')));
+  put('offline-app/jspdf-LICENSE.txt', readFileSync(join(HERE, 'vendor', 'jspdf-LICENSE.txt')));
 
   // ---- the register module, run inside the page; offline serial numbers carry the device tag so they never collide with the portal's
   let reg = readFileSync(join(ROOT, 'adi-docreg.js'), 'utf8');
   const SER = "String(nextN()).padStart(6, '0')"; must(reg.split(SER).length === 2, 'adi-docreg.js: the serial number line has changed');
   reg = reg.replace(SER, "(ctx.serialTag || '') + String(nextN()).padStart(4, '0')");
-  put('__offline/docreg.js', 'window.__ADI_DOCREG = function (require, module, Buffer) {\n' + reg + '\n};\n');
-  for (const f of ['offline-server.js', 'offline-after.js', 'gate.html']) cpSync(join(HERE, 'web', f), join(OUT, '__offline', f));
+  put('offline-app/docreg.js', 'window.__ADI_DOCREG = function (require, module, Buffer) {\n' + reg + '\n};\n');
+  for (const f of ['offline-server.js', 'offline-after.js', 'gate.html']) cpSync(join(HERE, 'web', f), join(OUT, 'offline-app', f));
 
   // ---- the app's scripts: the in-page server first (before the page's first request), the glue last
   must(html.includes('<head>'), 'unexpected page head'); must(html.includes('</body>'), 'unexpected page end');
-  html = html.replace('<head>', '<head><script src="/__offline/docreg.js"></script><script src="/__offline/offline-server.js"></script>');
-  html = html.replace(/<\/body>(?![\s\S]*<\/body>)/, '<script src="/__offline/offline-after.js"></script></body>');
+  html = html.replace('<head>', '<head><script src="/offline-app/docreg.js"></script><script src="/offline-app/offline-server.js"></script>');
+  html = html.replace(/<\/body>(?![\s\S]*<\/body>)/, '<script src="/offline-app/offline-after.js"></script></body>');
   put('index.html', html);
+  // Android leaves out of the app any packed file or folder whose name starts with "_" or ".": none may exist here
+  const walk = d => readdirSync(d, { withFileTypes: true }).flatMap(e => [e.name, ...(e.isDirectory() ? walk(join(d, e.name)) : [])]);
+  must(!walk(OUT).some(nm => /^[_.]/.test(nm)), 'a packed file or folder starts with "_" or ".": Android would leave it out');
 
   // ---- data, as the super administrator receives it
   const health = await (await get('/api/health', true)).json(); must(health.ok && health.me === lj.me, 'health check');
@@ -94,7 +97,7 @@ async function main() {
   const u = sync.cols.users[lj.me]; must(u && u.role === 'super_admin', 'super administrator account'); u.email = ''; u.name = 'Super Administrator';
   ['sessions', 'audit', 'notifs', 'mailbox'].forEach(c => { if (sync.cols[c]) sync.cols[c] = {}; });
   const sig = await (await get('/api/sig', true)).json(); must(sig && sig.seal && sig.admin, 'seal and signatures');
-  put('__offline/api/health.json', JSON.stringify(health)); put('__offline/api/sync.json', JSON.stringify(sync)); put('__offline/api/sig.json', JSON.stringify(sig));
+  put('offline-app/api/health.json', JSON.stringify(health)); put('offline-app/api/sync.json', JSON.stringify(sync)); put('offline-app/api/sig.json', JSON.stringify(sig));
   console.log('staff app files written to', OUT, '—', n, 'page files, portal version', health.ver, ', students', Object.keys(sync.cols.students || {}).length);
 }
 

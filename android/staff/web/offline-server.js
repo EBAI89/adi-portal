@@ -7,7 +7,7 @@
   const SS = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }, del(k) { try { sessionStorage.removeItem(k); } catch (e) {} } };
   const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } } };
   let PROF = null; try { PROF = JSON.parse(LS.get('adi_off_profile') || 'null'); } catch (e) {}
-  if (!PROF || SS.get('adi_off_unlocked') !== '1') { location.replace('/__offline/gate.html'); return; }
+  if (!PROF || SS.get('adi_off_unlocked') !== '1') { location.replace('/offline-app/gate.html'); return; }
   /* Coming back from another app (to read marks from a photo, say) must not close the session and lose a record being typed:
      the portal's own check runs after this one and then finds the session fresh. The PIN is asked again whenever the app is reopened,
      and the portal's 15-minute idle warning still applies. */
@@ -49,7 +49,7 @@
 
   /* ---- data: packed with the app (read only) and kept on this phone (records composed and documents issued here) ---- */
   const realFetch = window.fetch.bind(window);
-  const packed = n => realFetch('/__offline/api/' + n + '.json').then(r => { if (!r.ok) throw new Error('missing ' + n); return r.json(); });
+  const packed = n => realFetch('/offline-app/api/' + n + '.json').then(r => { if (!r.ok) throw new Error('missing ' + n); return r.json(); });
   const SEED = { health: packed('health'), sync: packed('sync'), sig: packed('sig') };
   let DB = { cols: {}, meta: {}, audit: [] }; try { DB = Object.assign(DB, JSON.parse(LS.get('adi_off_db') || '{}')); } catch (e) {}
   const LOCAL = ['sptr', 'docreg'];
@@ -74,7 +74,7 @@
       audit: async (u, action) => { DB.audit.push({ at: Date.now(), user: (u && u.name) || '', action: String(action) }); if (DB.audit.length > 2000) DB.audit.splice(0, DB.audit.length - 2000); flush(); } });
     return sync;
   })();
-  window.__ADI_OFF = { profile: () => ({ name: PROF.name, tag: PROF.tag }), export: () => ({ app: 'ADI staff app (offline)', device: PROF.tag, officer: PROF.name, exportedAt: new Date().toISOString(), records: Object.values(DB.cols.sptr || {}), register: Object.values(DB.cols.docreg || {}), audit: DB.audit }), lock() { SS.del('adi_off_unlocked'); location.replace('/__offline/gate.html'); } };
+  window.__ADI_OFF = { profile: () => ({ name: PROF.name, tag: PROF.tag }), export: () => ({ app: 'ADI staff app (offline)', device: PROF.tag, officer: PROF.name, exportedAt: new Date().toISOString(), records: Object.values(DB.cols.sptr || {}), register: Object.values(DB.cols.docreg || {}), audit: DB.audit }), lock() { SS.del('adi_off_unlocked'); location.replace('/offline-app/gate.html'); } };
 
   const NA = { error: 'Not available in the offline app · Indisponible dans l’application hors ligne' };
   async function answer(method, path, q, body) {
